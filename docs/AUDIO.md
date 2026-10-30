@@ -64,6 +64,44 @@ The **Audio** tab provides:
 8. `Preview SNES`, `Preview Mega Drive`, `Convert & Preview Both`, `Stop`.
    Preview conversion runs in a worker thread; `Stop` tears down the player and
    cancels any conversion still in flight, so it responds immediately.
+9. `Synthesize BGM`, `Update BGM` and `Delete BGM` sit below the SFX controls.
+   `Synthesize BGM` opens the BGM sequencer, `Update BGM` opens the selected
+   BGM in it, and `Delete BGM` removes its descriptor, MIDI source, song data
+   and previews after confirmation.
+
+## BGM sequencer
+
+The BGM editor is a separate resizable window so it also works when the Audio
+tab is narrow. Double-clicking an existing BGM (or a raw `.mid`, `.midi` or
+`.it` music file) opens it in the sequencer.
+
+The piano roll supports:
+
+- left click to add a note, left drag to move it, drag its right edge to resize;
+- right click or `Delete`/`Backspace` to remove the selected note;
+- mouse wheel to scroll vertically, `Shift` + wheel horizontally;
+- per-track colors, mute/solo, zoom and step/BPM controls.
+
+The chip panel exposes the per-track controls used by the target hardware:
+
+- **SNES SPC**: waveform (sine/square/saw/triangle/noise), attack, decay,
+  sustain, release, echo, noise, pitch modulation and detune.
+- **YM2612 FM**: patch family, algorithm, feedback and all four operators
+  (multiply, level, attack, decay, sustain, release, detune).
+- **SN76489 PSG**: waveform/noise, volume and ADSR.
+- **DAC**: PCM sample path.
+
+Each song is stored as `<project>/.retro/audio/<name>.retro_bgm.json`; saving
+also exports the editable MIDI source to `.retro/audio/sources/<name>.mid` and
+updates the `.retro_audio.json` descriptor (kind `bgm`, platform, `source` and
+`song`). `.it` files are read through `libopenmpt` (`libopenmpt.so.0`) and
+converted to the same editable song/MIDI representation. `Export MIDI` writes
+the current song without changing the BGM entry.
+
+The chip values are preserved in the song JSON. The current ROM converter
+applies track volume, pan, waveform/patch family and noise routing; detailed
+ADSR, echo and operator-level values are kept for a later chip-accurate
+renderer.
 
 Source WAV/MP3 SFX preview uses the selected file through the target
 conversion path (BRR for SNES, PCM for Mega Drive), not the SFX synthesizer.

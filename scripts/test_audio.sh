@@ -16,6 +16,7 @@ fi
 test -s "$MIDI"
 export PVSNESLIB_HOME="$PVS"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/audio_editor_test.gd | tee "$OUT/editor.txt"
+"$BIN" --headless --path "$ROOT/ide" --script res://tests/bgm_editor_test.gd | tee "$OUT/bgm_editor.txt"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/audio_build_test.gd -- \
   --dir "$OUT/build" --midi "$MIDI" | tee "$OUT/generate.txt"
 

@@ -8,6 +8,7 @@ signal modified()
 
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
+const BgmSequencer = preload("res://addons/retro_engine/bgm_sequencer.gd")
 
 var _project: RetroProject
 var _asset_list: ItemList
@@ -36,6 +37,7 @@ var _search: LineEdit
 var _kind_filter: OptionButton
 var _filter_label: Label
 var _all_assets: Array = []
+var _bgm_sequencer
 var _preview_generation := 0
 var _preview_thread: Thread
 var _preview_busy := false
@@ -87,6 +89,7 @@ func _ready() -> void:
 	_asset_list = ItemList.new()
 	_asset_list.custom_minimum_size.x = 240
 	_asset_list.item_selected.connect(_on_selected)
+	_asset_list.item_activated.connect(_on_asset_activated)
 	split.add_child(_asset_list)
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -133,6 +136,20 @@ func _ready() -> void:
 	delete.tooltip_text = I18n.t("audio.delete_sfx_tip")
 	delete.pressed.connect(_delete_sfx)
 	actions.add_child(delete)
+	var bgm_actions := HBoxContainer.new()
+	right.add_child(bgm_actions)
+	var synth_bgm := Button.new(); synth_bgm.text = I18n.t("audio.synth_bgm")
+	synth_bgm.tooltip_text = I18n.t("audio.synth_bgm_tip")
+	synth_bgm.pressed.connect(_synthesize_bgm)
+	bgm_actions.add_child(synth_bgm)
+	var update_bgm := Button.new(); update_bgm.text = I18n.t("audio.update_bgm")
+	update_bgm.tooltip_text = I18n.t("audio.update_bgm_tip")
+	update_bgm.pressed.connect(_update_bgm)
+	bgm_actions.add_child(update_bgm)
+	var delete_bgm := Button.new(); delete_bgm.text = I18n.t("audio.delete_bgm")
+	delete_bgm.tooltip_text = I18n.t("audio.delete_bgm_tip")
+	delete_bgm.pressed.connect(_delete_bgm)
+	bgm_actions.add_child(delete_bgm)
 	var targets := HBoxContainer.new()
 	right.add_child(targets)
 	var play := Button.new(); play.text = I18n.t("audio.play")
@@ -191,7 +208,7 @@ func _refresh_list() -> void:
 		var name := String(data.get("name", r.get("name", path.get_file().get_basename())))
 		var kind := String(data.get("kind", r.get("kind", "sfx")))
 		if kind not in ["bgm", "sfx"]:
-			kind = "bgm" if path.get_extension().to_lower() in ["mid", "it"] else "sfx"
+			kind = "bgm" if path.get_extension().to_lower() in ["mid", "midi", "it"] else "sfx"
 		_all_assets.append({"path": path, "name": name, "kind": kind})
 	_apply_filter()
 
@@ -272,6 +289,8 @@ func stop_preview() -> void:
 	_stop_preview()
 
 func _read_descriptor(path: String) -> Dictionary:
+	if path.get_extension().to_lower() != "json":
+		return {}
 	if FileAccess.file_exists(path):
 		var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
 		if typeof(parsed) == TYPE_DICTIONARY:
@@ -291,7 +310,7 @@ func _on_selected(index: int) -> void:
 	if d.is_empty():
 		var ext := _selected.get_extension().to_lower()
 		d = {"name": _selected.get_file().get_basename(),
-			"kind": "bgm" if ext in ["mid", "it"] else "sfx",
+			"kind": "bgm" if ext in ["mid", "midi", "it"] else "sfx",
 			"source": _selected, "params": {}}
 	_current = d
 	_name.text = String(d.get("name", ""))
@@ -460,13 +479,17 @@ func _delete_sfx() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 
-func _delete_sfx_confirmed(selected_path: String, d: Dictionary, name: String) -> void:
+func _delete_sfx_confirmed(selected_path: String, d: Dictionary, name: String, is_bgm := false) -> void:
 	var audio_root := _project.path.path_join(".retro/audio")
 	if selected_path.get_extension().to_lower() == "json" and FileAccess.file_exists(selected_path):
 		DirAccess.remove_absolute(selected_path)
 	var source := String(d.get("source", ""))
 	if not source.is_empty() and source.begins_with(audio_root) and FileAccess.file_exists(source):
 		DirAccess.remove_absolute(source)
+	if is_bgm:
+		var song_path := String(d.get("song", ""))
+		if not song_path.is_empty() and song_path.begins_with(audio_root) and FileAccess.file_exists(song_path):
+			DirAccess.remove_absolute(song_path)
 	for target in ["snes", "megadrive"]:
 		var preview_dir := audio_root.path_join("preview").path_join(target)
 		if DirAccess.dir_exists_absolute(preview_dir):
@@ -486,6 +509,100 @@ func _delete_sfx_confirmed(selected_path: String, d: Dictionary, name: String) -
 	_refresh_list()
 	modified.emit()
 	status.emit(I18n.t("audio.deleted", {"name": name}))
+
+func _ensure_bgm_sequencer():
+	if _bgm_sequencer == null:
+		_bgm_sequencer = BgmSequencer.new()
+		add_child(_bgm_sequencer)
+		_bgm_sequencer.saved.connect(_on_bgm_saved)
+		_bgm_sequencer.status.connect(func(text):
+			status.emit(text)
+			_status.text = text)
+	return _bgm_sequencer
+
+func _on_asset_activated(index: int) -> void:
+	if index < 0:
+		return
+	var path := String(_asset_list.get_item_metadata(index))
+	_selected = path
+	_on_selected(index)
+	if _asset_kind(path) == "bgm":
+		_open_bgm_editor(path)
+	else:
+		play_selected()
+
+func _asset_kind(path: String) -> String:
+	var d := _read_descriptor(path)
+	var kind := String(d.get("kind", ""))
+	if kind in ["bgm", "sfx"]:
+		return kind
+	var ext := path.get_extension().to_lower()
+	return "bgm" if ext in ["mid", "midi", "it"] else "sfx"
+
+func _synthesize_bgm() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	_ensure_bgm_sequencer().open_new(_project, _project.get_platform())
+
+func _update_bgm() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	if _selected.is_empty() or _asset_kind(_selected) != "bgm":
+		status.emit(I18n.t("audio.select_bgm"))
+		return
+	_open_bgm_editor(_selected)
+
+func _delete_bgm() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	if _selected.is_empty() or _asset_kind(_selected) != "bgm":
+		status.emit(I18n.t("audio.select_bgm"))
+		return
+	var selected_path := _selected
+	var d := _selected_descriptor()
+	var name := String(d.get("name", selected_path.get_file().get_basename()))
+	var dlg := ConfirmationDialog.new()
+	dlg.title = I18n.t("audio.delete_bgm_title")
+	dlg.dialog_text = I18n.t("audio.delete_bgm_confirm", {"name": name})
+	dlg.confirmed.connect(func():
+		_delete_sfx_confirmed(selected_path, d, name, true)
+		dlg.queue_free())
+	dlg.canceled.connect(func(): dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
+
+func _open_bgm_editor(path: String) -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	var seq = _ensure_bgm_sequencer()
+	var d := _read_descriptor(path)
+	if not d.is_empty() and String(d.get("kind", "")) == "bgm":
+		var song: Dictionary = {}
+		var song_path := String(d.get("song", ""))
+		if not song_path.is_empty() and FileAccess.file_exists(song_path):
+			var parsed = JSON.parse_string(FileAccess.get_file_as_string(song_path))
+			if typeof(parsed) == TYPE_DICTIONARY:
+				song = parsed
+		var source := String(d.get("source", ""))
+		var name := String(d.get("name", path.get_file().get_basename()))
+		var platform := String(d.get("platform", _project.get_platform()))
+		if song.is_empty() and not source.is_empty():
+			seq.open_source(_project, path, source, name, platform)
+		else:
+			seq.open_song(_project, path, source, song, name)
+		return
+	seq.open_source(_project, "", path, path.get_file().get_basename(), _project.get_platform())
+
+func _on_bgm_saved(descriptor_path: String, source_path: String, name: String) -> void:
+	_register_asset(name, "bgm", descriptor_path)
+	_refresh_list()
+	select_asset(descriptor_path, false)
+	modified.emit()
+	status.emit(I18n.t("bgm.saved", {"name": name}))
 
 func _register_asset(name: String, kind: String, descriptor_path: String) -> void:
 	var res := _project.get_resources()
@@ -532,7 +649,7 @@ func _effective_descriptor() -> Dictionary:
 			return d
 		var ext := _selected.get_extension().to_lower()
 		return {"name": _selected.get_file().get_basename(),
-			"kind": "bgm" if ext in ["mid", "it"] else "sfx",
+			"kind": "bgm" if ext in ["mid", "midi", "it"] else "sfx",
 			"source": _selected, "params": _params(), "previews": {}}
 	return {"name": _slug(_name.text),
 		"kind": "bgm" if _kind.selected == 1 else "sfx",

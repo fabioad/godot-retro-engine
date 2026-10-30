@@ -1037,3 +1037,31 @@ the smoke test successfully and reports `ready=true`. The downloader passes
 with sudo or pkexec, macOS uses Homebrew for Wine/GNU make/Temurin JDK, and
 Windows uses winget for Java. Missing dependencies are shown in the download
 log with the manual command.
+
+### BGM sequencer (0.1.6)
+
+The BGM sequencer was validated headlessly with
+`ide/tests/bgm_editor_test.gd` and the Python tools:
+
+```text
+BGM_EDITOR PASS
+```
+
+It covers: creating a song from the Audio tab, editing notes, saving the
+`.retro_bgm.json` + MIDI source + descriptor, rendering and playing a real
+SNES preview, reopening the saved song with a double click, importing the
+saved MIDI back, importing a real KOF98 `.it` through `libopenmpt` (7 tracks,
+1728 steps, 136.62 BPM fitted to the 189.7 s module length) and deleting the
+descriptor/source/song/previews.
+
+The IT → MIDI → target conversion was also checked directly:
+
+```text
+esaka.it import      0.1 s   bpm=136.62 steps=1728 tracks=7
+esaka.mid export     0.3 s   25397 bytes
+Mega Drive VGM      16.2 s   preview 188.14 s, 48050-byte VGM
+SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
+```
+
+Localization coverage now reports 501 keys for all 41 locales and
+`I18N_COVERAGE_TEST PASS`.
