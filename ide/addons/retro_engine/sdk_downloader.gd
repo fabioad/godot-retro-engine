@@ -25,6 +25,8 @@ var _log: RichTextLabel
 var _request: HTTPRequest
 var _busy := false
 var _current_platform := ""
+var _setup_thread: Thread
+var _setup_result: Dictionary = {}
 
 func _ready() -> void:
 	title = I18n.t("sdk_downloader.title")
@@ -188,6 +190,7 @@ func _pvs_asset() -> Array:
 			return ["https://github.com/alekmaul/pvsneslib/releases/download/4.6.0/pvsneslib_460_64b_linux_release.zip", "pvsneslib_4.6.0_linux.zip"]
 
 func _install_archive(platform: String, archive_path: String) -> void:
+	_busy = true
 	var dest := ProjectSettings.globalize_path(PVS_DEST if platform == "snes" else SGDK_DEST)
 	_remove_recursive(dest)
 	DirAccess.make_dir_recursive_absolute(dest)
@@ -195,27 +198,127 @@ func _install_archive(platform: String, archive_path: String) -> void:
 	var ok := await _extract_zip(archive_path, dest)
 	if not ok:
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.extract_failed"))
+		_busy = false
 		return
 	var root := _find_sdk_root(platform, dest)
 	if root.is_empty():
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.layout_failed"))
+		_busy = false
 		return
 	if platform == "snes":
 		_make_pvsneslib_executable(root)
 	var probe: Dictionary = RetroSDK.probe_snes(root) if platform == "snes" else RetroSDK.probe_megadrive(root)
 	if not bool(probe.get("found", false)):
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.probe_failed", {"path": root}))
+		_busy = false
 		return
 	RetroSDK.configure(platform, root)
 	_progress.value = 100
 	_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("sdk_downloader.installed_at", {"platform": I18n.platform_label(platform), "path": root}))
 	if platform == "megadrive":
-		var lin: Dictionary = probe.get("linux", {})
-		if not bool(lin.get("available", false)):
-			_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t("sdk_downloader.resource_only_note"))
+		await _run_sgdk_setup(root)
+	_busy = false
 	_refresh_status()
 	installed.emit(platform, root)
 	status.emit(I18n.t("sdk_downloader.installed_status", {"path": root}))
+
+func _setup_script_path() -> String:
+	var name := "setup_sgdk_linux.sh"
+	match OS.get_name():
+		"Windows":
+			name = "setup_sgdk_windows.sh"
+		"macOS":
+			name = "setup_sgdk_macos.sh"
+	return ProjectSettings.globalize_path("res://addons/retro_engine/setup/" + name)
+
+func _find_bash() -> String:
+	if OS.get_name() != "Windows":
+		return "/bin/bash" if FileAccess.file_exists("/bin/bash") else "bash"
+	var candidates: Array = []
+	var program_files := OS.get_environment("ProgramFiles")
+	var local_app_data := OS.get_environment("LOCALAPPDATA")
+	if not program_files.is_empty():
+		candidates.append(program_files.path_join("Git/bin/bash.exe"))
+		candidates.append(program_files.path_join("Git/usr/bin/bash.exe"))
+	if not local_app_data.is_empty():
+		candidates.append(local_app_data.path_join("Programs/Git/bin/bash.exe"))
+		candidates.append(local_app_data.path_join("Programs/Git/usr/bin/bash.exe"))
+	candidates.append("C:/msys64/usr/bin/bash.exe")
+	candidates.append("C:/msys64/bin/bash.exe")
+	for candidate in candidates:
+		if FileAccess.file_exists(candidate):
+			return candidate
+	for directory in OS.get_environment("PATH").split(";", false):
+		var path_candidate := directory.path_join("bash.exe")
+		if FileAccess.file_exists(path_candidate):
+			return path_candidate
+	return ""
+
+func _finish_sgdk_setup(code: int, output: Array) -> void:
+	_setup_result = {"code": code, "output": output}
+
+func _run_sgdk_setup(root: String) -> void:
+	var script := _setup_script_path()
+	if not FileAccess.file_exists(script):
+		_busy = false
+		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.setup_missing_script", {"path": script}))
+		return
+	var bash := _find_bash()
+	if bash.is_empty():
+		_busy = false
+		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.setup_missing_bash"))
+		return
+	var cache := ProjectSettings.globalize_path("user://sdk_cache")
+	DirAccess.make_dir_recursive_absolute(cache)
+	_busy = true
+	OS.set_environment("SGDK_ROOT", root)
+	OS.set_environment("GDK", root)
+	OS.set_environment("RETRO_SGDK_OUT", root)
+	OS.set_environment("RETRO_SGDK_SRC", cache.path_join("sgdk-tools-src"))
+	OS.set_environment("RETRO_SGDK_TEST", cache.path_join("sgdk-smoke"))
+	_log.append_text("[color=#7fd1ff]%s[/color]\n" % I18n.t("sdk_downloader.setup_running", {"path": root}))
+	status.emit(I18n.t("sdk_downloader.setup_running_status"))
+	_setup_result = {}
+	_setup_thread = Thread.new()
+	_setup_thread.start(func():
+		var output: Array = []
+		var code := OS.execute(bash, [script], output, true)
+		call_deferred("_finish_sgdk_setup", code, output)
+	)
+	while _setup_result.is_empty():
+		await get_tree().process_frame
+	var code := int(_setup_result.get("code", -1))
+	var output: Array = _setup_result.get("output", [])
+	_setup_thread.wait_to_finish()
+	_setup_thread = null
+	for line in output:
+		var text := String(line).rstrip("\r\n")
+		if not text.is_empty():
+			_log.append_text("[color=#9fb4d0]%s[/color]\n" % text.replace("[", "[lb]"))
+	if code == 0:
+		_publish_sgdk_environment(root)
+		var probe: Dictionary = RetroSDK.probe_megadrive(root)
+		if bool(probe.get("ready", false)):
+			_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("sdk_downloader.setup_finished", {"path": root}))
+			status.emit(I18n.t("sdk_downloader.setup_finished_status"))
+		else:
+			_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t("sdk_downloader.setup_incomplete"))
+			_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t("sdk_downloader.setup_manual", {"script": script, "root": root}))
+	else:
+		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.setup_failed", {"code": code}))
+		_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t("sdk_downloader.setup_manual", {"script": script, "root": root}))
+	_busy = false
+	_refresh_status()
+
+func _publish_sgdk_environment(root: String) -> void:
+	OS.set_environment("RETRO_SGDK_ROOT", root)
+	OS.set_environment("GDK", root)
+	var bin := root.path_join("bin")
+	var separator := ";" if OS.get_name() == "Windows" else ":"
+	var path := OS.get_environment("PATH")
+	var entries := path.split(separator, false)
+	if not entries.has(bin):
+		OS.set_environment("PATH", bin + separator + path)
 
 func _find_sdk_root(platform: String, dest: String) -> String:
 	var candidates: Array = []

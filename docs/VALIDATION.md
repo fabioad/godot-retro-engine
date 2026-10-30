@@ -714,7 +714,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (420 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (429 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -728,11 +728,11 @@ I18N en new_project=New Project... mode=SNES project → Mega Drive
 I18N fallback fr_FR=fr cancel=Annuler xx=en
 I18N_TEST PASS
 
-I18N_LOCALE ar keys=420 sample=مشروع جديد...
-I18N_LOCALE fr keys=420 sample=Nouveau projet...
-I18N_LOCALE ja keys=420 sample=新しいプロジェクト...
-I18N_LOCALE pt_BR keys=420 sample=Novo Projeto...
-I18N_LOCALE zh_Hans keys=420 sample=新项目...
+I18N_LOCALE ar keys=429 sample=مشروع جديد...
+I18N_LOCALE fr keys=429 sample=Nouveau projet...
+I18N_LOCALE ja keys=429 sample=新しいプロジェクト...
+I18N_LOCALE pt_BR keys=429 sample=Novo Projeto...
+I18N_LOCALE zh_Hans keys=429 sample=新项目...
 I18N_FALLBACK pt_PT -> pt_BR
 I18N_FALLBACK fr_FR -> fr
 I18N_FALLBACK de_DE -> de
@@ -751,7 +751,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Area | Result |
 | --- | --- |
 | All 40 Godot editor locales present | PASS |
-| 420 keys per locale + placeholder parity | PASS |
+| 429 keys per locale + placeholder parity | PASS |
 | pt-BR/pt-PT main workspace | PASS |
 | French / Spanish main workspace | PASS (GUI) |
 | English locale | PASS |
@@ -919,3 +919,82 @@ scripts/smoke_emulators.sh
 
 Headless report: `ide/validation/headless_report.json` (also copied by
 `validation/headless_report.json` when using the harness output path).
+
+## 25. Linux packages and cross-platform builds
+
+### Linux packages
+
+`scripts/package_linux.sh` builds a `.deb` and an `.rpm` from the current
+`dist/linux` binary. Both contain the editor under `/opt/godot-retro-engine`,
+the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
+entry and a scalable icon.
+
+```text
+dist/packages/godot-retro-engine_0.1.0_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.0-1.x86_64.rpm  71 MB
+dist/packages/SHA256SUMS
+```
+
+The launcher copies the IDE project to
+`${XDG_DATA_HOME:-~/.local/share}/godot-retro-engine/ide` on first launch (and
+after a package upgrade), preserving existing `workspaces/`; this keeps the
+read-only `/opt` install working with Godot's `.godot` import cache. Both
+packages were extracted and launched headless with a temporary data directory;
+metadata, dependencies, desktop entry, icon and post-install cache hooks were
+checked.
+
+### Windows x86_64
+
+Built on Linux with MinGW-w64 13.2 and Godot's D3D12/ANGLE build dependencies:
+
+```text
+dist/windows/GodotRetroEngine.exe          168 MB  PE32+ GUI
+dist/windows/GodotRetroEngine.console.exe  184 KB  console stub
+dist/windows/run.bat
+dist/windows/ide/
+```
+
+The final build compiles `drivers/d3d12`, `gl_manager_windows_angle.cpp` and
+copies `D3D12Core.dll`. WinRT is disabled because it requires the Windows SDK;
+AccessKit is disabled when its SDK is absent. A Wine headless editor launch
+completed without script/parse errors.
+
+### macOS universal
+
+Built on Linux with osxcross (macOS SDK 26.1) and ANGLE static libraries for
+both architectures:
+
+```text
+dist/macos/GodotRetroEngine.app/Contents/MacOS/Godot  287 MB fat binary
+dist/macos/run.sh
+dist/macos/ide/
+```
+
+`lipo -info` reports `x86_64 arm64`; `LC_BUILD_VERSION` reports macOS 11.0
+minimum. The osxcross build disables Metal (clang 18 cannot build the SDK 26.1
+Metal C++ modules) and uses ANGLE/OpenGL for both slices. The module
+`retro_engine` provides the small `___isPlatformVersionAtLeast` shim normally
+supplied by Apple's `libclang_rt.osx.a`; `libxar`/`libtapi` are installed in
+the osxcross container. The `.app` is unsigned because osxcross has no
+`codesign`.
+
+The cross-built `.app` cannot be executed on this Linux host; architecture,
+bundle structure and load commands were validated with `lipo`/`otool`.
+
+### SGDK Downloader automatic host-toolchain setup
+
+The **Download SDKs...** dialog now runs the bundled `setup_sgdk_*` script
+after extracting SGDK. The test installed the official `v2.11` source ZIP into
+`user://sdks/sgdk-2.11`, called the downloader's `_install_archive()` path and
+checked the probe before/after:
+
+```text
+BEFORE ready=false available=false
+AFTER  ready=true  available=true
+SGDK root/bin/m68k-elf-gcc, sjasm, convsym, bintos and env.sh present
+```
+
+The setup builds the host tools, writes the `m68k-elf-*` wrappers into the SDK
+`bin/`, and updates the editor session's `PATH`. Wine + Java are required on
+Linux/macOS; Git Bash + Java on Windows. Missing dependencies are shown in the
+download log with the manual command.

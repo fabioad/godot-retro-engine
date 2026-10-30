@@ -53,3 +53,28 @@ all passed. Seven real SNES builds passed: auto, LoROM, HiROM, ExHiROM,
 Tales of Phantasia layout, Star Ocean header/layout and MSU-1. The tests
 verified ROM sizes, headers, checksums and MSU-1 companion files. A complete
 engine recompilation and Windows/macOS builds were not repeated.
+
+## Sync 2026-10-30: packaging, cross-builds and SDK setup
+
+Synchronized the original project commits `12bbcec`, `28b7603`, `f67112f`,
+`0163d50` and `1afeee4`, preserving the fork layout:
+
+- Linux `.deb`/`.rpm` packaging (`scripts/package_linux.sh` and post-install
+  cache hooks).
+- Windows cross-build fixes: `MINGW_PREFIX` handling, D3D12/ANGLE dependency
+  detection, GUI/console executable selection.
+- macOS osxcross support: x86_64 + arm64 universal build, ANGLE, temporary
+  `visionOS` compatibility patch and the `clang_rt_stub.c` compiler-rt shim.
+- SGDK setup scripts for Linux, macOS and Windows, bundled under
+  `ide/addons/retro_engine/setup/`. The SDK Downloader now runs the matching
+  script after extracting SGDK, builds the host tools, installs the
+  `m68k-elf-*` wrappers and updates the session `PATH`.
+- Localization dictionaries updated to 429 keys per locale (41 dictionaries).
+
+Validation performed with the existing 4.7.2 executable against this fork's
+`ide` workspace: headless editor import, localization, localization coverage,
+ROM profile logic and project coherence. The SGDK downloader flow was validated
+against the official SGDK 2.11 ZIP: `ready=false` before setup, `ready=true`
+after setup, with `m68k-elf-gcc`, `sjasm`, `convsym`, `bintos` and `env.sh`
+present. A complete fork engine recompilation and new Windows/macOS artifacts
+were not repeated in this checkout.

@@ -69,7 +69,7 @@ This is not an emulator and not a mock console. The editor imports existing SDK 
 - **Localization**: Retro UI follows Godot's editor locale and ships dictionaries for all 40 Godot editor locales (Portuguese, English, Spanish, French, German, Japanese, Chinese, Arabic, and the rest), with English fallback for any missing key. It covers the main workspace, New Project, Game Build, Native port bundle, coherence alerts, SDK downloader, hardware monitor and Terminal. See `docs/LOCALIZATION.md`.
 - **Terminal**: a `Terminal` main screen next to Retro with real OS PTY shells, multiple VSCode-style tabs, `+`, `−` and a terminal menu. Powered by the MIT GDTerm extension.
 - **New project templates**: **New Project...** creates a complete, buildable SNES/PVSnesLib or Mega Drive/SGDK starter project (16-colour screen, editable C sources, Makefile, art assets and README), with **Create + Build** producing a real ROM.
-- **SDK setup**: detects existing PVSnesLib/SGDK installations, or downloads the official GitHub releases into user data with **Download SDKs...**. Missing SDKs/projects never crash startup; builds show configuration guidance.
+- **SDK setup**: detects existing PVSnesLib/SGDK installations, or downloads the official GitHub releases into user data with **Download SDKs...**. The SGDK download button also runs the bundled platform setup script to build `sjasm`/`convsym`/`bintos`, install the `m68k-elf-*` wrappers and configure the session `PATH`. Missing SDKs/projects never crash startup; builds show configuration guidance.
 - **Audio**: imports `.mid`, `.it`, `.mp3` and `.wav`; converts BGM to SNESMOD/IT and Mega Drive YM2612 FM/XGM2/PCM; synthesizes SFX with waveform, ADSR, pitch slide, vibrato, noise and bitcrush controls; previews the target arrangement and compiles real ROM audio.
 - **Native Godot bridge**: converts the scene open in the Godot editor — sprites, animations, UI `Control` widgets, cameras, collision/bodies, markers, audio/animation/timer/light/path nodes, `MeshInstance3D` and `TileMapLayer` — into SNES/Mega Drive assets. It captures 2D/3D scenes into console tilemaps, bakes 3D scenes into sprite sheets, and exports a portable port bundle (`*_port.h/.json/.md`) with UI layout, other nodes, script metadata and copied script sources. **Import game scene** uses the project's Jogo/Game main scene. Super FX (Star Fox) and SVP (Virtua Racing) profiles supply 3D reference budgets; the generated sprites still run on the base consoles.
 - **Code panel**: indexes C functions and assembly labels, edits `.c/.h/.asm/.inc` with a timestamped backup before writing, and stores explicit code↔asset associations in project JSON. Arbitrary C is never converted into visual nodes.
@@ -109,19 +109,36 @@ scripts/run_linux.sh
 
 The build produces `dist/linux/GodotRetroEngine` and a self-contained `dist/linux/ide` workspace.
 
-### Mega Drive toolchain on Linux
+### Mega Drive toolchain
 If a native `m68k-elf` toolchain is not installed, the supplied SGDK Windows
-GCC 13.2 binaries can be used through Wine with native host tools:
+GCC 13.2 binaries can be used with native host tools.
+
+Linux:
 
 ```bash
-SGDK_ROOT=/run/media/fabio/Dados/Fabio/sgdk211 scripts/setup_sgdk_linux.sh
+SGDK_ROOT=/path/to/sgdk211 scripts/setup_sgdk_linux.sh
 source vendor/sgdk-linux/env.sh
 ```
 
-The script builds `sjasm`, `convsym` and `bintos` natively, creates
-`m68k-elf-*` Wine wrappers and smoke-tests an SGDK sample. The IDE builder
-passes `LIBGCC=<SDK>/lib/libgcc.a` and uses one job for SGDK to avoid the stock
-makefile's `.res`/header race.
+macOS:
+
+```bash
+SGDK_ROOT=$HOME/sgdk211 scripts/setup_sgdk_macos.sh
+source vendor/sgdk-macos/env.sh
+```
+
+Windows (Git Bash/MSYS2):
+
+```bash
+SGDK_ROOT=/c/sgdk211 scripts/setup_sgdk_windows.sh
+source vendor/sgdk-win/env.sh
+```
+
+The Linux/macOS scripts build `sjasm`, `convsym`, `bintos` and `mac68k`
+natively, create `m68k-elf-*` Wine wrappers and smoke-test an SGDK sample. The
+Windows script validates SGDK's native `.exe` tools and writes `env.sh`,
+`env.bat` and `env.ps1`. The IDE builder passes `LIBGCC=<SDK>/lib/libgcc.a` and
+uses one job for SGDK to avoid the stock makefile's `.res`/header race.
 
 ### Windows
 On Windows with Visual Studio or MinGW:
@@ -133,14 +150,29 @@ Cross-compiling from Linux with mingw-w64 is also supported:
 sudo apt install mingw-w64
 scripts/build_windows.sh
 ```
-Output: `dist/windows/GodotRetroEngine.exe`, `run.bat` and the `ide` folder.
+The cross-build auto-detects Godot's optional `bin/build_deps/agility_sdk` and
+`bin/build_deps/angle-x86_64-gcc` folders and enables D3D12/ANGLE when present.
+Without them it still builds with Vulkan and disables WinRT/AccessKit. The
+output is `dist/windows/GodotRetroEngine.exe` (GUI), the console stub
+`GodotRetroEngine.console.exe`, `run.bat` and the `ide` folder.
 
 ### macOS
 On macOS with Xcode command-line tools:
 ```bash
 scripts/build_macos.sh
 ```
-Output: `dist/macos/GodotRetroEngine.app` plus `ide`. The script uses `arch=universal`.
+Cross-compiling from Linux with osxcross and a macOS SDK:
+```bash
+export OSXCROSS_ROOT=/path/to/osxcross
+export OSXCROSS_SDK=darwin25.1   # match the SDK in osxcross
+scripts/build_macos.sh
+```
+The script builds both `x86_64` and `arm64`; Godot's bundle step uses `lipo` to
+create a universal app. Vulkan/ANGLE/AccessKit are disabled by default (Metal
+renderer on native macOS); pass `vulkan=yes`, `angle=yes` or `accesskit=yes` to
+override. osxcross builds use ANGLE and are unsigned.
+
+Output: `dist/macos/GodotRetroEngine.app`, `run.sh` and the `ide` folder.
 
 ## First run
 
@@ -210,11 +242,8 @@ original hash.
 - The editor simulator mirrors the generated polling matchers, but it is not a cycle-accurate game runtime.
 - Multiple graph transitions between the same pair of states share one visual edge; all condition sets remain editable in the transition list.
 - Emulator smoke tests are process-level (ROM loaded and emulator remains alive). Pixel-perfect automated comparison against hardware is not implemented.
-- Mega Drive full C builds require a Linux `m68k-elf` toolchain. The provided
-  `scripts/setup_sgdk_linux.sh` uses SGDK's Windows GCC 13.2 through Wine and
-  native host tools; resource compilation alone needs only Java.
-- macOS and Windows build scripts are prepared but were not executed on this
-  Linux host. Linux is the tested primary target.
+- Mega Drive full C builds use the setup scripts in `scripts/`: Linux/macOS run SGDK's Windows GCC 13.2 through Wine with native host tools; Windows uses SGDK's native `.exe` tools. Resource compilation alone needs only Java.
+- Windows x86_64 and macOS universal editor builds were cross-compiled in the original project with MinGW-w64 13.2 and osxcross; the fork's build scripts mirror that flow. A full fork engine recompilation and Windows/macOS artifact build were not repeated in this checkout.
 
 ## Licenses
 

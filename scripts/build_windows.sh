@@ -20,7 +20,29 @@ EXTRA=()
 if [ "$HOST_OS" != "Darwin" ] && [ "${HOST_OS#MINGW}" = "$HOST_OS" ] && [ "${HOST_OS#MSYS}" = "$HOST_OS" ]; then
   # Linux host: cross-compile with MinGW.
   if command -v x86_64-w64-mingw32-g++ >/dev/null 2>&1; then
-    EXTRA=(use_mingw=yes mingw_prefix=x86_64-w64-mingw32-)
+    if [ -z "${MINGW_PREFIX:-}" ]; then
+      MINGW_PREFIX="$(cd "$(dirname "$(command -v x86_64-w64-mingw32-g++)")/.." && pwd)"
+      export MINGW_PREFIX
+    fi
+    EXTRA=(use_mingw=yes mingw_prefix="$MINGW_PREFIX")
+    # Optional dependencies installed by Godot's misc/scripts helpers.
+    if [ -d "$ROOT/bin/build_deps/agility_sdk" ]; then
+      EXTRA+=(d3d12=yes)
+    else
+      EXTRA+=(d3d12=no)
+    fi
+    if [ -d "$ROOT/bin/build_deps/angle-x86_64-gcc" ]; then
+      EXTRA+=(angle=yes)
+    else
+      EXTRA+=(angle=no)
+    fi
+    if [ -d "$ROOT/bin/build_deps/accesskit" ]; then
+      EXTRA+=(accesskit=yes)
+    else
+      EXTRA+=(accesskit=no)
+    fi
+    # WinRT needs the Windows SDK; MinGW cross-builds cannot use it.
+    EXTRA+=(winrt=no)
   else
     echo "mingw-w64 not found. Install it (sudo apt install mingw-w64) or run this script on Windows." >&2
     exit 1
@@ -32,12 +54,16 @@ cd "$ROOT"
   extra_suffix=retro_engine "${EXTRA[@]}" "$@"
 
 mkdir -p "$ROOT/dist/windows"
-BUILT="$(ls -t bin/godot.windows.editor.x86_64*.exe 2>/dev/null | head -1 || true)"
+BUILT="$(ls -t bin/godot.windows.editor.x86_64*.exe 2>/dev/null | grep -v '\.console\.exe$' | head -1 || true)"
 if [ -z "$BUILT" ]; then
   echo "Windows editor binary not found in bin" >&2
   exit 1
 fi
 cp "$BUILT" "$ROOT/dist/windows/GodotRetroEngine.exe"
+CONSOLE="${BUILT%.exe}.console.exe"
+if [ -f "$CONSOLE" ]; then
+  cp "$CONSOLE" "$ROOT/dist/windows/GodotRetroEngine.console.exe"
+fi
 rm -rf "$ROOT/dist/windows/ide"; cp -r "$ROOT/ide" "$ROOT/dist/windows/ide"
 cp "$ROOT/README.md" "$ROOT/dist/windows/" 2>/dev/null || true
 

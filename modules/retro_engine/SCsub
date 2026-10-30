@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import os
+
 from misc.utility.scons_hints import *
 
 Import("env")
@@ -6,3 +8,7 @@ Import("env_modules")
 
 env_retro = env_modules.Clone()
 env_retro.add_source_files(env.modules_sources, "*.cpp")
+if env["platform"] == "macos" and os.environ.get("OSXCROSS_ROOT"):
+    # Ubuntu osxcross lacks Apple's libclang_rt.osx.a; provide the
+    # ___isPlatformVersionAtLeast symbol used by @available.
+    env_retro.add_source_files(env.modules_sources, "clang_rt_stub.c")
