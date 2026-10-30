@@ -42,6 +42,8 @@ if [ -d "$ROOT/docs" ]; then
   cp -R "$ROOT/docs" "$STAGE$APP_DIR/docs"
 fi
 cp "$ROOT/ide/icon.svg" "$STAGE/usr/share/icons/hicolor/scalable/apps/$APP_NAME.svg"
+STAMP="$VERSION-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')-$(date -u +%Y%m%d%H%M%S)"
+printf '%s\n' "$STAMP" > "$STAGE$APP_DIR/ide/.package_stamp"
 
 cat > "$STAGE/usr/bin/$APP_NAME" <<EOF
 #!/usr/bin/env bash
@@ -51,8 +53,10 @@ APP_DIR="\${GODOT_RETRO_ENGINE_HOME:-$APP_DIR}"
 DATA_ROOT="\${GODOT_RETRO_ENGINE_DATA:-\${XDG_DATA_HOME:-\$HOME/.local/share}/$APP_NAME}"
 PROJECT_DIR="\$DATA_ROOT/ide"
 VERSION="$VERSION"
+STAMP="\$(cat "\$APP_DIR/ide/.package_stamp" 2>/dev/null || true)"
+[ -n "\$STAMP" ] || STAMP="\$VERSION"
 
-if [ ! -f "\$PROJECT_DIR/project.godot" ] || [ "\$(cat "\$DATA_ROOT/version" 2>/dev/null || true)" != "\$VERSION" ]; then
+if [ ! -f "\$PROJECT_DIR/project.godot" ] || [ "\$(cat "\$DATA_ROOT/stamp" 2>/dev/null || true)" != "\$STAMP" ]; then
   mkdir -p "\$DATA_ROOT"
   if [ -d "\$PROJECT_DIR/workspaces" ]; then
     rm -rf "\$DATA_ROOT/workspaces.keep"
@@ -64,6 +68,7 @@ if [ ! -f "\$PROJECT_DIR/project.godot" ] || [ "\$(cat "\$DATA_ROOT/version" 2>/
     rm -rf "\$PROJECT_DIR/workspaces"
     mv "\$DATA_ROOT/workspaces.keep" "\$PROJECT_DIR/workspaces"
   fi
+  printf '%s\n' "\$STAMP" > "\$DATA_ROOT/stamp"
   printf '%s\n' "\$VERSION" > "\$DATA_ROOT/version"
 fi
 

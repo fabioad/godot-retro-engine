@@ -930,15 +930,18 @@ the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
 entry and a scalable icon.
 
 ```text
-dist/packages/godot-retro-engine_0.1.0_amd64.deb     71 MB
-dist/packages/godot-retro-engine-0.1.0-1.x86_64.rpm  71 MB
+dist/packages/godot-retro-engine_0.1.1_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.1-1.x86_64.rpm  71 MB
 dist/packages/SHA256SUMS
 ```
 
 The launcher copies the IDE project to
 `${XDG_DATA_HOME:-~/.local/share}/godot-retro-engine/ide` on first launch (and
 after a package upgrade), preserving existing `workspaces/`; this keeps the
-read-only `/opt` install working with Godot's `.godot` import cache. Both
+read-only `/opt` install working with Godot's `.godot` import cache. Package
+`0.1.1` compares an IDE build stamp (`ide/.package_stamp`) instead of only the
+semantic version, so rebuilding an unchanged version still refreshes the
+user-data IDE copy. Both
 packages were extracted and launched headless with a temporary data directory;
 metadata, dependencies, desktop entry, icon and post-install cache hooks were
 checked.
