@@ -1,0 +1,65 @@
+diff --git a/src/gdterm/pty/thirdparty/libtmt/tmt.c b/src/gdterm/pty/thirdparty/libtmt/tmt.c
+index a68a7fc..a158a45 100644
+--- a/src/gdterm/pty/thirdparty/libtmt/tmt.c
++++ b/src/gdterm/pty/thirdparty/libtmt/tmt.c
+@@ -82,7 +82,7 @@ struct TMT{
+     size_t pars[PAR_MAX];   
+     size_t npar;
+     size_t arg;
+-    enum {S_NUL, S_ESC, S_ARG, S_OS, S_SPA} state;
++    enum {S_NUL, S_ESC, S_ARG, S_OS, S_OS_ESC, S_SPA} state;
+ };
+ 
+ static TMTATTRS defattrs = {.fg = TMT_COLOR_DEFAULT, .bg = TMT_COLOR_DEFAULT};
+@@ -343,6 +343,21 @@ handlechar(TMT *vt, char i)
+ {
+     COMMON_VARS;
+ 
++    /* Consume control strings including their ST (ESC backslash) terminator.
++     * Leaking the backslash moves the cursor and makes OSC 66 capability
++     * probes falsely succeed in OpenTUI/OpenCode. Preserve state across reads.
++     */
++    if (vt->state == S_OS) {
++        if (i == '\x07' || i == '\x18' || i == '\x1a') resetparser(vt);
++        else if (i == '\x1b') vt->state = S_OS_ESC;
++        return true;
++    }
++    if (vt->state == S_OS_ESC) {
++        if (i == '\\' || i == '\x18' || i == '\x1a') resetparser(vt);
++        else if (i != '\x1b') vt->state = S_OS;
++        return true;
++    }
++
+     char cs[] = {i, 0};
+     #define ON(S, C, A) if (vt->state == (S) && strchr(C, i)){ A; return true;}
+     #define DO(S, C, A) ON(S, C, consumearg(vt); if (!vt->ignored) {A;} \
+@@ -362,14 +377,11 @@ handlechar(TMT *vt, char i)
+     ON(S_ESC, "+*()",       vt->ignored = true; vt->state = S_ARG)
+     DO(S_ESC, "c",          tmt_reset(vt))
+     ON(S_ESC, "[",          vt->state = S_ARG)
+-    ON(S_ESC, "]",          vt->state = S_OS)
+-    ON(S_OS,  "\x1b",       vt->state = S_ESC)
+-    ON(S_OS,  "\x07",       vt->state = S_NUL)
+-    SK(S_OS)
++    ON(S_ESC, "]PX^_",          vt->state = S_OS)
+     DO(S_SPA, "q",          setcursty(vt))
+     ON(S_ARG, "\x1b",       vt->state = S_ESC)
+     ON(S_ARG, ";",          consumearg(vt))
+-    ON(S_ARG, "?",          (void)0)
++    ON(S_ARG, "?<=>",          (void)0)
+     ON(S_ARG, "0123456789", vt->arg = vt->arg * 10 + atoi(cs))
+     DO(S_ARG, "A",          c->r = MAX(c->r - P1(0), 0))
+     DO(S_ARG, "B",          c->r = MIN(c->r + P1(0), s->nline - 1))
+@@ -403,6 +415,12 @@ handlechar(TMT *vt, char i)
+     ON(S_ARG, " ",          vt->state = S_SPA)
+     DO(S_ARG, "@",          ich(vt))
+ 
++    /* Unknown CSI requests still occupy the entire sequence, including
++     * intermediate bytes such as '$' in DECRQM capability queries. */
++    if (vt->state == S_ARG) {
++        if ((unsigned char)i >= 0x40 && (unsigned char)i <= 0x7e) resetparser(vt);
++        return true;
++    }
+     return resetparser(vt), false;
+ }
+ 

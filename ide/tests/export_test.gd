@@ -1,0 +1,35 @@
+extends SceneTree
+func _initialize() -> void:
+	var out := "/tmp/opencode/retro_exports"
+	DirAccess.make_dir_recursive_absolute(out)
+	# SGDK sprite export: PNG + .res, then the real rescomp.
+	var sp := RetroSprite.new()
+	sp.set_platform("megadrive")
+	var err := sp.load_image("/run/media/fabio/Dados/Fabio/sgdk211/res/image/sgdk_logo.png")
+	print("sprite load=", err, " size=", sp.get_image().get_width(), "x", sp.get_image().get_height())
+	sp.split_grid(24, 24)
+	var sr: Dictionary = sp.export_sgdk(out, "retro_sprite")
+	print("sgdk sprite export=", sr)
+	var args := PackedStringArray(["-jar", "/run/media/fabio/Dados/Fabio/sgdk211/bin/rescomp.jar", out + "/retro_sprite.res", out + "/retro_sprite.s", "-dep", out + "/retro_sprite.o"])
+	var code := OS.execute("java", args, [], true)
+	print("rescomp exit=", code)
+	print("rescomp h exists=", FileAccess.file_exists(out + "/retro_sprite.h"), " s exists=", FileAccess.file_exists(out + "/retro_sprite.s"))
+	# Animation export.
+	var anim := RetroAnimation.new()
+	anim.set_name("iori_anim")
+	anim.set_platform("snes")
+	anim.add_frame("IDLE", 0, 6)
+	anim.add_frame("IDLE", 1, 6)
+	anim.add_hitbox("ATTACK", 0, Rect2i(4, 8, 24, 12), "hit")
+	anim.add_frame("ATTACK", 2, 4)
+	var ir: Dictionary = anim.export_snes_inc(out + "/iori_anim.inc")
+	var hr: Dictionary = anim.export_sgdk_header(out + "/iori_anim.h")
+	print("anim inc=", ir, " header=", hr)
+	print("anim analyze=", anim.analyze())
+	# Stage SGDK export (tileset/palette assets; documented as not a VDP nametable importer).
+	var st := RetroStage.new()
+	st.set_platform("snes")
+	err = st.load_snes("/run/media/fabio/Dados/Fabio/godot_snes_genesis_engine/validation/projects/sidearms/port/data/stage1.pic", "/run/media/fabio/Dados/Fabio/godot_snes_genesis_engine/validation/projects/sidearms/port/data/stage1.map", "/run/media/fabio/Dados/Fabio/godot_snes_genesis_engine/validation/projects/sidearms/port/data/stage1.pal", 240, 32, 8, 4, 16, true)
+	var stg: Dictionary = st.export_sgdk(out, "retro_stage")
+	print("sgdk stage export=", stg)
+	quit(0)

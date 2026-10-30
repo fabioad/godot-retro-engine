@@ -1,0 +1,17 @@
+extends SceneTree
+func _initialize():
+	var p := RetroProject.new()
+	p.load("/run/media/fabio/Dados/Fabio/godot_snes_genesis_engine/validation/projects/daniel_snes/.retro/project.json")
+	var idx := RetroCodeIndex.new()
+	var syms: Array = idx.scan_project(p)
+	print("symbols=", syms.size(), " first=", syms[0] if syms.size() > 0 else null)
+	var prev: Dictionary = idx.preview("/run/media/fabio/Dados/Fabio/godot_snes_genesis_engine/validation/projects/daniel_snes/src/main.asm", 0, 5)
+	print("preview ok=", prev.get("ok"), " total=", prev.get("total_lines"), " lines=", prev.get("lines"))
+	var a := RetroAnimation.new()
+	a.set_platform("snes")
+	a.add_frame("ATTACK", 2, 4)
+	a.add_hitbox("ATTACK", 0, Rect2i(4,8,24,12), "hit")
+	a.add_event("ATTACK", 0, "sfx", "hit1")
+	print("anim=", a.analyze(), " sample=", a.sample("ATTACK", 0.02))
+	print("exports=", a.export_snes_inc("/tmp/opencode/anim_test.inc"), a.export_sgdk_header("/tmp/opencode/anim_test.h"))
+	quit()

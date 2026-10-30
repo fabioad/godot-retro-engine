@@ -1,0 +1,48 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Texture2D" path="res://demo/hero.png" id="1_hero"]
+[ext_resource type="Texture2D" path="res://demo/background.png" id="2_bg"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(96, 8)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_walk"]
+animations = [{
+"frames": [{
+"duration": 0.1,
+"texture": ExtResource("1_hero")
+}, {
+"duration": 0.1,
+"texture": ExtResource("1_hero")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 0.2,
+"texture": ExtResource("1_hero")
+}],
+"loop": false,
+"name": &"attack",
+"speed": 5.0
+}]
+
+[node name="NativeShowcase" type="Node2D"]
+
+[node name="Hero" type="Sprite2D" parent="."]
+position = Vector2(80, 96)
+texture = ExtResource("1_hero")
+hframes = 2
+
+[node name="HeroAnim" type="AnimatedSprite2D" parent="."]
+position = Vector2(128, 96)
+sprite_frames = SubResource("SpriteFrames_walk")
+autoplay = "walk"
+
+[node name="Floor" type="CollisionShape2D" parent="."]
+position = Vector2(128, 144)
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(128, 112)

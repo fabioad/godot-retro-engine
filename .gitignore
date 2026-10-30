@@ -396,3 +396,18 @@ $RECYCLE.BIN/
 *.msp
 *.lnk
 *.generated.props
+
+# Godot Retro Engine: generated files and external SDKs.
+/dist/
+/validation/
+/vendor/
+/ide/.godot/
+/ide/validation/
+/ide/workspaces/*
+!/ide/workspaces/.gitkeep
+!/ide/workspaces/.gdignore
+.retro/
+/ide/**/*.import
+# Bundled GDTerm runtime libraries are part of the distributable addon.
+!/ide/addons/gdterm/bin/
+!/ide/addons/gdterm/bin/**
