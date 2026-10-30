@@ -5,18 +5,22 @@
 # runs the Windows compiler through Wine and builds sjasm, convsym and bintos
 # natively, then writes wrappers and an env.sh for the IDE.
 #
-# Usage: setup_sgdk_unix.sh linux|macos [--no-smoke]
+# Usage: setup_sgdk_unix.sh linux|macos [--no-smoke] [--install-deps]
 set -euo pipefail
 
 PLATFORM="${1:-}"
 shift || true
 if [ "$PLATFORM" != "linux" ] && [ "$PLATFORM" != "macos" ]; then
-  echo "usage: $0 linux|macos [--no-smoke]" >&2
+  echo "usage: $0 linux|macos [--no-smoke] [--install-deps]" >&2
   exit 2
 fi
 NO_SMOKE=0
+INSTALL_DEPS=0
 for arg in "$@"; do
-  [ "$arg" = "--no-smoke" ] && NO_SMOKE=1
+  case "$arg" in
+    --no-smoke) NO_SMOKE=1 ;;
+    --install-deps) INSTALL_DEPS=1 ;;
+  esac
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -57,6 +61,83 @@ EOF
   exit 1
 fi
 
+run_privileged() {
+  if [ "${RETRO_SETUP_DRY_RUN:-0}" = "1" ]; then
+    echo "+ $*"
+    return 0
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+    return 0
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    echo "+ sudo $*"
+    sudo -n "$@"
+    return 0
+  fi
+  if command -v pkexec >/dev/null 2>&1; then
+    echo "+ pkexec $*"
+    pkexec "$@"
+    return 0
+  fi
+  echo "Automatic installation needs root: run the setup script from a terminal with sudo." >&2
+  return 1
+}
+
+install_linux_deps() {
+  echo "==> Installing Wine, Java and build tools"
+  if command -v apt-get >/dev/null 2>&1; then
+    run_privileged sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wine default-jre-headless make gcc python3'
+  elif command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y wine java-21-openjdk-headless make gcc python3
+  elif command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -S --needed --noconfirm wine jdk-openjdk base-devel python
+  elif command -v zypper >/dev/null 2>&1; then
+    run_privileged zypper --non-interactive install wine java-21-openjdk make gcc python3
+  else
+    echo "No supported package manager found (apt-get, dnf, pacman or zypper)." >&2
+    return 1
+  fi
+  if [ "${RETRO_SETUP_DRY_RUN:-0}" != "1" ] && command -v wine >/dev/null 2>&1; then
+    if ! WINEDEBUG=-all wine "$SGDK_ROOT/bin/gcc.exe" --version >/dev/null 2>&1; then
+      echo "Wine is installed but cannot run SGDK's 32-bit gcc.exe." >&2
+      echo "On Debian/Ubuntu enable i386 and install wine32:i386; on Fedora install wine-core.i686." >&2
+    fi
+  fi
+}
+
+install_macos_deps() {
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Homebrew is required for automatic Wine/Java installation." >&2
+    echo "Install Homebrew from https://brew.sh and rerun the setup." >&2
+    return 1
+  fi
+  echo "==> Installing Wine, GNU make and Java with Homebrew"
+  HOMEBREW_NO_AUTO_UPDATE=1 brew install make
+  HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask --no-quarantine wine-stable
+  HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask temurin
+  for candidate in /Library/Java/JavaVirtualMachines/*/Contents/Home/bin; do
+    if [ -x "$candidate/java" ]; then
+      export PATH="$candidate:$PATH"
+      break
+    fi
+  done
+}
+
+needs_install() {
+  [ "$INSTALL_DEPS" -eq 1 ] || return 1
+  [ "${RETRO_SETUP_FORCE_DEPS:-0}" = "1" ] && return 0
+  if ! find_wine >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ "$PLATFORM" = "macos" ]; then
+    ! command -v gmake >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1
+  else
+    ! command -v make >/dev/null 2>&1 || ! command -v cc >/dev/null 2>&1 || ! command -v java >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1
+  fi
+}
+
+
 find_wine() {
   local candidate
   if [ -n "${RETRO_WINE:-}" ]; then
@@ -86,6 +167,14 @@ find_wine() {
   fi
   return 1
 }
+
+if needs_install; then
+  if [ "$PLATFORM" = "macos" ]; then
+    install_macos_deps || true
+  else
+    install_linux_deps || true
+  fi
+fi
 
 if ! WINECMD="$(find_wine)"; then
   if [ "$PLATFORM" = "macos" ]; then

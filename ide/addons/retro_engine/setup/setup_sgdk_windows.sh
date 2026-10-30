@@ -7,7 +7,7 @@
 # env.bat and env.ps1.
 #
 # Usage (Git Bash):
-#   SGDK_ROOT=/c/sgdk211 scripts/setup_sgdk_windows.sh
+#   SGDK_ROOT=/c/sgdk211 scripts/setup_sgdk_windows.sh [--install-deps]
 #   source vendor/sgdk-win/env.sh
 #   scripts/build_windows.sh
 set -euo pipefail
@@ -17,8 +17,12 @@ OUT="${RETRO_SGDK_OUT:-$PWD/vendor/sgdk-win}"
 BIN="${RETRO_SGDK_BIN:-$OUT/bin}"
 TEST_DIR="${RETRO_SGDK_TEST:-$OUT/test}"
 NO_SMOKE=0
+INSTALL_DEPS=0
 for arg in "$@"; do
-  [ "$arg" = "--no-smoke" ] && NO_SMOKE=1
+  case "$arg" in
+    --no-smoke) NO_SMOKE=1 ;;
+    --install-deps) INSTALL_DEPS=1 ;;
+  esac
 done
 
 case "$(uname -s)" in
@@ -31,12 +35,31 @@ case "$(uname -s)" in
     ;;
 esac
 
-for tool in cygpath java; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "Required tool not found: $tool" >&2
-    exit 1
-  fi
-done
+if ! command -v cygpath >/dev/null 2>&1; then
+  echo "Required tool not found: cygpath (run this in Git Bash or MSYS2)" >&2
+  exit 1
+fi
+
+if ! command -v java >/dev/null 2>&1 && [ "$INSTALL_DEPS" -eq 1 ] \
+    && command -v winget.exe >/dev/null 2>&1; then
+  echo "==> Installing Java with winget"
+  winget.exe install --id Microsoft.OpenJDK.21 --silent \
+    --accept-source-agreements --accept-package-agreements || true
+  for candidate in \
+    "/c/Program Files/Microsoft/jdk-"*/bin \
+    "/c/Program Files/Eclipse Adoptium/jdk-"*/bin \
+    "/c/Program Files/Java/jdk-"*/bin; do
+    if [ -x "$candidate/java.exe" ]; then
+      export PATH="$candidate:$PATH"
+      break
+    fi
+  done
+fi
+
+if ! command -v java >/dev/null 2>&1; then
+  echo "Required tool not found: java. Install a JDK or rerun with --install-deps." >&2
+  exit 1
+fi
 
 find_sgdk() {
   local candidate

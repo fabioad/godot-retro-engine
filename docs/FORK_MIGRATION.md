@@ -69,7 +69,10 @@ Synchronized the original project commits `12bbcec`, `28b7603`, `f67112f`,
   `ide/addons/retro_engine/setup/`. The SDK Downloader now runs the matching
   script after extracting SGDK, builds the host tools, installs the
   `m68k-elf-*` wrappers and updates the session `PATH`.
-- Localization dictionaries updated to 429 keys per locale (41 dictionaries).
+- Localization dictionaries updated to 430 keys per locale (41 dictionaries).
+- The SGDK downloader installs missing system dependencies with `--install-deps`:
+  apt/dnf/pacman/zypper + sudo/pkexec on Linux, Homebrew on macOS, winget for
+  Java on Windows.
 
 Validation performed with the existing 4.7.2 executable against this fork's
 `ide` workspace: headless editor import, localization, localization coverage,

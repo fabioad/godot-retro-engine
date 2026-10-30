@@ -714,7 +714,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (429 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (430 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -751,7 +751,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Area | Result |
 | --- | --- |
 | All 40 Godot editor locales present | PASS |
-| 429 keys per locale + placeholder parity | PASS |
+| 430 keys per locale + placeholder parity | PASS |
 | pt-BR/pt-PT main workspace | PASS |
 | French / Spanish main workspace | PASS (GUI) |
 | English locale | PASS |
@@ -995,6 +995,8 @@ SGDK root/bin/m68k-elf-gcc, sjasm, convsym, bintos and env.sh present
 ```
 
 The setup builds the host tools, writes the `m68k-elf-*` wrappers into the SDK
-`bin/`, and updates the editor session's `PATH`. Wine + Java are required on
-Linux/macOS; Git Bash + Java on Windows. Missing dependencies are shown in the
-download log with the manual command.
+`bin/`, and updates the editor session's `PATH`. The downloader passes
+`--install-deps`: Linux installs Wine/Java/build tools via apt/dnf/pacman/zypper
+with sudo or pkexec, macOS uses Homebrew for Wine/GNU make/Temurin JDK, and
+Windows uses winget for Java. Missing dependencies are shown in the download
+log with the manual command.

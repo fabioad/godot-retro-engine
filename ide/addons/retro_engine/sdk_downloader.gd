@@ -276,13 +276,14 @@ func _run_sgdk_setup(root: String) -> void:
 	OS.set_environment("RETRO_SGDK_OUT", root)
 	OS.set_environment("RETRO_SGDK_SRC", cache.path_join("sgdk-tools-src"))
 	OS.set_environment("RETRO_SGDK_TEST", cache.path_join("sgdk-smoke"))
+	_log.append_text("[color=#9fb4d0]%s[/color]\n" % I18n.t("sdk_downloader.setup_deps"))
 	_log.append_text("[color=#7fd1ff]%s[/color]\n" % I18n.t("sdk_downloader.setup_running", {"path": root}))
 	status.emit(I18n.t("sdk_downloader.setup_running_status"))
 	_setup_result = {}
 	_setup_thread = Thread.new()
 	_setup_thread.start(func():
 		var output: Array = []
-		var code := OS.execute(bash, [script], output, true)
+		var code := OS.execute(bash, [script, "--install-deps"], output, true)
 		call_deferred("_finish_sgdk_setup", code, output)
 	)
 	while _setup_result.is_empty():

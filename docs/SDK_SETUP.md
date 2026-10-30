@@ -70,8 +70,7 @@ The SDK Downloader's **Download / Reinstall** button for SGDK also runs the
 bundled platform setup script after extraction. It builds `sjasm`, `convsym`,
 `bintos` and `mac68k`, installs the `m68k-elf-*` wrappers and `env.sh`/`env.bat`
 helpers into the downloaded SDK root, and updates the current editor session's
-`PATH`. Wine + Java are required on Linux/macOS; Git Bash + Java on Windows.
-Missing dependencies are reported in the download log with the manual command.
+`PATH`. It passes `--install-deps` to the setup script: Linux uses apt/dnf/pacman/zypper through sudo or pkexec, macOS uses Homebrew (Wine, GNU make, Temurin JDK) and Windows uses winget for Java. If automatic installation is declined or unavailable, the log shows the manual command.
 
 The app also starts cleanly with no projects: the project selector shows
 `(no project)`, the SDK status explains what is missing, and Build/Game Build
@@ -116,7 +115,7 @@ GPL toolchains.
 
 The same scripts are bundled under
 `ide/addons/retro_engine/setup/` and are what the SDK Downloader executes for
-SGDK. The `scripts/setup_sgdk_*.sh` entry points are thin wrappers around them.
+SGDK. The `scripts/setup_sgdk_*.sh` entry points are thin wrappers around them. Pass `--install-deps` to install Wine, Java and the host build tools automatically (the SDK Downloader always does).
 
 Linux:
 
