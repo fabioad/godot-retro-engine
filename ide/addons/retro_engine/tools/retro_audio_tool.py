@@ -78,7 +78,7 @@ def read_wav_mono(path: str):
 
 
 def run(cmd, cwd=None, check=True) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, check=check, text=True,
+    return subprocess.run(cmd, cwd=cwd, check=check, text=True, errors="replace",
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -711,13 +711,16 @@ def convert_asset(input_path: str, out_dir: str, name: str, kind: str, target: s
     # BGM
     preview = out / f"{name}_preview.wav"
     if ext == ".mid":
-        _, events = read_midi_events(str(src))
+        mid, events = read_midi_events(str(src))
         if target == "snes":
             it = out / f"{name}.it"
+            target_seconds = max(float(mid.length), midi_duration(events))
             try:
                 gm = out / f"{name}_gm.wav"
                 info = render_midi_gm(str(src), str(gm), 32000)
-                write_sample_it(str(it), str(gm), name)
+                pad_wav_to_duration(str(gm), target_seconds)
+                info["duration"] = target_seconds
+                write_sample_it(str(it), str(gm), name, preview_path=str(preview))
                 result["files"]["gm_wav"] = str(gm)
                 result["info"] = info
             except Exception as exc:
@@ -725,8 +728,9 @@ def convert_asset(input_path: str, out_dir: str, name: str, kind: str, target: s
                 info = write_it_from_events(str(it), events, name)
                 info["fallback"] = str(exc)
                 result["info"] = info
+                ffmpeg_to_wav(str(it), str(preview), 32000)
+                pad_wav_to_duration(str(preview), target_seconds)
             result["files"]["it"] = str(it)
-            ffmpeg_to_wav(str(it), str(preview), 32000)
         else:
             vgm = out / f"{name}.vgm"
             info = write_vgm_from_events(str(vgm), events, name)
@@ -754,9 +758,8 @@ def convert_asset(input_path: str, out_dir: str, name: str, kind: str, target: s
         if target == "snes":
             # A single-sample IT module keeps the exact loopable PCM.
             it = out / f"{name}.it"
-            write_sample_it(str(it), str(raw), name)
+            write_sample_it(str(it), str(raw), name, preview_path=str(preview))
             result["files"]["it"] = str(it)
-            ffmpeg_to_wav(str(it), str(preview), 32000)
         else:
             result["files"]["wav"] = str(raw)
             result["preview"] = str(raw)
@@ -791,7 +794,17 @@ def _resample_linear(samples, source_rate: int, target_rate: int):
     return out
 
 
-def write_sample_it(path: str, wav_path: str, title: str, max_seconds: float = 0.0) -> None:
+def pad_wav_to_duration(path: str, seconds: float) -> None:
+    samples, rate = read_wav_mono(path)
+    n = max(1, int(round(seconds * rate)))
+    if len(samples) < n:
+        samples.extend([0.0] * (n - len(samples)))
+    elif len(samples) > n:
+        samples = samples[:n]
+    write_wav(path, samples, rate)
+
+def write_sample_it(path: str, wav_path: str, title: str, max_seconds: float = 0.0,
+                    preview_path: str = "") -> None:
     """Create a one-instrument IT module for full-duration PCM/BRR music.
 
     The sample rate is chosen so the BRR data stays inside the ~58 KiB SPC
@@ -809,6 +822,11 @@ def write_sample_it(path: str, wav_path: str, title: str, max_seconds: float = 0
     target_rate = max(4000, min(8000, target_rate))
     samples = _resample_linear(samples, rate, target_rate)
     rate = target_rate
+    if preview_path:
+        # The IT module has a fixed 64-row pattern; rendering it can cut or
+        # loop samples longer than 16 s. The BRR/soundbank sample itself is
+        # full-length, so write the resampled sample directly for preview.
+        write_wav(preview_path, samples, rate)
     sample = {"name": title[:24], "data": samples, "loop": True, "rate": rate}
     ev = [NoteEvent(0.0, 0, 60, 127, 0, False)]
     write_it_from_events(path, ev, title, speed=6, tempo=60,

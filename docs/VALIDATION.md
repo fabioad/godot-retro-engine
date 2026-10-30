@@ -527,7 +527,9 @@ descriptor and the kind/name/params fields:
 ```text
 AUDIO_BROWSER ALL=251 BGM=63 SFX=188
 AUDIO_BROWSER SEARCH 01Ne => 1 item
-AUDIO_BROWSER play BGM 01Ne length=192.1s state=playing
+AUDIO_BROWSER play BGM 01Ne SNES length=189.49975s state=playing
+AUDIO_BROWSER play BGM 01Ne MD   length=189.49980s state=playing
+AUDIO_BROWSER previews separated under preview/snes and preview/megadrive
 AUDIO_BROWSER stop => stream=null
 ```
 
@@ -951,8 +953,8 @@ the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
 entry and a scalable icon.
 
 ```text
-dist/packages/godot-retro-engine_0.1.3_amd64.deb     71 MB
-dist/packages/godot-retro-engine-0.1.3-1.x86_64.rpm  71 MB
+dist/packages/godot-retro-engine_0.1.4_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.4-1.x86_64.rpm  71 MB
 dist/packages/SHA256SUMS
 ```
 

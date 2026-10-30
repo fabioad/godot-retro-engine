@@ -68,11 +68,19 @@ project MIDI now previews the actual MIDI BGM.
 
 Previews are WAV files rendered from the actual target pipeline:
 
-- SNES BGM: the generated IT is rendered through ffmpeg/libopenmpt.
+- SNES BGM: for MIDI/WAV/MP3 sample-based BGM the preview is written directly
+  from the resampled BRR sample, so it always covers the full source/MIDI
+  duration instead of being truncated by the IT module's fixed 16 s pattern.
 - Mega Drive BGM: the generated YM2612 FM VGM is previewed with the tool's
   two-operator FM renderer. The test also records the real ROM through Genesis
   Plus GX so the FM result can be compared.
 - SFX: the synthesized/decoded WAV is played directly.
+
+SNES and Mega Drive previews are written under `preview/snes/` and
+`preview/megadrive/`, so converting one target never overwrites the other. For
+very long BGMs the SNES BRR sample-rate floor (4 kHz) can exceed the SPC sample
+budget; the preview is still full-length, but the ROM may need a looped or
+shortened track.
 
 The asset descriptor is stored under
 `<project>/.retro/audio/<name>.retro_audio.json`; sources are copied to

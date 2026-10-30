@@ -446,7 +446,7 @@ func _preview(target: String) -> void:
 		"target": target,
 		"name": String(d.get("name", "audio")),
 		"kind": String(d.get("kind", "sfx")),
-		"preview_dir": _project.path.path_join(".retro/audio/preview"),
+		"preview_dir": _project.path.path_join(".retro/audio/preview").path_join(target),
 		"token": _preview_generation,
 	}
 	if _preview_busy:
@@ -514,9 +514,9 @@ func _convert_both() -> void:
 	for target in ["snes", "megadrive"]:
 		var result: Dictionary
 		if String(d.get("kind", "sfx")) == "sfx":
-			result = AudioPipeline.synthesize_sfx(d.get("params", _params()), _project.path.path_join(".retro/audio/preview"), String(d.get("name", "audio")), target)
+			result = AudioPipeline.synthesize_sfx(d.get("params", _params()), _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), target)
 		else:
-			result = AudioPipeline.convert_asset(String(d.get("source", "")), _project.path.path_join(".retro/audio/preview"), String(d.get("name", "audio")), "bgm", target, d.get("params", {}))
+			result = AudioPipeline.convert_asset(String(d.get("source", "")), _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), "bgm", target, d.get("params", {}))
 		if bool(result.get("ok", false)):
 			previews[target] = String(result.get("preview", ""))
 	d["previews"] = previews
