@@ -9,6 +9,8 @@ signal modified()
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 const BgmSequencer = preload("res://addons/retro_engine/bgm_sequencer.gd")
+const MUSIC_EXTS := ["mid", "midi", "it", "xm", "s3m", "mod", "mtm", "umx", "mptm",
+	"669", "far", "okt", "stm", "amf", "dsm", "mdl", "psm", "ptm", "dbm", "med", "mt2", "mo3"]
 
 var _project: RetroProject
 var _asset_list: ItemList
@@ -208,7 +210,7 @@ func _refresh_list() -> void:
 		var name := String(data.get("name", r.get("name", path.get_file().get_basename())))
 		var kind := String(data.get("kind", r.get("kind", "sfx")))
 		if kind not in ["bgm", "sfx"]:
-			kind = "bgm" if path.get_extension().to_lower() in ["mid", "midi", "it"] else "sfx"
+			kind = "bgm" if path.get_extension().to_lower() in MUSIC_EXTS else "sfx"
 		_all_assets.append({"path": path, "name": name, "kind": kind})
 	_apply_filter()
 
@@ -310,7 +312,7 @@ func _on_selected(index: int) -> void:
 	if d.is_empty():
 		var ext := _selected.get_extension().to_lower()
 		d = {"name": _selected.get_file().get_basename(),
-			"kind": "bgm" if ext in ["mid", "midi", "it"] else "sfx",
+			"kind": "bgm" if ext in MUSIC_EXTS else "sfx",
 			"source": _selected, "params": {}}
 	_current = d
 	_name.text = String(d.get("name", ""))
@@ -526,10 +528,9 @@ func _on_asset_activated(index: int) -> void:
 	var path := String(_asset_list.get_item_metadata(index))
 	_selected = path
 	_on_selected(index)
-	if _asset_kind(path) == "bgm":
-		_open_bgm_editor(path)
-	else:
-		play_selected()
+	if _asset_kind(path) == "bgm" and _open_bgm_editor(path):
+		return
+	play_selected()
 
 func _asset_kind(path: String) -> String:
 	var d := _read_descriptor(path)
@@ -537,7 +538,7 @@ func _asset_kind(path: String) -> String:
 	if kind in ["bgm", "sfx"]:
 		return kind
 	var ext := path.get_extension().to_lower()
-	return "bgm" if ext in ["mid", "midi", "it"] else "sfx"
+	return "bgm" if ext in MUSIC_EXTS else "sfx"
 
 func _synthesize_bgm() -> void:
 	if _project == null:
@@ -574,10 +575,10 @@ func _delete_bgm() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 
-func _open_bgm_editor(path: String) -> void:
+func _open_bgm_editor(path: String) -> bool:
 	if _project == null:
 		status.emit(I18n.t("audio.project_missing"))
-		return
+		return false
 	var seq = _ensure_bgm_sequencer()
 	var d := _read_descriptor(path)
 	if not d.is_empty() and String(d.get("kind", "")) == "bgm":
@@ -591,11 +592,10 @@ func _open_bgm_editor(path: String) -> void:
 		var name := String(d.get("name", path.get_file().get_basename()))
 		var platform := String(d.get("platform", _project.get_platform()))
 		if song.is_empty() and not source.is_empty():
-			seq.open_source(_project, path, source, name, platform)
-		else:
-			seq.open_song(_project, path, source, song, name)
-		return
-	seq.open_source(_project, "", path, path.get_file().get_basename(), _project.get_platform())
+			return seq.open_source(_project, path, source, name, platform)
+		seq.open_song(_project, path, source, song, name)
+		return true
+	return seq.open_source(_project, "", path, path.get_file().get_basename(), _project.get_platform())
 
 func _on_bgm_saved(descriptor_path: String, source_path: String, name: String) -> void:
 	_register_asset(name, "bgm", descriptor_path)
@@ -649,7 +649,7 @@ func _effective_descriptor() -> Dictionary:
 			return d
 		var ext := _selected.get_extension().to_lower()
 		return {"name": _selected.get_file().get_basename(),
-			"kind": "bgm" if ext in ["mid", "midi", "it"] else "sfx",
+			"kind": "bgm" if ext in MUSIC_EXTS else "sfx",
 			"source": _selected, "params": _params(), "previews": {}}
 	return {"name": _slug(_name.text),
 		"kind": "bgm" if _kind.selected == 1 else "sfx",

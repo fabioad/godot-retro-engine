@@ -355,6 +355,13 @@ def write_it_from_events(path: str, events: list[NoteEvent], title: str,
             "row_seconds": row_seconds, "duration": rows_total * row_seconds}
 
 
+# Tracker modules libopenmpt can render (the editor also imports their notes
+# through bgm_tool.py). `.it` keeps the native SNESMOD path on SNES.
+MODULE_EXTS = {".it", ".xm", ".s3m", ".mod", ".mtm", ".umx", ".mptm", ".669",
+               ".far", ".okt", ".stm", ".amf", ".dsm", ".mdl", ".psm", ".ptm",
+               ".dbm", ".med", ".mt2", ".mo3"}
+
+
 # ---------------------------------------------------------------------------
 # VGM writer (Mega Drive SN76489 PSG)
 # ---------------------------------------------------------------------------
@@ -737,13 +744,22 @@ def convert_asset(input_path: str, out_dir: str, name: str, kind: str, target: s
             result["files"]["vgm"] = str(vgm)
             render_midi_fm_preview(events, str(preview))
             result["info"] = info
-    elif ext == ".it":
-        if target == "snes":
+    elif ext in MODULE_EXTS:
+        if target == "snes" and ext == ".it":
             dst = out / f"{name}.it"
             if src.resolve() != dst.resolve():
                 dst.write_bytes(src.read_bytes())
             result["files"]["it"] = str(dst)
             ffmpeg_to_wav(str(dst), str(preview), 32000)
+        elif target == "snes":
+            # Non-IT modules are rendered through libopenmpt and embedded as
+            # one loopable PCM/BRR sample, matching the WAV/MP3 BGM path.
+            raw = out / f"{name}.wav"
+            ffmpeg_to_wav(str(src), str(raw), 32000)
+            dst = out / f"{name}.it"
+            write_sample_it(str(dst), str(raw), name, preview_path=str(preview))
+            result["files"]["it"] = str(dst)
+            result["files"]["gm_wav"] = str(raw)
         else:
             # Render the module and store it as an XGM PCM music sample.
             raw = out / f"{name}.wav"

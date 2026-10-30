@@ -12,6 +12,7 @@ heavy conversion lives in
 | --- | --- | --- |
 | `.mid` | MIDI → full **FluidR3_GM** render → full-duration IT/BRR sample fitted to the SPC budget → `smconv` → SNESMOD | MIDI → **YM2612 FM** VGM (6 FM channels) + PSG noise percussion → `rescomp` XGM2 |
 | `.it` | Copied as a tracker module → `smconv` → SNESMOD soundbank | Rendered with libopenmpt at full duration → 13.3 kHz PCM sample → XGM2 PCM |
+| `.xm`, `.s3m`, `.mod`, other modules | Rendered with libopenmpt → full-duration PCM/BRR sample | Rendered with libopenmpt at full duration → 13.3 kHz PCM sample → XGM2 PCM |
 | `.mp3`, `.wav` | Decoded → full-duration IT sample, adaptive rate to fit ≤58 KiB BRR | Decoded → full-duration 13.3 kHz PCM sample → XGM2 PCM |
 | `.wav`, `.mp3` SFX | 32 kHz WAV → `snesbrr` → BRR + `spcSetSoundEntry` table | 16 kHz WAV → `rescomp WAV ... XGM2` → `XGM2_playPCM` |
 | Synthesized SFX | Same BRR path | Same XGM2 PCM path |
@@ -72,8 +73,10 @@ The **Audio** tab provides:
 ## BGM sequencer
 
 The BGM editor is a separate resizable window so it also works when the Audio
-tab is narrow. Double-clicking an existing BGM (or a raw `.mid`, `.midi` or
-`.it` music file) opens it in the sequencer.
+tab is narrow. Double-clicking an existing BGM (or a raw `.mid`, `.midi`,
+`.it`, `.xm`, `.s3m`, `.mod` or another libopenmpt tracker file) opens it in the
+sequencer. Formats that cannot expose notes (`.vgm`, `.spc`, ...) fall back to
+the normal preview.
 
 The piano roll supports:
 
@@ -94,8 +97,10 @@ The chip panel exposes the per-track controls used by the target hardware:
 Each song is stored as `<project>/.retro/audio/<name>.retro_bgm.json`; saving
 also exports the editable MIDI source to `.retro/audio/sources/<name>.mid` and
 updates the `.retro_audio.json` descriptor (kind `bgm`, platform, `source` and
-`song`). `.it` files are read through `libopenmpt` (`libopenmpt.so.0`) and
-converted to the same editable song/MIDI representation. `Export MIDI` writes
+`song`). Tracker modules (`.it`, `.xm`, `.s3m`, `.mod`, ...) are read through
+`libopenmpt` (`libopenmpt.so.0`) and converted to the same editable
+song/MIDI representation; the playback tempo is fitted to the module's real
+duration. `Export MIDI` writes
 the current song without changing the BGM entry.
 
 The chip values are preserved in the song JSON. The current ROM converter

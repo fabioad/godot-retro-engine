@@ -11,6 +11,8 @@ const BgmRoll = preload("res://addons/retro_engine/bgm_roll.gd")
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 const TOOL_PATH := "res://addons/retro_engine/tools/bgm_tool.py"
+const MODULE_EXTS := ["it", "xm", "s3m", "mod", "mtm", "umx", "mptm", "669", "far",
+	"okt", "stm", "amf", "dsm", "mdl", "psm", "ptm", "dbm", "med", "mt2", "mo3"]
 const TRACK_COLORS := [
 	Color("#7fd1ff"), Color("#6ee7a8"), Color("#ffd45e"), Color("#ff9f6e"),
 	Color("#c792ea"), Color("#f78fb3"), Color("#82e0aa"), Color("#f5b7b1"),
@@ -599,7 +601,7 @@ func _import_source(source_path: String, name: String, platform: String) -> Dict
 	if ext == "mid" or ext == "midi":
 		result = _run_tool(["import-midi", "--midi", source_path, "--out", out,
 			"--name", name, "--platform", platform])
-	elif ext == "it":
+	elif ext in MODULE_EXTS:
 		result = _run_tool(["import-it", "--it", source_path, "--out", out,
 			"--name", name, "--platform", platform])
 	else:
