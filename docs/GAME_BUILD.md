@@ -60,6 +60,70 @@ UI/node/script mapping data for the manual gameplay port.
 The Input Mapping editor also imports Godot's own `InputMap` actions/events into
 the SNES and Mega Drive masks, preserving existing state associations.
 
+## SNES ROM mapping, size and MSU-1
+
+The Game Build dialog exposes a real SNES ROM configuration row (SNES targets
+only):
+
+```text
+ROM mapping: Auto (best fit) | LoROM (SlowROM) | LoROM FastROM |
+             HiROM (SlowROM) | HiROM FastROM | ExHiROM FastROM (8 MiB) |
+             Tales of Phantasia (ExHiROM FastROM 48 Mbit) |
+             Star Ocean (S-DD1 48 Mbit)
+ROM size:    Auto (recommended) | 2/4/8/16/32/48/64 Mbit
+MSU-1:       optional companion .msu file + audio/data driver
+```
+
+| Profile | Header mode | Max ROM | Header notes |
+| --- | --- | --- | --- |
+| LoROM SlowROM | `$20` | 4 MiB | 32 KiB banks, `CARTRIDGETYPE $00` |
+| LoROM FastROM | `$30` | 4 MiB | fast access in banks `$80-$FF` |
+| HiROM SlowROM | `$21` | 4 MiB | 64 KiB banks |
+| HiROM FastROM | `$31` | 4 MiB | fast HiROM |
+| ExHiROM FastROM | `$35` | 8 MiB | custom `hdr.asm`, `.EXHIROM`, header at `$40FFC0` |
+| Tales of Phantasia | `$35` | 6 MiB | ExHiROM FastROM, SRAM 8 KiB, header size `$0D` |
+| Star Ocean | `$32` | 6 MiB | S-DD1 header/layout, SRAM 8 KiB; compression/MMC not included |
+| MSU-1 | base `$30`/`$31` | base ROM | empty `.msu`, `src/msu1.h`, registers `$2000-$2007` |
+
+The header size byte has no standard 48 Mbit value; both 48 Mbit (6 MiB) and
+64 Mbit (8 MiB) use `$0D`, matching Tales of Phantasia and Star Ocean. WLA-DX
+pads a requested 6 MiB image to 8 MiB, so the generated project stores
+`rom_trim_bytes` and `GameBuild.finalize_rom()` trims the ROM back to
+`0x600000`, patches the Star Ocean mode byte to `$32`, and recomputes the SNES
+checksum/complement.
+
+The automatic suggestion uses the estimated generated payload:
+
+| Estimated payload | Suggested profile | Suggested size |
+| --- | --- | --- |
+| up to 2 MiB | LoROM FastROM | smallest fitting 2/4/8/16 Mbit |
+| > 2 MiB to 4 MiB | HiROM FastROM | 32 Mbit |
+| > 4 MiB to 8 MiB | ExHiROM FastROM | 64 Mbit |
+| > 8 MiB | HiROM FastROM + MSU-1 | 32 Mbit base + `.msu` data |
+
+The estimate is computed from the converted stage tiles/palette/map, the splash
+and the project audio sources. `RomProfiles.suggest()` is pure and can be
+tested without a toolchain; `GameBuild.generate()` accepts a `rom_settings`
+dictionary:
+
+```gdscript
+{"profile": "auto", "size_id": "auto", "msu1": false}
+```
+
+It writes the matching `HIROM`, `FASTROM`, `ROMSIZE`, `ROMBANKS`, `SRAMSIZE`,
+`CARTRIDGETYPE` and `AUTOHDR` values to the generated Makefile, plus a custom
+`hdr.asm` for ExHiROM/Tales/Star Ocean. The selected profile, size, header mode
+and banks are stored in `export_profile.json` and in the project metadata.
+
+`Star Ocean` is a header/layout preset. S-DD1 decompression and the MMC bank
+switching used by the real cartridge are external coprocessor features and are
+not implemented by this engine; the dialog and build log show that warning.
+
+MSU-1 is an enhancement, not a separate mapping: the base ROM remains
+LoROM/HiROM, an empty `<rom>.msu` companion is written, and `src/msu1.h` exposes
+status/seek/track/volume/control helpers. PCM tracks are supplied by the user
+as `<rom>-1.pcm`, `<rom>-2.pcm`, ... next to the ROM.
+
 ## Godot logo splash
 
 The **Godot logo fade in/out** checkbox includes the same Godot Engine splash
@@ -115,10 +179,10 @@ same dictionary is stored in `.retro/project.json` under
 | Splash scroll | x negative, y negative | x positive, y negative |
 | Clear before draw | BG1 only, `REG_TM=0x01` | clear `BG_A` + sprites |
 
-The Game Build dialog saves the selected mode and splash option in
-`user://retro_engine.cfg` under `[game_build]`, so the next export starts with
-the same configuration. When a built ROM is exported with **Export ROM...**,
-its `export_profile.json` is copied next to the ROM as
+The Game Build dialog saves the selected mode, splash option, ROM mapping, ROM
+size and MSU-1 flag in `user://retro_engine.cfg` under `[game_build]`, so the
+next export starts with the same configuration. When a built ROM is exported
+with **Export ROM...**, its `export_profile.json` is copied next to the ROM as
 `<rom>.profile.json`.
 
 `ide/tests/game_build_test.gd` asserts that every generated mode writes a

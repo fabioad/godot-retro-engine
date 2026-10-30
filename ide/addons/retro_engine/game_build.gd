@@ -6,6 +6,7 @@ extends RefCounted
 const LOGO_PATH := "res://addons/retro_engine/assets/godot_splash.png"
 const ExportProfiles = preload("res://addons/retro_engine/export_profiles.gd")
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
+const RomProfiles = preload("res://addons/retro_engine/rom_profiles.gd")
 
 static func target_for_mode(mode: String) -> String:
 	if mode in ["native_snes", "megadrive_snes"]:
@@ -15,7 +16,7 @@ static func target_for_mode(mode: String) -> String:
 	return ""
 
 static func generate(mode: String, source: RetroProject, out_root: String, game_name: String,
-		include_splash: bool, source_stage_path := "") -> Dictionary:
+		include_splash: bool, source_stage_path := "", rom_settings: Dictionary = {}) -> Dictionary:
 	var target := target_for_mode(mode)
 	if target.is_empty():
 		return {"ok": false, "error": "unknown build mode: " + mode}
@@ -83,16 +84,28 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	var audio := AudioPipeline.prepare_for_build(_find_audio(source), target, audio_dir)
 	if not bool(audio.get("ok", false)):
 		return {"ok": false, "error": String(audio.get("error", "audio conversion failed"))}
+	var rom: Dictionary = {}
+	var rom_estimate := 0
+	if target == "snes":
+		rom_estimate = _estimate_snes_rom_bytes(stage, splash, audio)
+		rom = RomProfiles.resolve(rom_settings, rom_estimate)
+		if not bool(rom.get("ok", false)):
+			var rom_errors: Array = rom.get("errors", [])
+			return {"ok": false, "error": String(rom_errors[0]) if not rom_errors.is_empty() else "invalid SNES ROM settings"}
 	var header_path := dir.path_join("src/assets.h")
 	var source_path := dir.path_join("src/assets.c")
-	var write := _write_assets(header_path, source_path, stage, splash, target, include_splash)
+	var write := _write_assets(header_path, source_path, stage, splash, target, include_splash, rom)
 	if not bool(write.get("ok", false)):
 		return write
 	var port := _find_native_port(source)
 	var port_result := _copy_native_port(port, dir)
 	if target == "snes":
-		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio)
-		_write_snes_makefile(dir.path_join("Makefile"), game_name, audio)
+		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, rom)
+		_write_snes_makefile(dir.path_join("Makefile"), game_name, audio, rom)
+		if bool(rom.get("custom_header", false)):
+			_write_snes_custom_header(dir, game_name, rom)
+		if bool(rom.get("msu1", false)):
+			_write_msu1_support(dir, game_name)
 	else:
 		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio)
 		_write_md_makefile(dir.path_join("Makefile"))
@@ -121,6 +134,18 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	meta["godot_splash"] = include_splash
 	meta["source_project"] = source.get_path() if source else ""
 	meta["native_port"] = port_result
+	if not rom.is_empty():
+		meta["rom_profile"] = String(rom.get("profile_id", ""))
+		meta["rom_profile_label"] = String(rom.get("profile_label", ""))
+		meta["rom_size_id"] = String(rom.get("size_id", ""))
+		meta["rom_size_label"] = String(rom.get("size_label", ""))
+		meta["rom_size_code"] = int(rom.get("size_code", 0))
+		meta["rom_size_bytes"] = int(rom.get("size_bytes", 0))
+		meta["rom_header_mode"] = int(rom.get("header_mode", 0))
+		meta["rom_estimate_bytes"] = rom_estimate
+		meta["rom_mapping"] = String(rom.get("mapping", ""))
+		meta["rom_trim_bytes"] = int(rom.get("trim_to", 0))
+		meta["msu1"] = bool(rom.get("msu1", false))
 	var profile_settings := {
 		"game_name": game_name,
 		"mode": mode,
@@ -135,7 +160,17 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		"rom": project.get_rom_path(),
 		"audio_bgm": String(audio.get("bgm", {}).get("name", "")) if not audio.get("bgm", {}).is_empty() else "",
 		"audio_sfx": audio.get("sfx", []).size(),
-		"native_port": String(port_result.get("directory", ""))
+		"native_port": String(port_result.get("directory", "")),
+		"rom_profile": String(rom.get("profile_id", "")),
+		"rom_profile_label": String(rom.get("profile_label", "")),
+		"rom_size": String(rom.get("size_label", "")),
+		"rom_size_code": int(rom.get("size_code", 0)),
+		"rom_size_bytes": int(rom.get("size_bytes", 0)),
+		"rom_header_mode": int(rom.get("header_mode", 0)),
+		"rom_banks": int(rom.get("banks", 0)),
+		"rom_mapping": String(rom.get("mapping", "")),
+		"rom_trim_bytes": int(rom.get("trim_to", 0)),
+		"msu1": bool(rom.get("msu1", false))
 	}
 	if splash != null:
 		profile_settings["splash_map_w"] = splash.get_map_size().x
@@ -150,7 +185,8 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	return {"ok": true, "directory": dir, "project": project, "project_path": project.metadata_path(),
 		"target": target, "splash": include_splash, "rom": project.get_rom_path(),
 		"export_profile": String(written.get("path", "")), "profile": written,
-		"stage": stage, "splash_stage": splash, "port": port_result}
+		"stage": stage, "splash_stage": splash, "port": port_result,
+		"rom_settings": rom, "rom_estimate": rom_estimate}
 
 static func _find_native_port(source: RetroProject) -> Dictionary:
 	if source == null:
@@ -361,7 +397,7 @@ static func _retarget_stage(stage: RetroStage, target: String) -> RetroStage:
 	return copy
 
 static func _write_assets(header_path: String, source_path: String, stage: RetroStage, splash: RetroStage,
-		target: String, include_splash: bool) -> Dictionary:
+		target: String, include_splash: bool, rom: Dictionary = {}) -> Dictionary:
 	var game := _stage_data(stage, target)
 	var splash_data := _stage_data(splash, target) if splash != null else {}
 	var h := "#ifndef RETRO_GAME_ASSETS_H\n#define RETRO_GAME_ASSETS_H\n\n"
@@ -374,6 +410,11 @@ static func _write_assets(header_path: String, source_path: String, stage: Retro
 			int(splash_data["map_bytes"]), String(splash_data["bg_size"]), int(splash_data["tile_count"])]
 	else:
 		h += "#define RETRO_SPLASH 0\n"
+	if not rom.is_empty():
+		h += "#define RETRO_MSU1 %d\n" % (1 if bool(rom.get("msu1", false)) else 0)
+		h += "#define RETRO_ROM_HEADER_MODE 0x%02X\n" % int(rom.get("header_mode", 0))
+		h += "#define RETRO_ROM_SIZE_BYTES %du\n" % int(rom.get("size_bytes", 0))
+		h += "#define RETRO_ROM_PROFILE \"%s\"\n" % String(rom.get("profile_id", ""))
 	h += "\n"
 	var decl := "unsigned char"
 	var word := "unsigned char" if target == "snes" else "unsigned short"
@@ -532,7 +573,7 @@ static func _array_decl(name: String, values: Array, type: String) -> String:
 	out += "\n};\n"
 	return out
 
-static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary) -> void:
+static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, rom: Dictionary = {}) -> void:
 	var profile := ExportProfiles.for_target("snes")
 	var fade_frames := int(profile.get("splash_fade_frames_per_level", 2))
 	var hold_frames := int(profile.get("splash_hold_frames", 120))
@@ -545,6 +586,8 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		module_name = String(bgm.get("soundbank", {}).get("module", "MOD_" + String(bgm.get("name", "bgm")).to_upper()))
 		bank_symbol = String(bgm.get("soundbank", {}).get("bank_symbol", "SOUNDBANK__"))
 	var code := "#include <snes.h>\n#include \"assets.h\"\n"
+	if bool(rom.get("msu1", false)):
+		code += "#include \"msu1.h\"\n"
 	if has_bgm:
 		code += "#include \"soundbank.h\"\nextern unsigned char %s;\n" % bank_symbol
 	code += "\n"
@@ -603,6 +646,16 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 	code += "    REG_TM = 0x01; REG_TS = 0x00;\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
 	code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 1);\n"
+	if bool(rom.get("msu1", false)):
+		if not has_bgm:
+			code += "#if RETRO_MSU1\n"
+			code += "    /* MSU-1 companion enabled: play track 1 if the PCM track exists. */\n"
+			code += "    if (msu1_present()) { msu1_set_volume(0xFF); msu1_play(1, 1); }\n"
+			code += "#endif\n"
+		else:
+			code += "#if RETRO_MSU1\n"
+			code += "    /* MSU-1 track 1 is available; SPC BGM is used by default. */\n"
+			code += "#endif\n"
 	if has_bgm or not sfx_brr_arrays.is_empty():
 		code += "    spcBoot();\n"
 		if has_bgm:
@@ -694,9 +747,204 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	code += "    return 0;\n}\n"
 	_write_text(path, code)
 
-static func _write_snes_makefile(path: String, name: String, audio: Dictionary) -> void:
+static func estimate_snes_payload(mode: String, source: RetroProject, include_splash := false) -> Dictionary:
+	if target_for_mode(mode) != "snes" or source == null:
+		return {"ok": false, "bytes": 0, "error": "not a SNES source project"}
+	var stage := _find_stage(source, "snes", "")
+	if stage == null:
+		return {"ok": false, "bytes": 0, "error": "no stage/image asset available for conversion"}
+	var bridge := RetroNativeBridge.new()
+	stage = _retarget_stage(stage, "snes")
+	if stage.get_tileset() == null or stage.get_palette().is_empty():
+		return {"ok": false, "bytes": 0, "error": "source stage has no tileset/palette"}
+	var bytes := _estimate_snes_rom_bytes(stage, null, {"converted": []})
+	for asset in _find_audio(source):
+		if typeof(asset) != TYPE_DICTIONARY:
+			continue
+		var path := String(asset.get("source", asset.get("path", "")))
+		if not path.is_empty() and FileAccess.file_exists(path):
+			bytes += FileAccess.get_size(path)
+	if include_splash:
+		# The Godot logo is quantized to at most 1024 tiles plus map/palette.
+		bytes += 0x8000
+	return {"ok": true, "bytes": maxi(bytes, 0x40000)}
+
+static func _estimate_snes_rom_bytes(stage: RetroStage, splash: RetroStage, audio: Dictionary) -> int:
+	var total := 0x20000
+	for item in [stage, splash]:
+		if item == null:
+			continue
+		var data := _stage_data(item, "snes")
+		total += PackedByteArray(data.get("tiles", PackedByteArray())).size()
+		total += PackedByteArray(data.get("pal", PackedByteArray())).size()
+		total += PackedByteArray(data.get("map", PackedByteArray())).size()
+	for converted in audio.get("converted", []):
+		if typeof(converted) != TYPE_DICTIONARY:
+			continue
+		var files: Dictionary = converted.get("files", {})
+		for value in files.values():
+			if value is String and FileAccess.file_exists(value):
+				total += FileAccess.get_size(value)
+	return maxi(total, 0x40000)
+
+static func _write_snes_custom_header(dir: String, name: String, rom: Dictionary) -> void:
+	var title := name.to_upper().substr(0, 21).rpad(21, " ")
+	var mapping := String(rom.get("mapping", "hirom"))
+	var fast := bool(rom.get("fast", false))
+	var mode := "EXHIROM" if mapping == "exhirom" else "HIROM"
+	var speed := "FASTROM" if fast else "SLOWROM"
+	var base := "$C0" if fast else "$40"
+	var banks := int(rom.get("banks", 128))
+	var text := "; Generated by Godot Retro Engine — %s %s\n" % [mode, speed]
+	text += ".MEMORYMAP\n"
+	text += "  SLOTSIZE $10000\n  DEFAULTSLOT 0\n  SLOT 0 $0000\n"
+	text += "  SLOT 1 $0 $2000\n  SLOT 2 $2000 $E000\n  SLOT 3 $0 $10000\n  SLOT 4 $6000\n.ENDME\n"
+	text += ".ROMBANKMAP\n  BANKSTOTAL %d\n  BANKSIZE $10000\n  BANKS %d\n.ENDRO\n" % [banks, banks]
+	text += ".%s\n.%s\n" % [mode, speed]
+	text += ".SNESHEADER\n  ID \"SNES\"\n  NAME \"%s\"\n  %s\n  %s\n" % [title, speed, mode]
+	text += "  CARTRIDGETYPE $%02X\n  ROMSIZE $%02X\n  SRAMSIZE $%02X\n" % [
+		int(rom.get("cart_type", 0)), int(rom.get("size_code", 0x0D)), int(rom.get("sram_code", 0))]
+	text += "  COUNTRY $01\n  LICENSEECODE $00\n  VERSION $00\n.ENDSNES\n"
+	text += ".SNESNATIVEVECTOR\n  COP EmptyHandler\n  BRK EmptyHandler\n  ABORT EmptyHandler\n"
+	text += "  NMI VBlank\n  IRQ EmptyHandler\n.ENDNATIVEVECTOR\n"
+	text += ".SNESEMUVECTOR\n  COP EmptyHandler\n  ABORT EmptyHandler\n  NMI EmptyHandler\n"
+	text += "  RESET tcc__start\n  IRQBRK EmptyHandler\n.ENDEMUVECTOR\n"
+	text += ".BASE %s\n" % base
+	_write_text(dir.path_join("hdr.asm"), text)
+
+static func _write_msu1_support(dir: String, name: String) -> void:
+	var header := """#ifndef RETRO_MSU1_H
+#define RETRO_MSU1_H
+#include <snes.h>
+
+/* MSU-1 registers (banks $00-$3F / $80-$BF, $2000-$2007). */
+#define MSU_STATUS  (*(volatile u8 *)0x2000)
+#define MSU_READ    (*(volatile u8 *)0x2001)
+#define MSU_ID0     (*(volatile u8 *)0x2002)
+#define MSU_ID1     (*(volatile u8 *)0x2003)
+#define MSU_ID2     (*(volatile u8 *)0x2004)
+#define MSU_ID3     (*(volatile u8 *)0x2005)
+#define MSU_ID4     (*(volatile u8 *)0x2006)
+#define MSU_ID5     (*(volatile u8 *)0x2007)
+#define MSU_SEEK0   (*(volatile u8 *)0x2000)
+#define MSU_SEEK1   (*(volatile u8 *)0x2001)
+#define MSU_SEEK2   (*(volatile u8 *)0x2002)
+#define MSU_SEEK3   (*(volatile u8 *)0x2003)
+#define MSU_TRACK_L (*(volatile u8 *)0x2004)
+#define MSU_TRACK_H (*(volatile u8 *)0x2005)
+#define MSU_VOLUME  (*(volatile u8 *)0x2006)
+#define MSU_CONTROL (*(volatile u8 *)0x2007)
+
+static inline u8 msu1_present(void)
+{
+    return (MSU_ID0 == 'S' && MSU_ID1 == '-' && MSU_ID2 == 'M'
+        && MSU_ID3 == 'S' && MSU_ID4 == 'U' && MSU_ID5 == '1');
+}
+
+static inline void msu1_set_volume(u8 volume)
+{
+    MSU_VOLUME = volume;
+}
+
+static inline void msu1_play(u16 track, u8 loop)
+{
+    MSU_TRACK_L = (u8)(track & 0xFF);
+    MSU_TRACK_H = (u8)(track >> 8);
+    MSU_VOLUME = 0xFF;
+    MSU_CONTROL = loop ? 0x03 : 0x01;
+}
+
+static inline void msu1_stop(void)
+{
+    MSU_CONTROL = 0x00;
+}
+
+#endif
+"""
+	_write_text(dir.path_join("src/msu1.h"), header)
+	var msu_path := dir.path_join(name + ".msu")
+	if not FileAccess.file_exists(msu_path):
+		var f := FileAccess.open(msu_path, FileAccess.WRITE)
+		if f:
+			f.close()
+
+static func finalize_rom(project: RetroProject, rom_path: String) -> Dictionary:
+	if project == null or rom_path.is_empty() or not FileAccess.file_exists(rom_path):
+		return {"ok": false, "error": "ROM not found"}
+	var meta: Dictionary = project.get_metadata()
+	var trim_to := int(meta.get("rom_trim_bytes", 0))
+	var header_mode := int(meta.get("rom_header_mode", 0))
+	var mapping := String(meta.get("rom_mapping", ""))
+	var profile := String(meta.get("rom_profile", ""))
+	var msu1 := bool(meta.get("msu1", false))
+	var needs_trim := trim_to > 0
+	var needs_patch := header_mode == 0x32
+	if not needs_trim and not needs_patch and not msu1:
+		return {"ok": true, "rom": rom_path, "size": FileAccess.get_size(rom_path), "trimmed": false}
+	var data := FileAccess.get_file_as_bytes(rom_path)
+	if needs_trim and data.size() > trim_to:
+		data.resize(trim_to)
+	var header := 0x00FFC0
+	if mapping == "exhirom" or profile in ["exhirom_fast", "tales_phantasia"]:
+		header = 0x40FFC0
+	elif mapping == "lorom":
+		header = 0x007FC0
+	if needs_patch and header + 0x15 < data.size():
+		data[header + 0x15] = 0x32
+	if needs_trim or needs_patch:
+		data = _fix_snes_checksum(data, header)
+	var f := FileAccess.open(rom_path, FileAccess.WRITE)
+	if f == null:
+		return {"ok": false, "error": "could not write ROM"}
+	f.store_buffer(data)
+	f.close()
+	if msu1:
+		var msu_path := rom_path.get_basename() + ".msu"
+		if not FileAccess.file_exists(msu_path):
+			var mf := FileAccess.open(msu_path, FileAccess.WRITE)
+			if mf:
+				mf.close()
+	meta["rom_actual_size"] = data.size()
+	meta["rom_trimmed"] = needs_trim
+	project.set_metadata(meta)
+	project.set_rom_path(rom_path)
+	project.save()
+	return {"ok": true, "rom": rom_path, "size": data.size(), "trimmed": needs_trim}
+
+static func _fix_snes_checksum(data: PackedByteArray, header: int) -> PackedByteArray:
+	if header + 0x20 > data.size():
+		return data
+	data[header + 0x1C] = 0xFF
+	data[header + 0x1D] = 0xFF
+	data[header + 0x1E] = 0x00
+	data[header + 0x1F] = 0x00
+	var total := 0
+	for i in range(data.size()):
+		total = (total + data[i]) & 0xFFFF
+	var checksum := total & 0xFFFF
+	var complement := checksum ^ 0xFFFF
+	data[header + 0x1C] = complement & 0xFF
+	data[header + 0x1D] = (complement >> 8) & 0xFF
+	data[header + 0x1E] = checksum & 0xFF
+	data[header + 0x1F] = (checksum >> 8) & 0xFF
+	return data
+
+static func _write_snes_makefile(path: String, name: String, audio: Dictionary, rom: Dictionary = {}) -> void:
 	var text := "ifeq ($(strip $(PVSNESLIB_HOME)),)\n$(error Set PVSNESLIB_HOME to the PVSnesLib root)\nendif\n"
 	text += "export ROMNAME := %s\nexport ROMTITLE := %s\n" % [name, name.to_upper()]
+	if not rom.is_empty():
+		var mapping := String(rom.get("mapping", "lorom"))
+		if mapping in ["hirom", "exhirom"]:
+			text += "HIROM := 1\n"
+		if bool(rom.get("fast", false)):
+			text += "FASTROM := 1\n"
+		text += "ROMSIZE := %02X\n" % int(rom.get("size_code", 0x08))
+		text += "ROMBANKS := %d\n" % int(rom.get("banks", 8))
+		if int(rom.get("sram_code", 0)) > 0:
+			text += "SRAMSIZE := %02X\n" % int(rom.get("sram_code", 0))
+			text += "CARTRIDGETYPE := %02X\n" % int(rom.get("cart_type", 0x02))
+		if bool(rom.get("custom_header", false)):
+			text += "AUTOHDR := 0\n"
 	var bgm: Dictionary = audio.get("bgm", {})
 	if not bgm.is_empty():
 		var it_name := _safe_audio_name(String(bgm.get("name", "bgm"))) + ".it"

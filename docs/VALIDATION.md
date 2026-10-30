@@ -714,7 +714,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (401 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (420 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -728,11 +728,11 @@ I18N en new_project=New Project... mode=SNES project → Mega Drive
 I18N fallback fr_FR=fr cancel=Annuler xx=en
 I18N_TEST PASS
 
-I18N_LOCALE ar keys=401 sample=مشروع جديد...
-I18N_LOCALE fr keys=401 sample=Nouveau projet...
-I18N_LOCALE ja keys=401 sample=新しいプロジェクト...
-I18N_LOCALE pt_BR keys=401 sample=Novo Projeto...
-I18N_LOCALE zh_Hans keys=401 sample=新项目...
+I18N_LOCALE ar keys=420 sample=مشروع جديد...
+I18N_LOCALE fr keys=420 sample=Nouveau projet...
+I18N_LOCALE ja keys=420 sample=新しいプロジェクト...
+I18N_LOCALE pt_BR keys=420 sample=Novo Projeto...
+I18N_LOCALE zh_Hans keys=420 sample=新项目...
 I18N_FALLBACK pt_PT -> pt_BR
 I18N_FALLBACK fr_FR -> fr
 I18N_FALLBACK de_DE -> de
@@ -751,7 +751,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Area | Result |
 | --- | --- |
 | All 40 Godot editor locales present | PASS |
-| 401 keys per locale + placeholder parity | PASS |
+| 420 keys per locale + placeholder parity | PASS |
 | pt-BR/pt-PT main workspace | PASS |
 | French / Spanish main workspace | PASS (GUI) |
 | English locale | PASS |
@@ -763,7 +763,66 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Build panel + coherence alerts | PASS (visual + headless) |
 | Terminal screen/menu/font controls | PASS (headless) |
 
-## 22. Known limitations confirmed by testing
+## 22. SNES ROM mappings, sizes and MSU-1
+
+`rom_profiles_test.gd` checks the pure mapping/size/suggestion logic and
+`snes_rom_build_test.gd` generates and builds every supported profile with the
+real PVSnesLib/WLA-DX toolchain, then inspects the ROM header, size byte,
+checksum/complement and final 6 MiB trim.
+
+```text
+ROM_SUGGEST 262144 -> lorom_fast 2m PASS
+ROM_SUGGEST 2097152 -> lorom_fast 16m PASS
+ROM_SUGGEST 3145728 -> hirom_fast 32m PASS
+ROM_SUGGEST 4194304 -> hirom_fast 32m PASS
+ROM_SUGGEST 5242880 -> exhirom_fast 64m PASS
+ROM_SUGGEST 8388608 -> exhirom_fast 64m PASS
+ROM_PROFILE lorom_slow mode=32 size=2097152 banks=64 PASS
+ROM_PROFILE lorom_fast mode=48 size=2097152 banks=64 PASS
+ROM_PROFILE hirom_slow mode=33 size=2097152 banks=32 PASS
+ROM_PROFILE hirom_fast mode=49 size=2097152 banks=32 PASS
+ROM_PROFILE exhirom_fast mode=53 size=8388608 banks=128 PASS
+ROM_PROFILE tales_phantasia mode=53 size=6291456 banks=96 PASS
+ROM_PROFILE star_ocean mode=50 size=6291456 banks=96 PASS
+ROM_AUTO_LARGE profile=exhirom_fast size=8388608 PASS
+ROM_TALES fixed=6291456 trim=6291456 sram=3 PASS
+ROM_STAR mode=50 warning=[game_build.rom_warn_sdd1] PASS
+ROM_TOO_LARGE ok=false code=[game_build.rom_error_too_large] PASS
+ROM_MSU1_EXHIROM warning=[game_build.rom_warn_msu1_exhirom] PASS
+ROM_PROFILES_TEST PASS
+```
+
+Real generated ROMs:
+
+```text
+ROM_BUILD auto size=262144 mode=48 code=8 checksum=30648 header=true
+ROM_BUILD lorom2 size=2097152 mode=48 code=11 checksum=30781 header=true
+ROM_BUILD hirom4 size=4194304 mode=49 code=12 checksum=20854 header=true
+ROM_BUILD exhirom8 size=8388608 mode=53 code=13 checksum=25327 header=true
+ROM_BUILD tales6 size=6291456 mode=53 code=13 checksum=25135 header=true
+ROM_BUILD star6 size=6291456 mode=50 code=13 checksum=21306 header=true
+ROM_BUILD msu1 size=2097152 mode=48 code=11 checksum=61651 header=true msu=true
+SNES_ROM_BUILD_TEST PASS
+```
+
+| Case | Expected | Result |
+| --- | --- | --- |
+| Automatic suggestion, small payload | LoROM FastROM, 2 Mbit | PASS |
+| LoROM FastROM | mode `$30`, 2 MiB | PASS |
+| HiROM FastROM | mode `$31`, 4 MiB | PASS |
+| ExHiROM FastROM | mode `$35`, 8 MiB, header `$40FFC0` | PASS |
+| Tales of Phantasia | mode `$35`, 6 MiB trimmed from 8 MiB | PASS |
+| Star Ocean | mode `$32`, 6 MiB trimmed, S-DD1 warning | PASS |
+| MSU-1 | base LoROM + empty `.msu` + `src/msu1.h` | PASS |
+| Checksum/complement after trim | recomputed, field sum matches | PASS |
+
+WLA-DX pads 6 MiB requests to 8 MiB; `GameBuild.finalize_rom()` trims to
+`0x600000`, patches the Star Ocean mode byte to `$32` when required and
+recomputes `checksum`/`complement`. Star Ocean is a header/layout preset only:
+the S-DD1 decompressor and MMC bank switching of the real cartridge are not
+implemented and are reported as a warning.
+
+## 23. Known limitations confirmed by testing
 
 - Native 3D is pre-rendered to sprites/tilemaps; there is no real-time 3D
   runtime for the base SNES/Mega Drive. The Super FX/SVP profiles and handoff
@@ -836,7 +895,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
   estimate when the formula depends on runtime variables. The raw expression is
   preserved and the value remains editable in the Hitboxes tab.
 
-## 23. Reproduce
+## 24. Reproduce
 
 ```bash
 scripts/bootstrap.sh

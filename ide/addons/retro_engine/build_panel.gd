@@ -8,6 +8,7 @@ signal open_error_requested(file: String, line: int, column: int)
 signal platform_fix_requested(platform: String)
 
 const GameBuildDialog = preload("res://addons/retro_engine/game_build_dialog.gd")
+const GameBuild = preload("res://addons/retro_engine/game_build.gd")
 const ProjectChecks = preload("res://addons/retro_engine/project_checks.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 
@@ -322,6 +323,14 @@ func _on_build_finished(success: bool, result: Dictionary) -> void:
 	_clean_button.disabled = false
 	_debug_button.disabled = false
 	var rom := String(result.get("rom_path", ""))
+	if success and not rom.is_empty() and project != null:
+		var finalize: Dictionary = GameBuild.finalize_rom(project, rom)
+		if not bool(finalize.get("ok", false)):
+			_append_log("[color=#ff7a7a]%s[/color]" % I18n.t("game_build.rom_finalize_failed", {
+				"error": String(finalize.get("error", "unknown"))}))
+		elif bool(finalize.get("trimmed", false)):
+			_append_log("[color=#6ee7a8]%s[/color]" % I18n.t("game_build.rom_trimmed", {
+				"size": String(result.get("rom_size_human", ""))}))
 	if not rom.is_empty():
 		_rom_path = rom
 		if project:

@@ -9,6 +9,7 @@ signal sdk_download_requested
 signal sdk_configure_requested
 
 const Templates = preload("res://addons/retro_engine/project_templates.gd")
+const GameBuild = preload("res://addons/retro_engine/game_build.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 
@@ -247,6 +248,11 @@ func _on_build_finished(success: bool, result: Dictionary) -> void:
 	_create_button.disabled = false
 	_build_button.disabled = false
 	var rom := String(result.get("rom_path", ""))
+	if success and not rom.is_empty() and _project != null:
+		var finalize: Dictionary = GameBuild.finalize_rom(_project, rom)
+		if not bool(finalize.get("ok", false)):
+			_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.rom_finalize_failed", {
+				"error": String(finalize.get("error", "unknown"))}))
 	if success and not rom.is_empty():
 		if _project:
 			_project.set_rom_path(rom)

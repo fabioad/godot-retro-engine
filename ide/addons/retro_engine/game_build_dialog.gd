@@ -6,6 +6,7 @@ signal status(text: String)
 signal rom_built(path: String)
 
 const GameBuild = preload("res://addons/retro_engine/game_build.gd")
+const RomProfiles = preload("res://addons/retro_engine/rom_profiles.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 const CONFIG_PATH := "user://retro_engine.cfg"
@@ -24,6 +25,14 @@ var _generate_button: Button
 var _build_button: Button
 var _run_button: Button
 var _warning: Label
+var _rom_row: HBoxContainer
+var _rom_profile: OptionButton
+var _rom_size: OptionButton
+var _rom_msu1: CheckBox
+var _rom_suggestion: Label
+var _rom_warning: Label
+var _rom_estimate := 0
+var _rom_error := ""
 var _mode_error := ""
 var _sdk_ready := false
 
@@ -56,7 +65,9 @@ func _ready() -> void:
 	_mode.add_item(I18n.t("game_build.mode_md_snes"), 3)
 	_mode.set_item_metadata(3, "megadrive_snes")
 	_mode.custom_minimum_size.x = 280
-	_mode.item_selected.connect(func(_index): _refresh_warnings())
+	_mode.item_selected.connect(func(_index):
+		_refresh_warnings()
+		_refresh_rom_ui())
 	row.add_child(_mode)
 	row.add_child(_label(I18n.t("game_build.name")))
 	_name = LineEdit.new()
@@ -68,6 +79,44 @@ func _ready() -> void:
 	_splash.button_pressed = true
 	_splash.tooltip_text = I18n.t("game_build.splash_tip")
 	row.add_child(_splash)
+	_rom_row = HBoxContainer.new()
+	root.add_child(_rom_row)
+	_rom_row.add_child(_label(I18n.t("game_build.rom_mapping")))
+	_rom_profile = OptionButton.new()
+	_rom_profile.add_item(I18n.t("game_build.rom_profile_auto"), 0)
+	_rom_profile.set_item_metadata(0, "auto")
+	for p in RomProfiles.profiles():
+		var index := _rom_profile.item_count
+		_rom_profile.add_item(String(p.get("label", p.get("id", ""))), index)
+		_rom_profile.set_item_metadata(index, String(p.get("id", "")))
+	_rom_profile.custom_minimum_size.x = 240
+	_rom_profile.item_selected.connect(func(_i): _refresh_rom_ui())
+	_rom_row.add_child(_rom_profile)
+	_rom_row.add_child(_label(I18n.t("game_build.rom_size")))
+	_rom_size = OptionButton.new()
+	_rom_size.add_item(I18n.t("game_build.rom_size_auto"), 0)
+	_rom_size.set_item_metadata(0, "auto")
+	for s in RomProfiles.sizes():
+		var index := _rom_size.item_count
+		_rom_size.add_item(String(s.get("label", s.get("id", ""))), index)
+		_rom_size.set_item_metadata(index, String(s.get("id", "")))
+	_rom_size.custom_minimum_size.x = 150
+	_rom_size.item_selected.connect(func(_i): _refresh_rom_ui())
+	_rom_row.add_child(_rom_size)
+	_rom_msu1 = CheckBox.new()
+	_rom_msu1.text = I18n.t("game_build.rom_msu1")
+	_rom_msu1.tooltip_text = I18n.t("game_build.rom_msu1_tip")
+	_rom_msu1.toggled.connect(func(_on): _refresh_rom_ui())
+	_rom_row.add_child(_rom_msu1)
+	_rom_suggestion = Label.new()
+	_rom_suggestion.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rom_suggestion.add_theme_color_override("font_color", Color("#9fb4d0"))
+	root.add_child(_rom_suggestion)
+	_rom_warning = Label.new()
+	_rom_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rom_warning.add_theme_color_override("font_color", Color("#ffd45e"))
+	_rom_warning.visible = false
+	root.add_child(_rom_warning)
 	var actions := HBoxContainer.new()
 	root.add_child(actions)
 	_generate_button = Button.new()
@@ -104,6 +153,7 @@ func _ready() -> void:
 	builder.build_started.connect(func(cmd): _log.append_text("[color=#7fd1ff]$ %s[/color]\n" % cmd), CONNECT_DEFERRED)
 	close_requested.connect(func(): hide())
 	_load_saved_options()
+	_refresh_rom_ui()
 
 func _label(text: String) -> Label:
 	var label := Label.new()
@@ -121,6 +171,7 @@ func open(p_project: RetroProject, p_platform: String, p_emulator: String) -> vo
 		I18n.t("game_build.source_project", {"project": I18n.t("common.none") if project == null else project.get_name()}),
 		I18n.t("game_build.platform", {"platform": I18n.platform_label(platform)})])
 	_refresh_warnings()
+	_refresh_rom_ui()
 	popup_centered(Vector2i(760, 560))
 
 func _load_saved_options() -> void:
@@ -133,13 +184,117 @@ func _load_saved_options() -> void:
 			_mode.select(i)
 			break
 	_splash.button_pressed = bool(cfg.get_value("game_build", "splash", true))
+	_select_option(_rom_profile, String(cfg.get_value("game_build", "rom_profile", "auto")))
+	_select_option(_rom_size, String(cfg.get_value("game_build", "rom_size", "auto")))
+	_rom_msu1.button_pressed = bool(cfg.get_value("game_build", "msu1", false))
 
 func _save_options() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(CONFIG_PATH)
 	cfg.set_value("game_build", "mode", _selected_mode())
 	cfg.set_value("game_build", "splash", _splash.button_pressed)
+	cfg.set_value("game_build", "rom_profile", _selected_rom_profile())
+	cfg.set_value("game_build", "rom_size", _selected_rom_size())
+	cfg.set_value("game_build", "msu1", _rom_msu1.button_pressed)
 	cfg.save(CONFIG_PATH)
+
+func _select_option(option: OptionButton, value: String) -> void:
+	for i in range(option.item_count):
+		if String(option.get_item_metadata(i)) == value:
+			option.select(i)
+			return
+
+func _selected_rom_profile() -> String:
+	return String(_rom_profile.get_item_metadata(_rom_profile.selected))
+
+func _selected_rom_size() -> String:
+	return String(_rom_size.get_item_metadata(_rom_size.selected))
+
+func _rom_settings() -> Dictionary:
+	return {
+		"profile": _selected_rom_profile(),
+		"size_id": _selected_rom_size(),
+		"msu1": _rom_msu1.button_pressed,
+	}
+
+func _refresh_rom_ui() -> void:
+	if _rom_row == null:
+		return
+	var snes := GameBuild.target_for_mode(_selected_mode()) == "snes"
+	_rom_row.visible = snes
+	_rom_suggestion.visible = snes
+	_rom_warning.visible = false
+	if not snes:
+		_rom_error = ""
+		return
+	var profile_id := _selected_rom_profile()
+	var profile_data := RomProfiles.profile(profile_id) if profile_id != "auto" else {}
+	var fixed_size := int(profile_data.get("fixed_size", 0))
+	var was_fixed := _rom_size.disabled
+	_rom_size.disabled = fixed_size > 0
+	if fixed_size > 0:
+		var fixed := RomProfiles.size_for_bytes(fixed_size)
+		if not fixed.is_empty():
+			_select_option(_rom_size, String(fixed.get("id", "auto")))
+	elif was_fixed:
+		_select_option(_rom_size, "auto")
+	for i in range(_rom_size.item_count):
+		var size_id := String(_rom_size.get_item_metadata(i))
+		var disabled := fixed_size > 0
+		if not disabled and size_id != "auto" and not profile_data.is_empty():
+			var item := RomProfiles.size_by_id(size_id)
+			disabled = int(item.get("bytes", 0)) > int(profile_data.get("max_bytes", 0x800000))
+		_rom_size.set_item_disabled(i, disabled)
+	var estimated := 0
+	var estimate_ok := false
+	if project != null:
+		var estimate: Dictionary = GameBuild.estimate_snes_payload(_selected_mode(), project, _splash.button_pressed)
+		estimate_ok = bool(estimate.get("ok", false))
+		estimated = int(estimate.get("bytes", 0))
+	_rom_estimate = estimated
+	var msu1 := _rom_msu1.button_pressed
+	var resolved := RomProfiles.resolve(_rom_settings(), estimated if estimate_ok else 0x40000)
+	var suggestion := RomProfiles.suggest(estimated if estimate_ok else 0x40000, msu1)
+	var suggested_profile := RomProfiles.profile(String(suggestion.get("profile", "")))
+	var suggested_size: Dictionary = suggestion.get("size", {})
+	var lines: Array = []
+	if estimate_ok:
+		lines.append(I18n.t("game_build.rom_estimate", {
+			"estimate": RomProfiles.human_bytes(estimated),
+			"profile": String(suggested_profile.get("label", "")),
+			"size": String(suggested_size.get("label", "")),
+		}))
+	else:
+		lines.append(I18n.t("game_build.rom_estimate_unknown"))
+	if fixed_size > 0:
+		lines.append(I18n.t("game_build.rom_fixed", {
+			"profile": String(profile_data.get("label", profile_id)),
+			"size": String(RomProfiles.size_for_bytes(fixed_size).get("label", "")),
+		}))
+	else:
+		var chosen_profile := RomProfiles.profile(String(resolved.get("profile_id", "")))
+		if chosen_profile.is_empty():
+			chosen_profile = suggested_profile
+		var chosen_size: Dictionary = resolved.get("size", {})
+		if chosen_size.is_empty():
+			chosen_size = suggested_size
+		lines.append(I18n.t("game_build.rom_manual", {
+			"profile": String(chosen_profile.get("label", "")),
+			"size": String(chosen_size.get("label", "")),
+		}))
+	_rom_suggestion.text = "\n".join(lines)
+	var warning_lines: Array = []
+	_rom_error = ""
+	var list_name := "warning_codes" if bool(resolved.get("ok", false)) else "error_codes"
+	for entry in resolved.get(list_name, []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var message := I18n.t(String(entry.get("code", "")), entry.get("params", {}))
+		warning_lines.append(message)
+		if list_name == "error_codes" and _rom_error.is_empty():
+			_rom_error = message
+	_rom_warning.text = "\n".join(warning_lines)
+	_rom_warning.visible = not warning_lines.is_empty()
 
 func _slug(text: String) -> String:
 	var out := ""
@@ -194,9 +349,14 @@ func _refresh_warnings() -> void:
 
 func _generate() -> Dictionary:
 	_refresh_warnings()
+	_refresh_rom_ui()
 	if not _mode_error.is_empty():
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % _mode_error)
 		status.emit(I18n.t("game_build.mode_incoherent_status"))
+		return {}
+	if not _rom_error.is_empty():
+		_log.append_text("[color=#ff7a7a]%s[/color]\n" % _rom_error)
+		status.emit(I18n.t("game_build.generation_failed_status"))
 		return {}
 	if project == null:
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.no_project"))
@@ -206,7 +366,7 @@ func _generate() -> Dictionary:
 		name = "retro_native"
 	_save_options()
 	var out_root := project.resolve("builds")
-	var result: Dictionary = GameBuild.generate(_selected_mode(), project, out_root, name, _splash.button_pressed)
+	var result: Dictionary = GameBuild.generate(_selected_mode(), project, out_root, name, _splash.button_pressed, "", _rom_settings())
 	if not bool(result.get("ok", false)):
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.generation_failed", {"error": String(result.get("error", "unknown"))}))
 		status.emit(I18n.t("game_build.generation_failed_status"))
@@ -227,6 +387,16 @@ func _generate() -> Dictionary:
 			"version": int(profile.get("profile_version", 0)),
 			"path": String(profile.get("path", "")),
 		}))
+	var rom_settings_result: Dictionary = result.get("rom_settings", {})
+	if not rom_settings_result.is_empty():
+		_log.append_text("%s\n" % I18n.t("game_build.rom_selected", {
+			"profile": String(rom_settings_result.get("profile_label", "")),
+			"size": String(rom_settings_result.get("size_label", "")),
+			"estimate": RomProfiles.human_bytes(int(result.get("rom_estimate", 0))),
+		}))
+		for entry in rom_settings_result.get("warning_codes", []):
+			if typeof(entry) == TYPE_DICTIONARY:
+				_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t(String(entry.get("code", "")), entry.get("params", {})))
 	_log.append_text("%s\n" % I18n.t("game_build.rom_after", {"rom": _rom}))
 	var port: Dictionary = result.get("port", {})
 	if not port.is_empty():
@@ -279,6 +449,15 @@ func _on_finished(success: bool, result: Dictionary) -> void:
 	_build_button.disabled = false
 	_generate_button.disabled = false
 	var rom := String(result.get("rom_path", ""))
+	if success and not rom.is_empty() and _project != null:
+		var finalize: Dictionary = GameBuild.finalize_rom(_project, rom)
+		if bool(finalize.get("ok", false)):
+			if bool(finalize.get("trimmed", false)):
+				_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("game_build.rom_trimmed", {
+					"size": RomProfiles.human_bytes(int(finalize.get("size", 0)))}))
+		else:
+			_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.rom_finalize_failed", {
+				"error": String(finalize.get("error", "unknown"))}))
 	if not rom.is_empty():
 		_rom = rom
 		_run_button.disabled = false

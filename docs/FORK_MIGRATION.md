@@ -39,3 +39,17 @@ scripts/run_linux.sh
 
 A complete recompilation of the migrated checkout has not been run. SDK ROM
 builds and Windows/macOS builds have not been repeated for this migration.
+
+## Update from original project (2026-10-30)
+
+Synchronized original project commits `03781ef` and `a7a51d1` (source HEAD:
+`a7a51d14a62767a37204c96a481a8b0aaa9d008b`), preserving the fork layout and
+build-script adaptations. Some localization changes were already included
+in the initial integration snapshot.
+
+Validation with the existing Godot 4.7.2 executable: headless editor import,
+ROM profile selection, localization, locale coverage and project coherence
+all passed. Seven real SNES builds passed: auto, LoROM, HiROM, ExHiROM,
+Tales of Phantasia layout, Star Ocean header/layout and MSU-1. The tests
+verified ROM sizes, headers, checksums and MSU-1 companion files. A complete
+engine recompilation and Windows/macOS builds were not repeated.

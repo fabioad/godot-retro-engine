@@ -38,6 +38,8 @@ cp "$ROOT/ide/validation/headless_report.json" "$WS/headless_report.json" 2>/dev
 "$BIN" --headless --editor --path "$ROOT/ide" --script res://tests/terminal_test.gd 2>&1 | tee "$WS/terminal.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/input_import_test.gd 2>&1 | tee "$WS/input_import.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/new_project_test.gd 2>&1 | tee "$WS/new_project.log"
+"$BIN" --headless --path "$ROOT/ide" --script res://tests/rom_profiles_test.gd 2>&1 | tee "$WS/rom_profiles.log"
+"$BIN" --headless --path "$ROOT/ide" --script res://tests/snes_rom_build_test.gd 2>&1 | tee "$WS/snes_rom_build.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/project_checks_test.gd 2>&1 | tee "$WS/project_checks.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/i18n_test.gd 2>&1 | tee "$WS/i18n.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/i18n_coverage_test.gd 2>&1 | tee "$WS/i18n_coverage.log"
