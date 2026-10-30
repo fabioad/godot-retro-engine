@@ -104,9 +104,9 @@ duration. `Export MIDI` writes
 the current song without changing the BGM entry.
 
 The chip values are preserved in the song JSON. The current ROM converter
-applies track volume, pan, waveform/patch family and noise routing; detailed
-ADSR, echo and operator-level values are kept for a later chip-accurate
-renderer.
+applies the waveform/patch family and noise routing it derives from the MIDI
+programs; detailed ADSR, echo, operator-level, volume and pan values are kept
+for a later chip-accurate renderer.
 
 Source WAV/MP3 SFX preview uses the selected file through the target
 conversion path (BRR for SNES, PCM for Mega Drive), not the SFX synthesizer.
