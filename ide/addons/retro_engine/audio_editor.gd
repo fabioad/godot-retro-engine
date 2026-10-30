@@ -55,7 +55,8 @@ func _ready() -> void:
 	var bgm := Button.new(); bgm.text = "Import BGM (.mid/.it/.mp3/.wav)"
 	bgm.pressed.connect(func(): _open_import("bgm"))
 	imports.add_child(bgm)
-	var sfx := Button.new(); sfx.text = "Import SFX (.wav/.mp3)"
+	var sfx := Button.new(); sfx.text = I18n.t("audio.add_sfx")
+	sfx.tooltip_text = I18n.t("audio.add_sfx_tip")
 	sfx.pressed.connect(func(): _open_import("sfx"))
 	imports.add_child(sfx)
 	var convert := Button.new(); convert.text = "Convert & Preview Both"
@@ -120,22 +121,31 @@ func _ready() -> void:
 	_bitcrush = _spin(2, 16, 1, 16, " bit"); form.add_child(_label("Bitcrush")); form.add_child(_bitcrush)
 	var actions := HBoxContainer.new()
 	right.add_child(actions)
-	var create := Button.new(); create.text = "Create / Update SFX"
+	var create := Button.new(); create.text = I18n.t("audio.synth_sfx")
+	create.tooltip_text = I18n.t("audio.synth_sfx_tip")
 	create.pressed.connect(_create_sfx)
 	actions.add_child(create)
+	var update := Button.new(); update.text = I18n.t("audio.update_sfx")
+	update.tooltip_text = I18n.t("audio.update_sfx_tip")
+	update.pressed.connect(_update_sfx)
+	actions.add_child(update)
+	var delete := Button.new(); delete.text = I18n.t("audio.delete_sfx")
+	delete.tooltip_text = I18n.t("audio.delete_sfx_tip")
+	delete.pressed.connect(_delete_sfx)
+	actions.add_child(delete)
+	var targets := HBoxContainer.new()
+	right.add_child(targets)
 	var play := Button.new(); play.text = I18n.t("audio.play")
 	play.tooltip_text = I18n.t("audio.play_tip")
 	play.pressed.connect(play_selected)
-	actions.add_child(play)
-	var stop := Button.new(); stop.text = "Stop"
+	targets.add_child(play)
+	var stop := Button.new(); stop.text = I18n.t("audio.stop")
 	stop.pressed.connect(_stop_preview)
-	actions.add_child(stop)
-	var targets := HBoxContainer.new()
-	right.add_child(targets)
-	var ps := Button.new(); ps.text = "Preview SNES"
+	targets.add_child(stop)
+	var ps := Button.new(); ps.text = I18n.t("audio.preview_snes")
 	ps.pressed.connect(func(): _preview("snes"))
 	targets.add_child(ps)
-	var pm := Button.new(); pm.text = "Preview Mega Drive"
+	var pm := Button.new(); pm.text = I18n.t("audio.preview_megadrive")
 	pm.pressed.connect(func(): _preview("megadrive"))
 	targets.add_child(pm)
 	_status = Label.new()
@@ -343,7 +353,10 @@ func _open_import(kind: String) -> void:
 	var dlg := FileDialog.new()
 	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	dlg.access = FileDialog.ACCESS_FILESYSTEM
-	dlg.add_filter("*.mid,*.it,*.wav,*.mp3", "Audio")
+	if kind == "sfx":
+		dlg.add_filter("*.wav,*.mp3", I18n.t("audio.sfx_files"))
+	else:
+		dlg.add_filter("*.mid,*.it,*.wav,*.mp3", I18n.t("audio.audio_files"))
 	dlg.file_selected.connect(func(path): _add_asset(path, kind))
 	add_child(dlg)
 	dlg.popup_centered_ratio(0.7)
@@ -364,7 +377,7 @@ func _add_asset(source_path: String, kind: String) -> void:
 	_write_json(descriptor_path, data)
 	_register_asset(name, kind, descriptor_path)
 	_refresh_list()
-	status.emit("Imported audio: " + name)
+	status.emit(I18n.t("audio.added", {"name": name}))
 
 func _create_sfx() -> void:
 	if _project == null:
@@ -380,6 +393,99 @@ func _create_sfx() -> void:
 	_register_asset(name, "sfx", descriptor_path)
 	_refresh_list()
 	status.emit("SFX created: " + name)
+
+func _update_sfx() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	if _selected.is_empty():
+		status.emit(I18n.t("audio.select_sfx"))
+		return
+	if _kind.selected == 1:
+		status.emit(I18n.t("audio.not_sfx"))
+		return
+	var selected_is_descriptor := _selected.get_extension().to_lower() == "json"
+	var d := _selected_descriptor()
+	if d.is_empty():
+		d = _effective_descriptor()
+	var source := String(d.get("source", ""))
+	if source.is_empty() and not selected_is_descriptor:
+		source = _selected
+	if not source.is_empty() and source.get_extension().to_lower() not in ["wav", "mp3"]:
+		status.emit(I18n.t("audio.not_sfx"))
+		return
+	if source.is_empty() and String(d.get("kind", "sfx")) != "sfx":
+		status.emit(I18n.t("audio.select_sfx"))
+		return
+	var name := _slug(_name.text.strip_edges())
+	if name.is_empty():
+		name = String(d.get("name", _selected.get_file().get_basename()))
+	if name.is_empty():
+		name = "sfx"
+	var audio_root := _project.path.path_join(".retro/audio")
+	var descriptor_path := _selected
+	if not selected_is_descriptor:
+		descriptor_path = audio_root.path_join(name + ".retro_audio.json")
+	d["name"] = name
+	d["kind"] = "sfx"
+	d["source"] = source
+	d["params"] = _params()
+	_write_json(descriptor_path, d)
+	_register_asset(name, "sfx", descriptor_path)
+	_selected = descriptor_path
+	_refresh_list()
+	select_asset(descriptor_path, false)
+	modified.emit()
+	status.emit(I18n.t("audio.updated", {"name": name}))
+
+func _delete_sfx() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	if _selected.is_empty():
+		status.emit(I18n.t("audio.select_sfx"))
+		return
+	var d := _selected_descriptor()
+	var name := String(d.get("name", _selected.get_file().get_basename()))
+	if name.is_empty():
+		name = _selected.get_file()
+	var selected_path := _selected
+	var dlg := ConfirmationDialog.new()
+	dlg.title = I18n.t("audio.delete_title")
+	dlg.dialog_text = I18n.t("audio.delete_confirm", {"name": name})
+	dlg.confirmed.connect(func():
+		_delete_sfx_confirmed(selected_path, d, name)
+		dlg.queue_free())
+	dlg.canceled.connect(func(): dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
+
+func _delete_sfx_confirmed(selected_path: String, d: Dictionary, name: String) -> void:
+	var audio_root := _project.path.path_join(".retro/audio")
+	if selected_path.get_extension().to_lower() == "json" and FileAccess.file_exists(selected_path):
+		DirAccess.remove_absolute(selected_path)
+	var source := String(d.get("source", ""))
+	if not source.is_empty() and source.begins_with(audio_root) and FileAccess.file_exists(source):
+		DirAccess.remove_absolute(source)
+	for target in ["snes", "megadrive"]:
+		var preview_dir := audio_root.path_join("preview").path_join(target)
+		if DirAccess.dir_exists_absolute(preview_dir):
+			var dir := DirAccess.open(preview_dir)
+			if dir != null:
+				for file in dir.get_files():
+					if file.begins_with(name):
+						DirAccess.remove_absolute(preview_dir.path_join(file))
+	var kept: Array = []
+	for r in _project.get_resources():
+		if String(r.get("path", "")) != selected_path:
+			kept.append(r)
+	_project.set_resources(kept)
+	_project.save()
+	_selected = ""
+	_current = {}
+	_refresh_list()
+	modified.emit()
+	status.emit(I18n.t("audio.deleted", {"name": name}))
 
 func _register_asset(name: String, kind: String, descriptor_path: String) -> void:
 	var res := _project.get_resources()
@@ -465,8 +571,13 @@ func _preview_worker(request: Dictionary) -> void:
 	var d: Dictionary = request.get("descriptor", {})
 	var result: Dictionary
 	if String(request.get("kind", "sfx")) == "sfx":
-		result = AudioPipeline.synthesize_sfx(d.get("params", {}), String(request.get("preview_dir", "")),
-			String(request.get("name", "audio")), String(request.get("target", "snes")))
+		var source := String(d.get("source", ""))
+		if source.is_empty():
+			result = AudioPipeline.synthesize_sfx(d.get("params", {}), String(request.get("preview_dir", "")),
+				String(request.get("name", "audio")), String(request.get("target", "snes")))
+		else:
+			result = AudioPipeline.convert_asset(source, String(request.get("preview_dir", "")),
+				String(request.get("name", "audio")), "sfx", String(request.get("target", "snes")), {})
 	else:
 		result = AudioPipeline.convert_asset(String(d.get("source", "")), String(request.get("preview_dir", "")),
 			String(request.get("name", "audio")), "bgm", String(request.get("target", "snes")),
@@ -514,13 +625,17 @@ func _convert_both() -> void:
 	for target in ["snes", "megadrive"]:
 		var result: Dictionary
 		if String(d.get("kind", "sfx")) == "sfx":
-			result = AudioPipeline.synthesize_sfx(d.get("params", _params()), _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), target)
+			var source := String(d.get("source", ""))
+			if source.is_empty():
+				result = AudioPipeline.synthesize_sfx(d.get("params", _params()), _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), target)
+			else:
+				result = AudioPipeline.convert_asset(source, _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), "sfx", target, {})
 		else:
 			result = AudioPipeline.convert_asset(String(d.get("source", "")), _project.path.path_join(".retro/audio/preview").path_join(target), String(d.get("name", "audio")), "bgm", target, d.get("params", {}))
 		if bool(result.get("ok", false)):
 			previews[target] = String(result.get("preview", ""))
 	d["previews"] = previews
-	if not _selected.is_empty():
+	if not _selected.is_empty() and _selected.get_extension().to_lower() == "json":
 		_write_json(_selected, d)
 	_on_selected(_asset_list.get_selected_items()[0] if not _asset_list.get_selected_items().is_empty() else -1)
 	_status.text = "Converted previews: " + str(previews)

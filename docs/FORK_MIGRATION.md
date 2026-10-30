@@ -73,6 +73,8 @@ Synchronized the original project commits `12bbcec`, `28b7603`, `f67112f`,
 - Fixed raw project BGM/SFX preview (the selected descriptor was discarded and
   fell back to a short SFX beep) and added the Audio browser filters, `Play`
   button and top-toolbar BGM/SFX menu.
+- Added SFX `Add`/`Update`/`Delete` controls and source WAV/MP3 SFX previews
+  through the target conversion path.
 - Space-containing SDK paths are configured through a no-space Unix link and the
   setup smoke test escapes `GDK`/`LIBGCC`.
 - The SGDK downloader installs missing system dependencies with `--install-deps`:

@@ -48,7 +48,8 @@ renderer is normalized and then fitted to the console sample budget.
 
 The **Audio** tab provides:
 
-1. `Import BGM (.mid/.it/.mp3/.wav)` and `Import SFX (.wav/.mp3)`.
+1. `Import BGM (.mid/.it/.mp3/.wav)` and `Add SFX` (opens a file dialog for
+   supported `.wav`/`.mp3` files).
 2. A searchable asset list with an **All / BGM / SFX** filter and a
    `BGM / SFX` count.
 3. `Play` previews the selected BGM/SFX for the project platform.
@@ -56,10 +57,17 @@ The **Audio** tab provides:
    SFX-only, plays the selected asset and stops playback.
 5. Double-clicking an audio resource in the left resource tree opens it in the
    Audio tab and starts its preview.
-6. SFX parameter controls and `Create / Update SFX`.
-7. `Preview SNES`, `Preview Mega Drive`, `Convert & Preview Both`, `Stop`.
+6. SFX parameter controls and `Synth SFX` create a synthesized SFX.
+7. `Update SFX` saves the edited name/source/parameters to the selected SFX;
+   `Delete SFX` removes the selected SFX and its imported source/previews after
+   confirmation.
+8. `Preview SNES`, `Preview Mega Drive`, `Convert & Preview Both`, `Stop`.
    Preview conversion runs in a worker thread; `Stop` tears down the player and
    cancels any conversion still in flight, so it responds immediately.
+
+Source WAV/MP3 SFX preview uses the selected file through the target
+conversion path (BRR for SNES, PCM for Mega Drive), not the SFX synthesizer.
+The synthesized path is used only when the SFX has no source file.
 
 Raw project audio (`.mid`, `.it`, `.wav`, `.mp3`) is wrapped into a temporary
 BGM/SFX descriptor when selected. Earlier builds discarded that descriptor and

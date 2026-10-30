@@ -533,6 +533,14 @@ AUDIO_BROWSER previews separated under preview/snes and preview/megadrive
 AUDIO_BROWSER stop => stream=null
 ```
 
+```text
+AUDIO_SFX_WAV add/preview/update/delete
+  SNES preview 1.0s, Mega Drive preview 1.0s
+  source WAV used instead of the SFX synthesizer
+  Update SFX renamed the descriptor without changing its path
+  Delete SFX removed the descriptor, imported source and previews
+```
+
 The Audio tab now has search and All/BGM/SFX filters, a localized `Play`
 button and a `BGM / SFX` top-toolbar menu. Double-clicking an audio resource in
 the left tree opens it and starts its preview. Generated previews for both
@@ -737,7 +745,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (447 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (467 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -774,7 +782,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Area | Result |
 | --- | --- |
 | All 40 Godot editor locales present | PASS |
-| 447 keys per locale + placeholder parity | PASS |
+| 467 keys per locale + placeholder parity | PASS |
 | pt-BR/pt-PT main workspace | PASS |
 | French / Spanish main workspace | PASS (GUI) |
 | English locale | PASS |
@@ -953,8 +961,8 @@ the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
 entry and a scalable icon.
 
 ```text
-dist/packages/godot-retro-engine_0.1.4_amd64.deb     71 MB
-dist/packages/godot-retro-engine-0.1.4-1.x86_64.rpm  71 MB
+dist/packages/godot-retro-engine_0.1.5_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.5-1.x86_64.rpm  71 MB
 dist/packages/SHA256SUMS
 ```
 
