@@ -70,6 +70,8 @@ Synchronized the original project commits `12bbcec`, `28b7603`, `f67112f`,
   script after extracting SGDK, builds the host tools, installs the
   `m68k-elf-*` wrappers and updates the session `PATH`.
 - Localization dictionaries updated to 430 keys per locale (41 dictionaries).
+- Space-containing SDK paths are configured through a no-space Unix link and the
+  setup smoke test escapes `GDK`/`LIBGCC`.
 - The SGDK downloader installs missing system dependencies with `--install-deps`:
   apt/dnf/pacman/zypper + sudo/pkexec on Linux, Homebrew on macOS, winget for
   Java on Windows.

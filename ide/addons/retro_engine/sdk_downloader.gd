@@ -212,15 +212,16 @@ func _install_archive(platform: String, archive_path: String) -> void:
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("sdk_downloader.probe_failed", {"path": root}))
 		_busy = false
 		return
-	RetroSDK.configure(platform, root)
+	var configured_root := _ensure_sdk_link(root, platform)
+	RetroSDK.configure(platform, configured_root)
 	_progress.value = 100
-	_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("sdk_downloader.installed_at", {"platform": I18n.platform_label(platform), "path": root}))
+	_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("sdk_downloader.installed_at", {"platform": I18n.platform_label(platform), "path": configured_root}))
 	if platform == "megadrive":
-		await _run_sgdk_setup(root)
+		await _run_sgdk_setup(configured_root)
 	_busy = false
 	_refresh_status()
-	installed.emit(platform, root)
-	status.emit(I18n.t("sdk_downloader.installed_status", {"path": root}))
+	installed.emit(platform, configured_root)
+	status.emit(I18n.t("sdk_downloader.installed_status", {"path": configured_root}))
 
 func _setup_script_path() -> String:
 	var name := "setup_sgdk_linux.sh"
@@ -256,6 +257,27 @@ func _find_bash() -> String:
 
 func _finish_sgdk_setup(code: int, output: Array) -> void:
 	_setup_result = {"code": code, "output": output}
+
+func _sdk_link_path(platform: String) -> String:
+	if OS.get_name() == "Windows":
+		return ""
+	var base := OS.get_environment("XDG_DATA_HOME")
+	if base.is_empty():
+		base = OS.get_environment("HOME").path_join(".local/share")
+	if base.is_empty():
+		return ""
+	return base.path_join("godot-retro-engine/sdks").path_join(platform)
+
+func _ensure_sdk_link(root: String, platform: String) -> String:
+	var link := _sdk_link_path(platform)
+	if link.is_empty() or root == link:
+		return root
+	DirAccess.make_dir_recursive_absolute(link.get_base_dir())
+	var output: Array = []
+	var code := OS.execute("ln", ["-sfn", root, link], output, false)
+	if code == 0 and DirAccess.open(link) != null:
+		return link
+	return root
 
 func _run_sgdk_setup(root: String) -> void:
 	var script := _setup_script_path()

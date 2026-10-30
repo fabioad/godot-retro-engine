@@ -324,8 +324,9 @@ if [ "$NO_SMOKE" -eq 0 ]; then
   echo "==> Smoke test (SGDK sample copied under $TEST_DIR)"
   rm -rf "$TEST_DIR"
   cp -a "$SGDK_ROOT/sample/basics/image" "$TEST_DIR"
+  GDK_MAKE="$(printf '%s' "$SGDK_ROOT" | sed 's/ /\\ /g')"
   cat > "$TEST_DIR/Makefile" <<EOF
-GDK := $SGDK_ROOT
+GDK := $GDK_MAKE
 include \$(GDK)/makefile.gen
 EOF
   (

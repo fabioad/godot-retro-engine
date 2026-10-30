@@ -930,8 +930,8 @@ the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
 entry and a scalable icon.
 
 ```text
-dist/packages/godot-retro-engine_0.1.1_amd64.deb     71 MB
-dist/packages/godot-retro-engine-0.1.1-1.x86_64.rpm  71 MB
+dist/packages/godot-retro-engine_0.1.2_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.2-1.x86_64.rpm  71 MB
 dist/packages/SHA256SUMS
 ```
 
@@ -998,7 +998,10 @@ SGDK root/bin/m68k-elf-gcc, sjasm, convsym, bintos and env.sh present
 ```
 
 The setup builds the host tools, writes the `m68k-elf-*` wrappers into the SDK
-`bin/`, and updates the editor session's `PATH`. The downloader passes
+`bin/`, and updates the editor session's `PATH`. A regression test installed
+the SDK under `.../Godot Retro Engine/...` (spaces in the path) and verified
+that the downloader configures `.../godot-retro-engine/sdks/megadrive`, runs
+the smoke test successfully and reports `ready=true`. The downloader passes
 `--install-deps`: Linux installs Wine/Java/build tools via apt/dnf/pacman/zypper
 with sudo or pkexec, macOS uses Homebrew for Wine/GNU make/Temurin JDK, and
 Windows uses winget for Java. Missing dependencies are shown in the download

@@ -150,6 +150,12 @@ The Windows script validates SGDK's native `gcc.exe`, `make.exe`,
 `env.bat` and `env.ps1`, and creates the extensionless `m68k-elf-*` / `make`
 wrappers expected by the IDE. Java is required for `rescomp.jar`.
 
+When the user-data path contains spaces (for example
+`.../Godot Retro Engine/...`), GNU make splits `GDK` incorrectly. The SDK
+Downloader therefore configures Unix/macOS SDKs through a no-space link at
+`${XDG_DATA_HOME:-~/.local/share}/godot-retro-engine/sdks/megadrive` and
+runs the setup smoke test with escaped `GDK`/`LIBGCC` values.
+
 `scripts/setup_sgdk_linux.sh` and `scripts/setup_sgdk_macos.sh` share
 `scripts/setup_sgdk_unix.sh`. They use the GCC 13.2 `m68k-elf` toolchain
 shipped with SGDK for Windows through Wine and build `sjasm`, `convsym`,
