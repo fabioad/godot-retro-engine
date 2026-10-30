@@ -515,6 +515,27 @@ validation/game_build/roms_para_testar/07_snes_music_mid.sfc
 validation/game_build/roms_para_testar/08_megadrive_music_mid.bin
 ```
 
+### Audio browser and raw project BGM regression
+
+A real KOF98 project (3749 resources, 251 editable audio assets) was loaded to
+reproduce project audio playback. Before the fix, selecting `01Ne.mid` and
+pressing Preview built a temporary descriptor in `_on_selected`, but `_preview`
+re-read the empty descriptor and fell back to the SFX synthesizer, playing a
+0.22 s beep instead of the BGM. The preview now reuses the effective
+descriptor and the kind/name/params fields:
+
+```text
+AUDIO_BROWSER ALL=251 BGM=63 SFX=188
+AUDIO_BROWSER SEARCH 01Ne => 1 item
+AUDIO_BROWSER play BGM 01Ne length=192.1s state=playing
+AUDIO_BROWSER stop => stream=null
+```
+
+The Audio tab now has search and All/BGM/SFX filters, a localized `Play`
+button and a `BGM / SFX` top-toolbar menu. Double-clicking an audio resource in
+the left tree opens it and starts its preview. Generated previews for both
+SNES and Mega Drive remain non-silent WAVs.
+
 ## 16. Fresh installation, missing SDKs and GitHub downloader
 
 The workspace was launched with a temporary HOME containing no projects and no
@@ -714,7 +735,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (430 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (447 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -751,7 +772,7 @@ Build panel and hardware monitor translated, and the coherence warning localized
 | Area | Result |
 | --- | --- |
 | All 40 Godot editor locales present | PASS |
-| 430 keys per locale + placeholder parity | PASS |
+| 447 keys per locale + placeholder parity | PASS |
 | pt-BR/pt-PT main workspace | PASS |
 | French / Spanish main workspace | PASS (GUI) |
 | English locale | PASS |
@@ -930,8 +951,8 @@ the `ide` project, a `godot-retro-engine` launcher in `/usr/bin`, a desktop
 entry and a scalable icon.
 
 ```text
-dist/packages/godot-retro-engine_0.1.2_amd64.deb     71 MB
-dist/packages/godot-retro-engine-0.1.2-1.x86_64.rpm  71 MB
+dist/packages/godot-retro-engine_0.1.3_amd64.deb     71 MB
+dist/packages/godot-retro-engine-0.1.3-1.x86_64.rpm  71 MB
 dist/packages/SHA256SUMS
 ```
 

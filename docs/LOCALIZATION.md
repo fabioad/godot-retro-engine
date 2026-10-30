@@ -74,7 +74,7 @@ English.
 
 `i18n_test.gd` checks `pt_BR`, `en` and fallback behavior and instantiates the
 New Project, Game Build and SDK Downloader dialogs. `i18n_coverage_test.gd`
-checks all 40 locales for key parity (430 keys each), preserved `{placeholders}`
+checks all 40 locales for key parity (447 keys each), preserved `{placeholders}`
 and locale resolution (`pt_PT`, `fr_FR`, `es_MX`, `zh_CN`, `zh_TW`, ...).
 
 ```text

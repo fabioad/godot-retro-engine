@@ -194,6 +194,18 @@ func _build_ui() -> void:
 	sdk_btn.tooltip_text = I18n.t("top.sdk_tip")
 	sdk_btn.pressed.connect(_open_sdk_dialog)
 	top.add_child(sdk_btn)
+	var audio_menu := MenuButton.new()
+	audio_menu.text = I18n.t("top.audio_browser")
+	audio_menu.tooltip_text = I18n.t("top.audio_browser_tip")
+	var audio_popup := audio_menu.get_popup()
+	audio_popup.add_item(I18n.t("top.audio_open"), 0)
+	audio_popup.add_item(I18n.t("top.audio_bgm"), 1)
+	audio_popup.add_item(I18n.t("top.audio_sfx"), 2)
+	audio_popup.add_separator()
+	audio_popup.add_item(I18n.t("top.audio_play"), 3)
+	audio_popup.add_item(I18n.t("top.audio_stop"), 4)
+	audio_popup.id_pressed.connect(_on_audio_menu)
+	top.add_child(audio_menu)
 	var top_spacer := _spacer()
 	top_spacer.mouse_filter = Control.MOUSE_FILTER_STOP
 	top_spacer.tooltip_text = I18n.t("top.maximize_tip")
@@ -831,6 +843,32 @@ func _open_selected_as(kind: String) -> void:
 		return
 	_open_resource(int(idx), kind)
 
+func _on_audio_menu(id: int) -> void:
+	match id:
+		0:
+			_open_audio_browser("")
+		1:
+			_open_audio_browser("bgm")
+		2:
+			_open_audio_browser("sfx")
+		3:
+			if audio_editor != null:
+				audio_editor.play_selected()
+		4:
+			if audio_editor != null:
+				audio_editor.stop_preview()
+
+func _open_audio_browser(kind: String) -> void:
+	if project == null:
+		status_message(I18n.t("audio.project_missing"))
+		return
+	if audio_editor != null:
+		audio_editor.set_project(project)
+		audio_editor.set_kind_filter(kind)
+		_tabs.current_tab = 11
+		audio_editor.focus_search()
+	status_message(I18n.t("top.audio_browser_status"))
+
 func _open_resource(index: int, force_kind: String = "") -> void:
 	if index < 0 or index >= resources.size():
 		return
@@ -868,6 +906,7 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 	if editor == "audio":
 		if audio_editor:
 			audio_editor.set_project(project)
+			audio_editor.select_asset(String(r.get("path", "")), true)
 			_tabs.current_tab = 11
 		status_message("Audio asset opened in the BGM/SFX editor.")
 		return

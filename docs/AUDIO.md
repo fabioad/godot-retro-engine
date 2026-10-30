@@ -49,11 +49,22 @@ renderer is normalized and then fitted to the console sample budget.
 The **Audio** tab provides:
 
 1. `Import BGM (.mid/.it/.mp3/.wav)` and `Import SFX (.wav/.mp3)`.
-2. A selectable asset list with kind/name/source/preview metadata.
-3. SFX parameter controls and `Create / Update SFX`.
-4. `Preview SNES`, `Preview Mega Drive`, `Convert & Preview Both`, `Stop`.
+2. A searchable asset list with an **All / BGM / SFX** filter and a
+   `BGM / SFX` count.
+3. `Play` previews the selected BGM/SFX for the project platform.
+4. The top toolbar **BGM / SFX** menu opens the browser, shows BGM-only or
+   SFX-only, plays the selected asset and stops playback.
+5. Double-clicking an audio resource in the left resource tree opens it in the
+   Audio tab and starts its preview.
+6. SFX parameter controls and `Create / Update SFX`.
+7. `Preview SNES`, `Preview Mega Drive`, `Convert & Preview Both`, `Stop`.
    Preview conversion runs in a worker thread; `Stop` tears down the player and
    cancels any conversion still in flight, so it responds immediately.
+
+Raw project audio (`.mid`, `.it`, `.wav`, `.mp3`) is wrapped into a temporary
+BGM/SFX descriptor when selected. Earlier builds discarded that descriptor and
+fell back to a short synthesized SFX; that fallback is fixed, so selecting a
+project MIDI now previews the actual MIDI BGM.
 
 Previews are WAV files rendered from the actual target pipeline:
 

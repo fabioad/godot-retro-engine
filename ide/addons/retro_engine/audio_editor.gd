@@ -7,6 +7,7 @@ signal status(text: String)
 signal modified()
 
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
+const I18n = preload("res://addons/retro_engine/i18n.gd")
 
 var _project: RetroProject
 var _asset_list: ItemList
@@ -30,6 +31,11 @@ var _bitcrush: SpinBox
 var _player: AudioStreamPlayer
 var _status: Label
 var _selected := ""
+var _current: Dictionary = {}
+var _search: LineEdit
+var _kind_filter: OptionButton
+var _filter_label: Label
+var _all_assets: Array = []
 var _preview_generation := 0
 var _preview_thread: Thread
 var _preview_busy := false
@@ -55,6 +61,25 @@ func _ready() -> void:
 	var convert := Button.new(); convert.text = "Convert & Preview Both"
 	convert.pressed.connect(_convert_both)
 	imports.add_child(convert)
+	var browse := HBoxContainer.new()
+	root.add_child(browse)
+	_search = LineEdit.new()
+	_search.placeholder_text = I18n.t("audio.filter")
+	_search.custom_minimum_size.x = 120
+	_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_search.text_changed.connect(func(_t): _apply_filter())
+	browse.add_child(_search)
+	_kind_filter = OptionButton.new()
+	_kind_filter.add_item(I18n.t("audio.all"), 0)
+	_kind_filter.add_item(I18n.t("audio.bgm"), 1)
+	_kind_filter.add_item(I18n.t("audio.sfx"), 2)
+	_kind_filter.item_selected.connect(func(_i): _apply_filter())
+	browse.add_child(_kind_filter)
+	_filter_label = Label.new()
+	_filter_label.custom_minimum_size.x = 150
+	_filter_label.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_filter_label.add_theme_color_override("font_color", Color("#9fb4d0"))
+	browse.add_child(_filter_label)
 	var split := HSplitContainer.new()
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(split)
@@ -98,15 +123,21 @@ func _ready() -> void:
 	var create := Button.new(); create.text = "Create / Update SFX"
 	create.pressed.connect(_create_sfx)
 	actions.add_child(create)
-	var ps := Button.new(); ps.text = "Preview SNES"
-	ps.pressed.connect(func(): _preview("snes"))
-	actions.add_child(ps)
-	var pm := Button.new(); pm.text = "Preview Mega Drive"
-	pm.pressed.connect(func(): _preview("megadrive"))
-	actions.add_child(pm)
+	var play := Button.new(); play.text = I18n.t("audio.play")
+	play.tooltip_text = I18n.t("audio.play_tip")
+	play.pressed.connect(play_selected)
+	actions.add_child(play)
 	var stop := Button.new(); stop.text = "Stop"
 	stop.pressed.connect(_stop_preview)
 	actions.add_child(stop)
+	var targets := HBoxContainer.new()
+	right.add_child(targets)
+	var ps := Button.new(); ps.text = "Preview SNES"
+	ps.pressed.connect(func(): _preview("snes"))
+	targets.add_child(ps)
+	var pm := Button.new(); pm.text = "Preview Mega Drive"
+	pm.pressed.connect(func(): _preview("megadrive"))
+	targets.add_child(pm)
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.add_theme_color_override("font_color", Color("#9fb4d0"))
@@ -140,8 +171,9 @@ func set_project(project: RetroProject) -> void:
 func _refresh_list() -> void:
 	if _asset_list == null:
 		return
-	_asset_list.clear()
+	_all_assets.clear()
 	if _project == null:
+		_apply_filter()
 		return
 	for r in _project.find_resources("audio", true):
 		var path := String(r.get("path", ""))
@@ -150,9 +182,84 @@ func _refresh_list() -> void:
 		var kind := String(data.get("kind", r.get("kind", "sfx")))
 		if kind not in ["bgm", "sfx"]:
 			kind = "bgm" if path.get_extension().to_lower() in ["mid", "it"] else "sfx"
-		_asset_list.add_item("%s  [%s]" % [name, kind.to_upper()])
-		_asset_list.set_item_metadata(_asset_list.item_count - 1, path)
-		_asset_list.set_item_tooltip(_asset_list.item_count - 1, path)
+		_all_assets.append({"path": path, "name": name, "kind": kind})
+	_apply_filter()
+
+func _apply_filter() -> void:
+	if _asset_list == null:
+		return
+	var selected_path := _selected
+	_asset_list.clear()
+	var query := _search.text.strip_edges().to_lower() if _search != null else ""
+	var want := ""
+	if _kind_filter != null:
+		want = ["", "bgm", "sfx"][clampi(_kind_filter.selected, 0, 2)]
+	var bgm_count := 0
+	var sfx_count := 0
+	for asset in _all_assets:
+		var kind := String(asset.get("kind", "sfx"))
+		if kind == "bgm":
+			bgm_count += 1
+		elif kind == "sfx":
+			sfx_count += 1
+		if not want.is_empty() and kind != want:
+			continue
+		var haystack := (String(asset.get("name", "")) + " " + String(asset.get("path", ""))).to_lower()
+		if not query.is_empty() and not haystack.contains(query):
+			continue
+		var idx := _asset_list.item_count
+		_asset_list.add_item("%s  [%s]" % [String(asset.get("name", "")), kind.to_upper()])
+		_asset_list.set_item_metadata(idx, String(asset.get("path", "")))
+		_asset_list.set_item_tooltip(idx, String(asset.get("path", "")))
+		if String(asset.get("path", "")) == selected_path:
+			_asset_list.select(idx)
+	if _filter_label != null:
+		_filter_label.text = I18n.t("audio.count", {"bgm": bgm_count, "sfx": sfx_count})
+	if _asset_list.get_selected_items().is_empty():
+		_selected = ""
+
+func select_asset(path: String, autoplay := false) -> void:
+	if path.is_empty():
+		return
+	_selected = path
+	if _search != null:
+		_search.text = ""
+	if _kind_filter != null:
+		_kind_filter.select(0)
+	_apply_filter()
+	for i in range(_asset_list.item_count):
+		if String(_asset_list.get_item_metadata(i)) == path:
+			_asset_list.select(i)
+			_asset_list.ensure_current_is_visible()
+			_on_selected(i)
+			if autoplay:
+				play_selected()
+			return
+
+func focus_search() -> void:
+	if _search != null:
+		_search.grab_focus()
+		_search.select_all()
+
+func set_kind_filter(kind: String) -> void:
+	if _kind_filter != null:
+		_kind_filter.select(1 if kind == "bgm" else (2 if kind == "sfx" else 0))
+		_apply_filter()
+
+func play_selected() -> void:
+	if _project == null:
+		status.emit(I18n.t("audio.project_missing"))
+		return
+	if _selected.is_empty():
+		status.emit(I18n.t("audio.select_first"))
+		return
+	var target := _project.get_platform()
+	if target not in ["snes", "megadrive"]:
+		target = "snes"
+	_preview(target)
+
+func stop_preview() -> void:
+	_stop_preview()
 
 func _read_descriptor(path: String) -> Dictionary:
 	if FileAccess.file_exists(path):
@@ -176,6 +283,8 @@ func _on_selected(index: int) -> void:
 		d = {"name": _selected.get_file().get_basename(),
 			"kind": "bgm" if ext in ["mid", "it"] else "sfx",
 			"source": _selected, "params": {}}
+	_current = d
+	_name.text = String(d.get("name", ""))
 	_info.clear()
 	_info.append_text("[b]%s[/b]  (%s)\n" % [String(d.get("name", "")), String(d.get("kind", "")).to_upper()])
 	_info.append_text("source: %s\n" % String(d.get("source", "")))
@@ -310,13 +419,28 @@ func _stop_preview() -> void:
 	add_child(_player)
 	_status.text = "Stopped."
 
+func _effective_descriptor() -> Dictionary:
+	if not _selected.is_empty():
+		var d := _selected_descriptor()
+		if not d.is_empty():
+			return d
+		var ext := _selected.get_extension().to_lower()
+		return {"name": _selected.get_file().get_basename(),
+			"kind": "bgm" if ext in ["mid", "it"] else "sfx",
+			"source": _selected, "params": _params(), "previews": {}}
+	return {"name": _slug(_name.text),
+		"kind": "bgm" if _kind.selected == 1 else "sfx",
+		"source": "", "params": _params(), "previews": {}}
+
 func _preview(target: String) -> void:
 	if _project == null:
 		return
 	_stop_preview()
-	var d := _selected_descriptor()
-	if d.is_empty():
-		d = {"name": _slug(_name.text), "kind": "sfx", "source": "", "params": _params(), "previews": {}}
+	var d := _effective_descriptor()
+	d["kind"] = "bgm" if _kind.selected == 1 else "sfx"
+	if not _name.text.strip_edges().is_empty():
+		d["name"] = _slug(_name.text)
+	d["params"] = _params()
 	var request := {
 		"descriptor": d,
 		"target": target,
@@ -381,9 +505,11 @@ func _on_preview_ready(result: Dictionary, token: int) -> void:
 func _convert_both() -> void:
 	if _project == null:
 		return
-	var d := _selected_descriptor()
-	if d.is_empty():
-		d = {"name": _slug(_name.text), "kind": "sfx", "source": "", "params": _params(), "previews": {}}
+	var d := _effective_descriptor()
+	d["kind"] = "bgm" if _kind.selected == 1 else "sfx"
+	if not _name.text.strip_edges().is_empty():
+		d["name"] = _slug(_name.text)
+	d["params"] = _params()
 	var previews := {}
 	for target in ["snes", "megadrive"]:
 		var result: Dictionary
