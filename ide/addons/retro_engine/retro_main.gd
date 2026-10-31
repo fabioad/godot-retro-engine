@@ -1034,14 +1034,14 @@ func _build_mugen_tree(root: TreeItem, filter: String) -> void:
 			item.set_tooltip_text(0, String(d.get("path", "")))
 			item.set_metadata(0, {"mugen": "char", "path": d.get("path", ""), "action": -1})
 			var anim := _resource_tree.create_item(item)
-			anim.set_text(0, "Animations / Preview")
+			anim.set_text(0, "Animations")
 			anim.set_metadata(0, {"mugen": "char", "path": d.get("path", ""), "action": -1})
 			var sff := _resource_tree.create_item(item)
-			sff.set_text(0, "SFF Sprites")
+			sff.set_text(0, "SFF")
 			sff.set_metadata(0, {"mugen": "sff", "path": d.get("sff", "")})
 			if not String(d.get("snd", "")).is_empty():
 				var snd := _resource_tree.create_item(item)
-				snd.set_text(0, "Sounds")
+				snd.set_text(0, "SND")
 				snd.set_metadata(0, {"mugen": "snd", "path": d.get("snd", "")})
 	if not stages.is_empty():
 		var cat := _resource_tree.create_item(root)
@@ -1053,10 +1053,10 @@ func _build_mugen_tree(root: TreeItem, filter: String) -> void:
 			item.set_tooltip_text(0, String(d.get("path", "")))
 			item.set_metadata(0, {"mugen": "stage", "path": d.get("path", "")})
 			var layers := _resource_tree.create_item(item)
-			layers.set_text(0, "Layers / Preview")
+			layers.set_text(0, "Layers")
 			layers.set_metadata(0, {"mugen": "stage", "path": d.get("path", "")})
 			var sff := _resource_tree.create_item(item)
-			sff.set_text(0, "SFF Sprites")
+			sff.set_text(0, "SFF")
 			sff.set_metadata(0, {"mugen": "sff", "path": d.get("sff", "")})
 
 func _on_resource_selected() -> void:
