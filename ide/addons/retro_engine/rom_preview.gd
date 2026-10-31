@@ -35,6 +35,7 @@ var paused := false
 var frame := 0
 var speed := 1.0
 var pause_on_input := false
+var pause_on_change := true
 var auto_start := true
 var input_enabled := true
 var last_command := ""
@@ -60,6 +61,9 @@ var _stopping := false
 var _start_ms := 0
 var _paused_for_hidden := false
 var _paused_for_tab := false
+var _watch_frames := 0
+var _watch_command := ""
+var _watch_sig := PackedByteArray()
 
 const FORMAT_RGB565 := 0
 const FORMAT_RGBA8 := 1
@@ -305,6 +309,10 @@ func command(action_id: String) -> void:
 	_send("tap %d 4\n" % mask)
 	if pause_on_input:
 		_pause_after_frame = frame + 4
+	if pause_on_change:
+		_watch_frames = 180
+		_watch_command = action_id
+		_watch_sig = PackedByteArray()
 	_emit_state()
 
 func get_log_text() -> String:
@@ -430,8 +438,45 @@ func _apply_frame(width: int, height: int, fmt: int, index: int,
 	frame = index
 	_have_frame = true
 	_frame_format = fmt
+	_watch_frame(image)
 	_update_overlay()
 	_emit_state()
+
+func _watch_frame(image: Image) -> void:
+	if _watch_frames <= 0:
+		return
+	var sig := _signature(image)
+	_watch_frames -= 1
+	if _watch_sig.is_empty():
+		_watch_sig = sig
+		return
+	var diff := _signature_diff(_watch_sig, sig)
+	if diff >= 0.18:
+		_log("screen change after %s at frame %d (%.2f)" % [_watch_command, frame, diff])
+		_watch_frames = 0
+		_watch_sig.clear()
+		if pause_on_change and not paused:
+			set_pause(true)
+	elif _watch_frames == 0:
+		_log("no screen change after %s within 180 frames" % _watch_command)
+		_watch_sig.clear()
+
+func _signature(image: Image) -> PackedByteArray:
+	var small: Image = image.duplicate()
+	small.resize(32, 28, Image.INTERPOLATE_NEAREST)
+	return small.get_data()
+
+func _signature_diff(a: PackedByteArray, b: PackedByteArray) -> float:
+	var count := mini(a.size(), b.size())
+	if count < 4:
+		return 0.0
+	var total := 0
+	for i in range(0, count - 3, 4):
+		total += absi(int(a[i]) - int(b[i]))
+		total += absi(int(a[i + 1]) - int(b[i + 1]))
+		total += absi(int(a[i + 2]) - int(b[i + 2]))
+	var samples := (count / 4) * 3
+	return float(total) / (float(samples) * 255.0)
 
 func _update_overlay() -> void:
 	_hud.text = get_status_text()

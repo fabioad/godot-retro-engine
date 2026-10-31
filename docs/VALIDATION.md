@@ -1063,7 +1063,7 @@ Mega Drive VGM      16.2 s   preview 188.14 s, 48050-byte VGM
 SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
 ```
 
-Localization coverage now reports 517 keys for all 41 locales and
+Localization coverage now reports 519 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
 
 
@@ -1097,3 +1097,16 @@ ROM_PREVIEW PASS
 The KOF98 SNES ROM boots through its real "CHECKING MSU-1 SUPPORT" screen and
 title; the SGDK platformer ROM runs its real gameplay. Both were exercised
 through the same host/protocol used by the editor.
+
+Command detection and screen-change pausing were checked on the real KOF98
+boot:
+
+```text
+[00451] input start (mask 0x0008)
+[00481] screen change after start at frame 481 (0.19)
+[00481] pause ON
+```
+
+After a Start press the emulator keeps running until the real picture changes
+significantly, then auto-pauses so the user can step/rewind through the actual
+transition.
