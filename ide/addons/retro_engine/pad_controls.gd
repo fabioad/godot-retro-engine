@@ -29,7 +29,7 @@ var _start_button: Button
 var _select_button: Button
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(224, 104)
+	custom_minimum_size = Vector2(190, 78)
 	size_flags_horizontal = Control.SIZE_SHRINK_END
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var style := StyleBoxFlat.new()
@@ -37,10 +37,10 @@ func _ready() -> void:
 	style.border_color = Color("#25303c")
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
-	style.content_margin_left = 5
-	style.content_margin_right = 5
-	style.content_margin_top = 3
-	style.content_margin_bottom = 3
+	style.content_margin_left = 4
+	style.content_margin_right = 4
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
 	add_theme_stylebox_override("panel", style)
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 2)
@@ -90,7 +90,7 @@ func _build_face() -> Control:
 	grid.add_theme_constant_override("v_separation", 2)
 	grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for i in range(6):
-		var button := _small_button("", 22, 22, 9)
+		var button := _small_button("", 19, 19, 8)
 		button.button_down.connect(_on_face_down.bind(i, true))
 		button.button_up.connect(_on_face_up.bind(i))
 		_face_buttons.append(button)
@@ -101,18 +101,18 @@ func _build_start_select() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
 	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_start_button = _small_button("START", 42, 19, 7)
+	_start_button = _small_button("START", 34, 16, 6)
 	_start_button.button_down.connect(_on_down.bind("START", true))
 	_start_button.button_up.connect(_on_up.bind("START"))
 	col.add_child(_start_button)
-	_select_button = _small_button("SEL", 42, 19, 7)
+	_select_button = _small_button("SEL", 34, 16, 6)
 	_select_button.button_down.connect(_on_down.bind("SEL", true))
 	_select_button.button_up.connect(_on_up.bind("SEL"))
 	col.add_child(_select_button)
 	return col
 
 func _direction_button(text: String, label: String) -> Button:
-	var button := _small_button(text, 20, 20, 9)
+	var button := _small_button(text, 18, 18, 8)
 	button.button_down.connect(_on_down.bind(label, false))
 	button.button_up.connect(_on_up.bind(label))
 	return button
@@ -128,7 +128,7 @@ func _small_button(text: String, width: float, height: float, font_size: int) ->
 
 func _spacer() -> Control:
 	var control := Control.new()
-	control.custom_minimum_size = Vector2(20, 20)
+	control.custom_minimum_size = Vector2(18, 18)
 	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return control
 

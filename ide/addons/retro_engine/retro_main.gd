@@ -499,7 +499,10 @@ func _build_preview_tab() -> void:
 	options_row.add_child(_game_speed)
 	_game_status = Label.new()
 	_game_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_game_status.custom_minimum_size.x = 0
 	_game_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_game_status.clip_text = true
+	_game_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_game_status.add_theme_color_override("font_color", Color("#7fd1ff"))
 	options_row.add_child(_game_status)
 	var game_hint := Label.new()
@@ -529,19 +532,16 @@ func _build_preview_tab() -> void:
 		if _preview:
 			_preview.clear_log())
 	log_row.add_child(clear_log)
-	var bottom_row := HBoxContainer.new()
-	bottom_row.add_theme_constant_override("separation", 5)
-	preview_box.add_child(bottom_row)
 	_game_log = RichTextLabel.new()
 	_game_log.custom_minimum_size.y = 104
 	_game_log.scroll_following = true
 	_game_log.selection_enabled = true
 	_game_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom_row.add_child(_game_log)
+	preview_box.add_child(_game_log)
 	_pad = PadControls.new()
 	_pad.set_preview(_preview)
 	_pad.set_platform(platform)
-	bottom_row.add_child(_pad)
+	preview_box.add_child(_pad)
 	_refresh_game_log()
 	_tabs.tab_changed.connect(_on_tab_changed)
 

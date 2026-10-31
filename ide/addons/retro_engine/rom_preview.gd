@@ -372,6 +372,11 @@ func get_status_text() -> String:
 		if core_path.is_empty():
 			return "No libretro core"
 		return "Stopped"
+	return "frame %d | %.1f fps%s" % [frame, _fps, " | PAUSED" if paused else ""]
+
+func get_full_status_text() -> String:
+	if not running:
+		return get_status_text()
 	return "%s | %s | frame %d | %.2f fps%s" % [
 		_core_name, _rom_name, frame, _fps, " | PAUSED" if paused else ""]
 
@@ -517,7 +522,7 @@ func _signature_diff(a: PackedByteArray, b: PackedByteArray) -> float:
 	return float(total) / (float(samples) * 255.0)
 
 func _update_overlay() -> void:
-	_hud.text = get_status_text()
+	_hud.text = get_full_status_text()
 	if not running:
 		return
 	if paused:
