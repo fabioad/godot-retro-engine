@@ -338,6 +338,14 @@ func set_stage(doc: RetroStage, p_project: RetroProject = null) -> void:
 			_start_preview()
 		else:
 			_stop_preview()
+		var metadata := stage.get_metadata()
+		var anim_path := String(metadata.get("stage_animations", ""))
+		if anim_path.is_empty():
+			var source_png := String(metadata.get("source_png", ""))
+			if not source_png.is_empty():
+				anim_path = _find_animations_json(source_png, stage.get_name())
+		if not anim_path.is_empty() and FileAccess.file_exists(anim_path):
+			load_stage_animations(anim_path, stage.get_name())
 	status.emit("Stage loaded: %s" % stage.get_name())
 
 func set_sprite(doc: RetroSprite, anim: RetroAnimation = null) -> void:
@@ -823,8 +831,14 @@ func _load_flat_image_stage(path: String, p_project: RetroProject) -> void:
 	for y in range(tiles_y):
 		for x in range(tiles_x):
 			doc.set_tile(x, y, indices[y * tiles_x + x], 0)
+	var anim_json := _find_animations_json(path, doc.get_name())
+	var metadata := doc.get_metadata()
+	metadata["source_png"] = path
+	metadata["flat_image"] = true
+	if not anim_json.is_empty():
+		metadata["stage_animations"] = anim_json
+	doc.set_metadata(metadata)
 	set_stage(doc, p_project)
-	_auto_load_animations(path, doc.get_name())
 	modified.emit()
 	status.emit("Flat stage loaded: %s (%dx%d tiles, %d unique)" % [doc.get_name(), tiles_x, tiles_y, order.size()])
 

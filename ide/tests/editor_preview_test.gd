@@ -192,7 +192,6 @@ func _test_flat_stage() -> void:
 	get_root().add_child(editor)
 	await process_frame
 	editor._load_flat_image_stage(png_path, null)
-	editor.load_stage_animations(json_path, "flat_test")
 	var canvas = editor._canvas
 	canvas._ensure_render()
 	_check("flat_stage_map", editor.stage != null and editor.stage.get_map_size() == Vector2i(4, 2), str(editor.stage.get_map_size()) if editor.stage else "null")
