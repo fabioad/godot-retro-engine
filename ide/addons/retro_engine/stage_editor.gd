@@ -8,6 +8,7 @@ signal status(text: String)
 
 const StageCanvas = preload("res://addons/retro_engine/stage_canvas.gd")
 const TilePicker = preload("res://addons/retro_engine/tile_picker.gd")
+const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
 
 var stage: RetroStage
 var sprite: RetroSprite
@@ -790,6 +791,9 @@ func _load_flat_image_stage(path: String, p_project: RetroProject) -> void:
 		status.emit("Stage image must be a multiple of 8 pixels: " + path)
 		return
 	image.convert(Image.FORMAT_RGBA8)
+	var png_palette := RetroGraphics.read_png_palette(path)
+	if not png_palette.is_empty():
+		SpriteSheet.apply_chroma_key(image, png_palette)
 	var tiles_x := image.get_width() / 8
 	var tiles_y := image.get_height() / 8
 	var unique: Dictionary = {}

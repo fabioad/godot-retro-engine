@@ -73,7 +73,8 @@ splits a single full-sheet frame into individual scenes, preserves alpha and
 labels the fallback ("Auto-split by transparency - N frames"). Indexed SNES
 sheets whose transparency is palette index 0 (magenta or green) are keyed to
 alpha on load, so Gothicvania's ghost/cat sheets show transparency and count
-their four frames. The **Frames** selector can force Auto/Horizontal/Vertical/
+their four frames. Flat tilesets receive the same key so their transparent
+cells do not render as magenta blocks. The **Frames** selector can force Auto/Horizontal/Vertical/
 Grid/Whole-sheet when a cell contains two sprites. Playback uses the real
 frame delta, and the auto-sheet loops over the detected frames' own duration.
 **Frames from sprite** materialises those detected frames into the sprite

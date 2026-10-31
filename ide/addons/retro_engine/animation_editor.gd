@@ -72,12 +72,12 @@ func _ready() -> void:
 	preview_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	preview_head.add_child(preview_title)
 	_slice_option = OptionButton.new()
-	_slice_option.add_item("Frames: Auto")
-	_slice_option.add_item("Frames: Horizontal")
-	_slice_option.add_item("Frames: Vertical")
-	_slice_option.add_item("Frames: Grid")
-	_slice_option.add_item("Frames: Whole sheet")
-	_slice_option.tooltip_text = "Auto uses transparency and both axes. Choose Horizontal/Vertical/Grid when a frame contains two sprites or the auto split is wrong."
+	_slice_option.add_item("Auto")
+	_slice_option.add_item("Horizontal")
+	_slice_option.add_item("Vertical")
+	_slice_option.add_item("Grid")
+	_slice_option.add_item("Whole sheet")
+	_slice_option.tooltip_text = "Sprite-sheet split mode. Auto uses transparency and both axes. Choose Horizontal/Vertical/Grid when a frame contains two sprites, or Whole sheet to keep it intact."
 	_slice_option.item_selected.connect(_on_slice_mode_selected)
 	preview_head.add_child(_slice_option)
 	_zoom_spin = _spin(0, 16, 0)
