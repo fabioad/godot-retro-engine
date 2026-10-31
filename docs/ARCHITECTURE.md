@@ -101,6 +101,17 @@ RetroInputMap (actions + animation states)
 The editor State Simulator mirrors this matcher for keyboard/gamepad-driven
 preview without compiling a ROM.
 
+The **Preview** tab also includes an editor-side boot/screen simulator. It
+powers on, shows a boot logo, an attract/title screen and the gameplay view,
+then reacts to the InputMap commands (`start`, `select`, buttons and
+directions). Screen transitions use a frame-locked fade and are written to a
+transition log with the frame number and triggering command. `Pause` freezes
+the simulation, `Step`/`+10 frames` advance one or ten 60 Hz frames, and
+`Pause on transition` stops automatically at the start of each fade so
+transition frames can be inspected. This is an approximation of the game
+flow for editor review; Build + Run remains the source of truth for the real
+ROM.
+
 The Hitbox Timeline editor stores `hitboxes[]` per animation frame. Each box has
 `rect` + `type` (`hit`/`hurt`). AIR import replaces the frames of a explicitly
 chosen animation state with the selected AIR action; CNS HitDefs are applied to

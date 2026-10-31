@@ -25,7 +25,7 @@ const NativeBridgeEditor = preload("res://addons/retro_engine/native_bridge.gd")
 const AudioEditor = preload("res://addons/retro_engine/audio_editor.gd")
 const SDKDownloader = preload("res://addons/retro_engine/sdk_downloader.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
-const StageCanvas = preload("res://addons/retro_engine/stage_canvas.gd")
+const GamePreview = preload("res://addons/retro_engine/game_preview.gd")
 const IMAGE_EXTS := ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif"]
 
 const CONFIG_PATH := "user://retro_engine.cfg"
@@ -63,6 +63,11 @@ var _preview_scroll_y: HSlider
 var _preview_sprites: CheckBox
 var _preview_collisions: CheckBox
 var _preview_limits: CheckBox
+var _game_status: Label
+var _game_pause: Button
+var _game_pause_transition: CheckBox
+var _game_speed: OptionButton
+var _game_log: RichTextLabel
 var sprite_editor
 var stage_editor
 var animation_editor
@@ -441,18 +446,66 @@ func _build_preview_tab() -> void:
 	_preview_sprites = CheckBox.new()
 	_preview_sprites.text = I18n.t("preview.sprites")
 	_preview_sprites.button_pressed = true
-	_preview_sprites.toggled.connect(func(v): _preview.show_sprites = v; _preview.queue_redraw())
+	_preview_sprites.toggled.connect(func(v): _preview.set_sprites_visible(v))
 	row.add_child(_preview_sprites)
 	_preview_collisions = CheckBox.new()
 	_preview_collisions.text = I18n.t("preview.collisions")
 	_preview_collisions.button_pressed = true
-	_preview_collisions.toggled.connect(func(v): _preview.show_collisions = v; _preview.queue_redraw())
+	_preview_collisions.toggled.connect(func(v): _preview.set_collisions_visible(v))
 	row.add_child(_preview_collisions)
 	_preview_limits = CheckBox.new()
 	_preview_limits.text = I18n.t("preview.limits")
 	_preview_limits.button_pressed = true
-	_preview_limits.toggled.connect(func(v): _preview.show_limits = v; _preview.queue_redraw())
+	_preview_limits.toggled.connect(func(v): _preview.set_limits_visible(v))
 	row.add_child(_preview_limits)
+	var game_row := HBoxContainer.new()
+	preview_box.add_child(game_row)
+	var power := Button.new()
+	power.text = I18n.t("preview.power")
+	power.tooltip_text = I18n.t("preview.power_tip")
+	power.pressed.connect(func(): _preview.power_on())
+	game_row.add_child(power)
+	_game_pause = Button.new()
+	_game_pause.text = I18n.t("preview.pause")
+	_game_pause.tooltip_text = I18n.t("preview.pause_tip")
+	_game_pause.pressed.connect(func(): _preview.toggle_pause())
+	game_row.add_child(_game_pause)
+	var step := Button.new()
+	step.text = I18n.t("preview.step")
+	step.tooltip_text = I18n.t("preview.step_tip")
+	step.pressed.connect(func(): _preview.step_frames(1))
+	game_row.add_child(step)
+	var step10 := Button.new()
+	step10.text = I18n.t("preview.step10")
+	step10.pressed.connect(func(): _preview.step_frames(10))
+	game_row.add_child(step10)
+	var reset := Button.new()
+	reset.text = I18n.t("preview.reset")
+	reset.pressed.connect(func(): _preview.reset())
+	game_row.add_child(reset)
+	_game_pause_transition = CheckBox.new()
+	_game_pause_transition.text = I18n.t("preview.pause_transition")
+	_game_pause_transition.tooltip_text = I18n.t("preview.pause_transition_tip")
+	_game_pause_transition.toggled.connect(func(v): _preview.pause_on_transition = v)
+	game_row.add_child(_game_pause_transition)
+	var speed_label := Label.new()
+	speed_label.text = I18n.t("preview.speed")
+	game_row.add_child(speed_label)
+	_game_speed = OptionButton.new()
+	for label in ["1x", "0.5x", "0.25x", "0.1x"]:
+		_game_speed.add_item(label)
+	_game_speed.item_selected.connect(func(idx): _preview.set_speed([1.0, 0.5, 0.25, 0.1][clampi(idx, 0, 3)]))
+	game_row.add_child(_game_speed)
+	_game_status = Label.new()
+	_game_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_game_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_game_status.add_theme_color_override("font_color", Color("#7fd1ff"))
+	game_row.add_child(_game_status)
+	var game_hint := Label.new()
+	game_hint.text = I18n.t("preview.input_hint")
+	game_hint.add_theme_color_override("font_color", Color("#8b98ad"))
+	game_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_box.add_child(game_hint)
 	var scroll_row := HBoxContainer.new()
 	preview_box.add_child(scroll_row)
 	var scroll_note := Label.new()
@@ -473,9 +526,55 @@ func _build_preview_tab() -> void:
 	_preview_scroll_y.custom_minimum_size.x = 110
 	_preview_scroll_y.value_changed.connect(func(_v): _preview.scroll_offset = Vector2(_preview_scroll_x.value, _preview_scroll_y.value); _preview.queue_redraw())
 	scroll_row.add_child(_preview_scroll_y)
-	_preview = StageCanvas.new()
+	_preview = GamePreview.new()
+	_preview.name = "GamePreview"
 	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_preview.status.connect(status_message)
+	_preview.status_changed.connect(_on_game_status_changed)
+	_preview.screen_changed.connect(_on_game_screen_changed)
+	_preview.pause_changed.connect(_on_game_pause_changed)
+	_preview.log_changed.connect(_refresh_game_log)
 	preview_box.add_child(_preview)
+	var log_row := HBoxContainer.new()
+	preview_box.add_child(log_row)
+	var log_title := Label.new()
+	log_title.text = I18n.t("preview.log")
+	log_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_title.add_theme_color_override("font_color", Color("#7fd1ff"))
+	log_row.add_child(log_title)
+	var clear_log := Button.new()
+	clear_log.text = I18n.t("preview.clear_log")
+	clear_log.pressed.connect(func():
+		if _preview:
+			_preview.clear_log())
+	log_row.add_child(clear_log)
+	_game_log = RichTextLabel.new()
+	_game_log.custom_minimum_size.y = 104
+	_game_log.scroll_following = true
+	_game_log.selection_enabled = true
+	preview_box.add_child(_game_log)
+	_refresh_game_log()
+	_tabs.tab_changed.connect(_on_tab_changed)
+
+func _on_tab_changed(index: int) -> void:
+	if _preview:
+		_preview.input_enabled = index == 0
+
+func _on_game_status_changed(text: String) -> void:
+	if _game_status:
+		_game_status.text = text
+
+func _on_game_screen_changed(from_screen: String, to_screen: String, trigger: String, at_frame: int) -> void:
+	status_message("Screen %s -> %s (%s) at frame %d" % [from_screen, to_screen, trigger, at_frame])
+	_refresh_game_log()
+
+func _on_game_pause_changed(is_paused: bool) -> void:
+	if _game_pause:
+		_game_pause.text = I18n.t("preview.resume") if is_paused else I18n.t("preview.pause")
+
+func _refresh_game_log() -> void:
+	if _game_log and _preview:
+		_game_log.text = _preview.get_log_text()
 
 func _on_top_bar_gui_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
@@ -680,6 +779,9 @@ func _select_project(p: RetroProject) -> void:
 		mugen_editor.set_context(project, platform, anim_doc, input_editor.get_input_map())
 	if native_editor:
 		native_editor.set_context(project, platform, mode)
+	if _preview:
+		_preview.set_input_map(input_editor.get_input_map() if input_editor else null)
+		_preview.reset()
 	status_message(I18n.t("top.opened", {"name": project.get_name(), "sdk": project.get_sdk_version(), "count": resources.size()}))
 
 func _load_projects() -> void:
@@ -1085,6 +1187,8 @@ func _on_input_changed() -> void:
 		state_graph.set_input_map(input_editor.get_input_map())
 	if mugen_editor and input_editor:
 		mugen_editor.set_input_map(input_editor.get_input_map())
+	if _preview and input_editor:
+		_preview.set_input_map(input_editor.get_input_map())
 
 func _on_mugen_modified() -> void:
 	if _save_timer:
@@ -1149,11 +1253,14 @@ func _on_code_modified() -> void:
 func _refresh_preview() -> void:
 	if _preview == null:
 		return
+	_preview.set_platform(platform)
+	_preview.set_input_map(input_editor.get_input_map() if input_editor else null)
 	_preview.set_stage(stage_doc)
 	_preview.set_sprite(sprite_doc, anim_doc)
 	if anim_doc and anim_doc.get_states().has("IDLE"):
 		_preview.animation_state = "IDLE"
 	_preview.queue_redraw()
+	_refresh_game_log()
 
 func _save_session_docs() -> void:
 	if project == null:

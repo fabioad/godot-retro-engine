@@ -1063,7 +1063,7 @@ Mega Drive VGM      16.2 s   preview 188.14 s, 48050-byte VGM
 SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
 ```
 
-Localization coverage now reports 501 keys for all 41 locales and
+Localization coverage now reports 517 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
 
 
@@ -1078,3 +1078,21 @@ forces the sprite editor when needed.
 ```text
 RESOURCE_CATEGORY PASS
 ```
+
+
+### Game preview boot/transition simulator (0.1.8)
+
+The Preview tab now boots like a console (OFF -> BOOT -> TITLE -> GAMEPLAY),
+detects InputMap commands (Start/Enter, gamepad Start, buttons and directions),
+logs every command and screen transition with a frame number, and exposes
+Pause, single-frame step, +10 frames and Pause-on-transition.
+
+```text
+GAME_PREVIEW boot screen=TITLE
+GAME_PREVIEW pause=true step=true auto=true detected=true
+GAME_PREVIEW PASS
+```
+
+The test covers the power-on timeline, TITLE -> GAMEPLAY -> PAUSE -> GAMEPLAY
+transitions, command detection through a real Enter key event, frozen frames,
+frame stepping, automatic pause at a transition and the transition log.

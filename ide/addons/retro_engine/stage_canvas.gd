@@ -13,6 +13,7 @@ var animation_state: String = "IDLE"
 var animation_time: float = 0.0
 
 var scroll_offset: Vector2 = Vector2.ZERO
+var sprite_pos: Vector2 = Vector2(128, 160)
 var zoom: int = 2
 var show_grid: bool = false
 var show_collisions: bool = true
@@ -116,7 +117,7 @@ func _draw() -> void:
 					break
 			if crop != null:
 				var tex := ImageTexture.create_from_image(crop)
-				var sp := origin + (Vector2(128, 160) - src_valid.position) * scale
+				var sp := origin + (sprite_pos - src_valid.position) * scale
 				draw_texture_rect(tex, Rect2(sp, Vector2(crop.get_width(), crop.get_height()) * scale), false)
 				draw_rect(Rect2(sp, Vector2(crop.get_width(), crop.get_height()) * scale), Color("#ffd45e"), false, 1.0)
 	# Sprite-per-line limit indicator (uses the stage collision markers as a
