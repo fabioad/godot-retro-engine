@@ -1414,3 +1414,49 @@ selectors. The window title also reports the new build:
 ```text
 Godot Retro Engine 0.1.27 (build a92899a537) - Godot Engine
 ```
+
+### Mega Drive sprite sources (0.1.28-0.1.30)
+
+The Sprite tab now reads sprite assets directly from the two linked Mega Drive
+repositories instead of relying only on generic PNG heuristics.
+
+**demo-Masiaka (SGDK):** the importer parses every `SPRITE name "file" width
+height` entry in the project `.res` files. Width and height are treated as
+tile counts, so the PNG is divided into exact 8x8-tile frames. The project
+exposes 13 authored sprites (for example `masiaka_title` is one 240x48 frame
+and `ball_metal` is nine 16x16 frames).
+
+**s2disasm (Sonic 2 disassembly):** `sonic2.flex.json` supplies each sprite's
+art, palette, mappings and DPLC. The extractor:
+
+- decompresses uncompressed, Nemesis and Kosinski art;
+- parses the `spritePiece` and `dplcEntry` tables;
+- uses the Genesis VDP column-major tile order (the layout that produces
+  coherent Sonic and Tails frames);
+- honours palette lines and falls back to the shared Sonic/Tails palette when
+  the Flex object omits one;
+- writes indexed PNG sheets under `.retro/generated/sprites/` and registers
+  them with exact frame rects and mapping names.
+
+106 sprite sheets are registered for s2disasm. Sonic has 214 frames, Tails has
+139, and the sheets are named after their Flex group and object (for example
+`S2 Common - Sonic` and `S2 ARZ - Arrow Shooter`).
+
+Additional fixes found while validating the sheets:
+
+- explicit single-frame resources are no longer auto-split by the generic
+  full-sheet detector (a 240x48 SGDK title stays one frame);
+- the hardware monitor estimates sprite VRAM from the largest frame and counts
+  the sprite document as one on-screen object, so a 214-frame sheet no longer
+  produces a false "VRAM over budget / 214 sprites" warning.
+
+```text
+MASIAKA RES=138 SPRITES=13 S2=0 ROM=.../release/Masiaka-by-Resistance-2017.bin
+S2 RES=796 SPRITES=106 S2=106 ROM=.../s2disasm/s2built.bin
+MASIAKA ball_metal.png sheet=144x16 frames=9 frame1=16x16 bg_alpha=0.0 pal=16
+S2 S2 Common - Sonic sheet=855x975 frames=214 frame1=32x48 bg_alpha=0.0 pal=16
+```
+
+The IDE was reopened on `Sonic 2 Disassembly` with the Sonic sheet selected;
+the frame list shows `Map_Sonic_01AC`, `Map_Sonic_01AE`, `Map_Sonic_01D0`, and
+so on, and the hardware panel reports no static limit violations.
