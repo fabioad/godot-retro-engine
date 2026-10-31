@@ -64,6 +64,7 @@ var _paused_for_tab := false
 var _watch_frames := 0
 var _watch_command := ""
 var _watch_sig := PackedByteArray()
+var _press_frames: Dictionary = {}
 
 const FORMAT_RGB565 := 0
 const FORMAT_RGBA8 := 1
@@ -212,6 +213,7 @@ func start() -> bool:
 	_have_frame = false
 	_frame_format = FORMAT_RGB565
 	paused = false
+	_press_frames.clear()
 	pause_changed.emit(false)
 	_pause_after_frame = -1
 	_core_name = core_path.get_file()
@@ -242,6 +244,7 @@ func stop() -> void:
 		_pid = -1
 	running = false
 	paused = false
+	_press_frames.clear()
 	_start_ms = 0
 	_stopping = false
 
@@ -257,6 +260,7 @@ func reset() -> void:
 		return
 	_send("reset\n")
 	paused = false
+	_press_frames.clear()
 	_pause_after_frame = -1
 	_log("ROM reset")
 	pause_changed.emit(false)
@@ -305,15 +309,49 @@ func command(action_id: String) -> void:
 	if mask == 0:
 		return
 	last_command = action_id
-	_log("input %s (mask 0x%04X)" % [action_id, mask])
-	_send("tap %d 4\n" % mask)
-	if pause_on_input:
-		_pause_after_frame = frame + 4
-	if pause_on_change:
-		_watch_frames = 180
-		_watch_command = action_id
-		_watch_sig = PackedByteArray()
+	tap_mask(mask, action_id, 4, true)
 	_emit_state()
+
+func tap_mask(mask: int, label := "", frames := 4, watch := true) -> void:
+	if not running or mask == 0:
+		return
+	_send("tap %d %d\n" % [mask, maxi(1, frames)])
+	_log("input %s (mask 0x%04X)" % [label, mask])
+	if watch:
+		_begin_watch(label)
+		if pause_on_input:
+			_pause_after_frame = frame + maxi(1, frames)
+
+func press_mask(mask: int, label := "", watch := false) -> void:
+	if not running or mask == 0:
+		return
+	_send("press %d\n" % mask)
+	_press_frames[mask] = frame
+	_log("button %s down (0x%04X)" % [label, mask])
+	if watch:
+		_begin_watch(label)
+		if pause_on_input:
+			_pause_after_frame = frame + 2
+
+func release_mask(mask: int, label := "") -> void:
+	if not running or mask == 0:
+		return
+	var started := int(_press_frames.get(mask, frame))
+	if frame - started < 2:
+		# The click was shorter than an emulated frame. Hold it for two
+		# frames so the game always sees the press.
+		_send("tap %d 2\n" % mask)
+	else:
+		_send("release %d\n" % mask)
+	_press_frames.erase(mask)
+	_log("button %s up" % label)
+
+func _begin_watch(label: String) -> void:
+	if not pause_on_change:
+		return
+	_watch_frames = 180
+	_watch_command = label
+	_watch_sig = PackedByteArray()
 
 func get_log_text() -> String:
 	var lines := PackedStringArray()

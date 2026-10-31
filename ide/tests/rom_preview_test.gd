@@ -66,14 +66,21 @@ func _exercise(rom: String, platform: String, map: RetroInputMap) -> bool:
 	var before_rewind: int = int(preview.frame)
 	preview.rewind_frames(2)
 	var rewind_ok := await _wait_until(func(): return int(preview.frame) < before_rewind, 3000)
+	var before_button: int = int(preview.frame)
+	preview.press_mask(1 << 3, "START", false)
+	await _wait_frames(2)
+	preview.release_mask(1 << 3, "START")
+	var button_ok := await _wait_until(func(): return int(preview.frame) >= before_button + 1, 3000)
+	var button_log: bool = preview.get_log_text().contains("button START down")
+	ok = ok and button_ok and button_log
 	preview.set_speed(0.25)
 	var status: String = preview.get_status_text()
 	preview.stop()
 	var stopped: bool = not preview.running
 	print("ROM_PREVIEW ", platform, " first=", first_frame, " frozen=", frozen,
 		" stepped=", stepped_ok, " command=", command_ok, " log=", log_ok,
-		" rewind=", rewind_ok, " texture=", texture_ok, " stopped=", stopped,
-		" status=", status)
+		" rewind=", rewind_ok, " button=", button_ok, " button_log=", button_log,
+		" texture=", texture_ok, " stopped=", stopped, " status=", status)
 	preview.queue_free()
 	await process_frame
 	return texture_ok and frozen and stepped_ok and command_ok and log_ok and rewind_ok and stopped

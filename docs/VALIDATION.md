@@ -1110,3 +1110,25 @@ boot:
 After a Start press the emulator keeps running until the real picture changes
 significantly, then auto-pauses so the user can step/rewind through the actual
 transition.
+
+
+### On-screen pad (0.1.10)
+
+The Preview tab now has a compact pad beside the log, using the same height so
+the editor layout does not grow. It keeps the full SNES button count and swaps
+labels with the active platform:
+
+```text
+SNES:       L X R / Y B A + START + SEL
+Mega Drive: X Y Z / A B C + START + MODE
+PAD_CONTROLS PASS
+```
+
+Buttons are 20-22 px with 7-9 px letters/icons. Press/release is sent to the
+real libretro core; quick clicks are extended to two emulated frames so the
+game always receives them. The same pad test also exercises the real SNES and
+Mega Drive ROM previews with a Start press:
+
+```text
+ROM_PREVIEW ... button=true button_log=true ... PASS
+```

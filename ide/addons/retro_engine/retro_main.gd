@@ -26,6 +26,7 @@ const AudioEditor = preload("res://addons/retro_engine/audio_editor.gd")
 const SDKDownloader = preload("res://addons/retro_engine/sdk_downloader.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
 const RomPreview = preload("res://addons/retro_engine/rom_preview.gd")
+const PadControls = preload("res://addons/retro_engine/pad_controls.gd")
 const IMAGE_EXTS := ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif"]
 
 const CONFIG_PATH := "user://retro_engine.cfg"
@@ -62,6 +63,7 @@ var _game_status: Label
 var _game_pause: Button
 var _game_speed: OptionButton
 var _game_log: RichTextLabel
+var _pad
 var _preview_pending_start := false
 var sprite_editor
 var stage_editor
@@ -527,11 +529,19 @@ func _build_preview_tab() -> void:
 		if _preview:
 			_preview.clear_log())
 	log_row.add_child(clear_log)
+	var bottom_row := HBoxContainer.new()
+	bottom_row.add_theme_constant_override("separation", 5)
+	preview_box.add_child(bottom_row)
 	_game_log = RichTextLabel.new()
 	_game_log.custom_minimum_size.y = 104
 	_game_log.scroll_following = true
 	_game_log.selection_enabled = true
-	preview_box.add_child(_game_log)
+	_game_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom_row.add_child(_game_log)
+	_pad = PadControls.new()
+	_pad.set_preview(_preview)
+	_pad.set_platform(platform)
+	bottom_row.add_child(_pad)
 	_refresh_game_log()
 	_tabs.tab_changed.connect(_on_tab_changed)
 
@@ -682,6 +692,8 @@ func set_platform(p: String) -> void:
 		mugen_editor.set_platform(p)
 	if native_editor:
 		native_editor.set_platform(p)
+	if _pad:
+		_pad.set_platform(p)
 	hardware_monitor.set_platform(p, mode)
 	_update_sdk_label()
 	config.set_value("retro", "platform", p)
@@ -1239,6 +1251,9 @@ func _refresh_preview() -> void:
 	_preview.set_platform(platform)
 	_preview.set_input_map(input_editor.get_input_map() if input_editor else null)
 	_preview.set_project(project)
+	if _pad:
+		_pad.set_preview(_preview)
+		_pad.set_platform(platform)
 	_refresh_game_log()
 
 func _save_session_docs() -> void:

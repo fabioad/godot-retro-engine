@@ -123,6 +123,13 @@ Flatpak path and `retroarch.cfg`'s `libretro_directory`). Audio is currently
 not streamed into the editor; the focus of this preview is the real video,
 input, pause, frame step and rewind behavior.
 
+A compact on-screen pad sits beside the Preview log so the layout does not
+grow. It always shows the full action set (D-pad, six face/shoulder buttons and
+Start plus Select/Mode), but relabels the buttons for the active console:
+SNES uses L/X/R and Y/B/A with Select; Mega Drive uses X/Y/Z and A/B/C with
+Mode. Press/release events are injected into the running libretro core, and
+quick taps are held for at least two emulated frames so they are never lost.
+
 The Hitbox Timeline editor stores `hitboxes[]` per animation frame. Each box has
 `rect` + `type` (`hit`/`hurt`). AIR import replaces the frames of a explicitly
 chosen animation state with the selected AIR action; CNS HitDefs are applied to
