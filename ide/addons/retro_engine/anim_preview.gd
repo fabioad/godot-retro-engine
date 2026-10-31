@@ -94,37 +94,28 @@ func resolve_frame() -> Dictionary:
 	if sprite == null:
 		return {}
 	var authored: Array = sprite.get_frames()
+	# Once an animation document exists, a selected state owns playback. Never
+	# fall back to cycling the whole sprite sheet: doing that makes every empty
+	# state (WALK, JUMP, ...) replay all states from the imported sheet.
+	if animation != null:
+		var sample: Dictionary = animation.sample(state_name, time)
+		if sample.is_empty():
+			return {}
+		var si := int(sample.get("sprite_frame", 0))
+		if si >= 0 and si < authored.size():
+			sample["image_index"] = si
+			sample["source"] = "animation"
+			sample["auto_sheet"] = false
+			return sample
+		var r: Rect2i = sample.get("rect", Rect2i())
+		if r.size.x > 0 and r.size.y > 0 and sprite.get_image() != null:
+			sample["image_index"] = -1
+			sample["source"] = "animation"
+			sample["auto_sheet"] = false
+			return sample
+		return {}
 	var sheet: Array = sprite_sheet_frames()
 	var has_auto_sheet := sheet.size() > authored.size() and sheet.size() > 1
-	var state_frames: Array = []
-	if animation != null:
-		state_frames = animation.get_state(state_name).get("frames", [])
-	# A state with 0/1 frame plus a multi-frame sprite sheet is an imported
-	# placeholder. Cycle the split frames rather than freezing on one image.
-	var force_sheet := sheet.size() > 1 and state_frames.size() <= 1
-	if animation != null and not force_sheet:
-		var sample: Dictionary = animation.sample(state_name, time)
-		if not sample.is_empty():
-			var si := int(sample.get("sprite_frame", 0))
-			if si >= 0 and si < authored.size():
-				var authored_rect: Rect2i = Dictionary(authored[si]).get("rect", Rect2i())
-				var full_sheet := sprite.get_image() != null and authored_rect.size.x >= sprite.get_image().get_width() and authored_rect.size.y >= sprite.get_image().get_height()
-				# A single authored frame that covers the whole sheet is a
-				# placeholder: play the detected sub-frames instead.
-				if not (full_sheet and has_auto_sheet):
-					sample["image_index"] = si
-					sample["source"] = "animation"
-					sample["auto_sheet"] = false
-					return sample
-			var r: Rect2i = sample.get("rect", Rect2i())
-			if r.size.x > 0 and r.size.y > 0 and sprite.get_image() != null:
-				var full_image := r.position.x <= 0 and r.position.y <= 0 \
-					and r.size.x >= sprite.get_image().get_width() and r.size.y >= sprite.get_image().get_height()
-				if not (full_image and has_auto_sheet):
-					sample["image_index"] = -1
-					sample["source"] = "animation"
-					sample["auto_sheet"] = false
-					return sample
 	var frames: Array = sheet if not sheet.is_empty() else authored
 	if frames.is_empty():
 		return {}
@@ -149,7 +140,7 @@ func resolve_frame() -> Dictionary:
 			result["image_index"] = i
 			result["duration"] = int(_frame_duration(f))
 			result["source"] = "sprite_sheet"
-			result["auto_sheet"] = has_auto_sheet or sheet.size() > authored.size() or force_sheet
+			result["auto_sheet"] = has_auto_sheet or sheet.size() > authored.size()
 			result["frame_count"] = frames.size()
 			return result
 	return {}

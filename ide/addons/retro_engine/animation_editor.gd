@@ -9,6 +9,7 @@ signal sprite_modified()
 
 const AnimPreview = preload("res://addons/retro_engine/anim_preview.gd")
 const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
+const StateDetect = preload("res://addons/retro_engine/animation_states.gd")
 
 var animation: RetroAnimation
 var sprite: RetroSprite
@@ -149,6 +150,16 @@ func _ready() -> void:
 	from_sprite.tooltip_text = "Replace this state with one frame per sprite frame (use the Sprite tab to split a sheet first)"
 	from_sprite.pressed.connect(_add_frames_from_sprite)
 	frame_controls.add_child(from_sprite)
+	var detect_btn := Button.new()
+	detect_btn.text = "Detect states"
+	detect_btn.tooltip_text = "Read IDLE/WALK/JUMP frame ranges from project constants or Sonic animation scripts"
+	detect_btn.pressed.connect(detect_states)
+	frame_controls.add_child(detect_btn)
+	var distribute := Button.new()
+	distribute.text = "Distribute equally"
+	distribute.tooltip_text = "Fallback: split the sprite sheet frames evenly across the state list"
+	distribute.pressed.connect(_confirm_distribute_equally)
+	frame_controls.add_child(distribute)
 	var del_frame := Button.new()
 	del_frame.text = "Remove frame"
 	del_frame.pressed.connect(_remove_frame)
@@ -238,6 +249,7 @@ func set_platform(p: String) -> void:
 
 func set_sprite(doc: RetroSprite) -> void:
 	sprite = doc
+	_maybe_auto_detect_states()
 	_preview.set_data(sprite, animation, current_state)
 	_preview.queue_redraw()
 	_ensure_playing()
@@ -250,28 +262,9 @@ func set_animation(doc: RetroAnimation, p_project: RetroProject = null) -> void:
 		_preview.set_data(sprite, null, current_state)
 		return
 	_fps.set_value_no_signal(animation.get_fps())
-	if changed or _state_list.item_count != animation.get_states().size():
-		_state_list.clear()
-		for k in animation.get_states().keys():
-			_state_list.add_item(String(k))
-		var preferred := current_state
-		if not animation.get_states().has(preferred):
-			preferred = ""
-		if preferred.is_empty():
-			for k in animation.get_states().keys():
-				if not Array(animation.get_state(String(k)).get("frames", [])).is_empty():
-					preferred = String(k)
-					break
-		if preferred.is_empty() and _state_list.item_count > 0:
-			preferred = _state_list.get_item_text(0)
-		if not preferred.is_empty():
-			current_state = preferred
-			for i in range(_state_list.item_count):
-				if _state_list.get_item_text(i) == current_state:
-					_state_list.select(i)
-					break
-		current_frame = 0
-		_time = 0.0
+	if changed:
+		_maybe_auto_detect_states()
+	_rebuild_state_list()
 	_rebuild_transitions()
 	_refresh_timeline()
 	_preview.set_data(sprite, animation, current_state)
@@ -279,6 +272,151 @@ func set_animation(doc: RetroAnimation, p_project: RetroProject = null) -> void:
 	_info.text = "Animation: %s  (%d states, %d fps)" % [animation.get_name(), animation.get_states().size(), animation.get_fps()]
 	_update_info()
 	_ensure_playing()
+
+func _rebuild_state_list() -> void:
+	_state_list.clear()
+	if animation == null:
+		return
+	for k in animation.get_states().keys():
+		_state_list.add_item(String(k))
+	var preferred := current_state
+	if not animation.get_states().has(preferred):
+		preferred = ""
+		for k in animation.get_states().keys():
+			if not Array(animation.get_state(String(k)).get("frames", [])).is_empty():
+				preferred = String(k)
+				break
+	if preferred.is_empty() and _state_list.item_count > 0:
+		preferred = _state_list.get_item_text(0)
+	if not preferred.is_empty():
+		current_state = preferred
+		for i in range(_state_list.item_count):
+			if _state_list.get_item_text(i) == current_state:
+				_state_list.select(i)
+				break
+		current_frame = 0
+		_time = 0.0
+
+func _maybe_auto_detect_states() -> void:
+	if animation == null or sprite == null or project == null:
+		return
+	var meta: Dictionary = animation.get_metadata()
+	if bool(meta.get("states_auto_detected", false)):
+		return
+	var states: Dictionary = animation.get_states()
+	var total := 0
+	var max_frames := 0
+	for k in states.keys():
+		var count := Array(Dictionary(states[k]).get("frames", [])).size()
+		total += count
+		max_frames = maxi(max_frames, count)
+	var sprite_frames := sprite.get_frames().size()
+	if total > 0 and not (sprite_frames > 0 and max_frames >= sprite_frames):
+		return
+	var result := StateDetect.detect(project, sprite)
+	if bool(result.get("ok", false)):
+		animation.set_states(result.get("states", {}))
+		meta["states_auto_detected"] = true
+		meta["states_source"] = String(result.get("source", ""))
+		animation.set_metadata(meta)
+		status.emit(String(result.get("message", "States detected.")))
+		modified.emit()
+	else:
+		meta["states_auto_detected"] = true
+		meta["states_source"] = "none"
+		animation.set_metadata(meta)
+		status.emit(String(result.get("message", "No state metadata found.")) + " Use Detect states or Distribute equally.")
+	_rebuild_state_list()
+	_rebuild_transitions()
+	_refresh_timeline()
+	_preview.set_data(sprite, animation, current_state)
+	_preview.set_time(0.0)
+	_update_info()
+
+func detect_states() -> void:
+	if animation == null or sprite == null or project == null:
+		status.emit("Load a project, sprite and animation first.")
+		return
+	var result := StateDetect.detect(project, sprite)
+	if not bool(result.get("ok", false)):
+		status.emit(String(result.get("message", "No state metadata found.")))
+		return
+	animation.set_states(result.get("states", {}))
+	var meta: Dictionary = animation.get_metadata()
+	meta["states_auto_detected"] = true
+	meta["states_source"] = String(result.get("source", ""))
+	animation.set_metadata(meta)
+	_rebuild_state_list()
+	_rebuild_transitions()
+	_refresh_timeline()
+	_preview.set_data(sprite, animation, current_state)
+	_preview.set_time(0.0)
+	_update_info()
+	_ensure_playing()
+	modified.emit()
+	status.emit(String(result.get("message", "States detected.")))
+
+func _confirm_distribute_equally() -> void:
+	if animation == null or sprite == null:
+		status.emit("Load a sprite and animation first.")
+		return
+	var names: Array = animation.get_states().keys()
+	if names.is_empty():
+		names = ["IDLE", "WALK", "JUMP", "CROUCH", "ATTACK", "HIT", "BLOCK", "SPECIAL", "SUPER", "THROW"]
+	var dlg := ConfirmationDialog.new()
+	dlg.dialog_text = "Distribute %d sprite frames equally across %d states? This replaces the current frame ranges." % [sprite.get_frames().size(), names.size()]
+	dlg.confirmed.connect(func():
+		_distribute_equally(names)
+		dlg.queue_free())
+	dlg.canceled.connect(func(): dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
+
+func _distribute_equally(names: Array) -> void:
+	var frames: Array = sprite.get_frames()
+	var total := frames.size()
+	var states_count := names.size()
+	if total <= 0 or states_count <= 0:
+		status.emit("Nothing to distribute.")
+		return
+	var states: Dictionary = animation.get_states()
+	var base := total / states_count
+	var remainder := total % states_count
+	var cursor := 0
+	for i in range(states_count):
+		var state_name := String(names[i])
+		var count := base + (1 if i < remainder else 0)
+		var list: Array = []
+		for _j in range(count):
+			if cursor >= total:
+				break
+			var f: Dictionary = frames[cursor]
+			list.append({
+				"sprite_frame": cursor,
+				"duration": 6,
+				"rect": f.get("rect", Rect2i()),
+				"hitboxes": [],
+				"events": [],
+			})
+			cursor += 1
+		var st: Dictionary = states.get(state_name, {"name": state_name, "loop": true, "next": ""})
+		st["name"] = state_name
+		st["frames"] = list
+		states[state_name] = st
+	animation.set_states(states)
+	var meta: Dictionary = animation.get_metadata()
+	meta["states_auto_detected"] = true
+	meta["states_source"] = "equal distribution"
+	animation.set_metadata(meta)
+	_rebuild_state_list()
+	_rebuild_transitions()
+	_refresh_timeline()
+	_preview.set_data(sprite, animation, current_state)
+	_preview.set_time(0.0)
+	_update_info()
+	_ensure_playing()
+	modified.emit()
+	status.emit("Distributed %d frames across %d states." % [total, states_count])
 
 func _rebuild_transitions() -> void:
 	_transition.clear()
