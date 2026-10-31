@@ -886,7 +886,9 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 	current_resource = r
 	code_panel.set_resource(r)
 	_show_resource_info(r)
-	var ext := String(r.get("ext", ""))
+	var ext := String(r.get("ext", "")).to_lower()
+	if ext.is_empty():
+		ext = String(r.get("path", "")).get_extension().to_lower()
 	var editor := force_kind if force_kind != "" else String(r.get("editor", ""))
 	if ext == "sff" or ext == "air":
 		_show_readonly_dialog(String(r.get("name", "")), String(r.get("note", "")))
