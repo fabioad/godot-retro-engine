@@ -7,6 +7,7 @@
 #include "retro_importer.h"
 
 #include "retro_graphics.h"
+#include "retro_s2_sprites.h"
 #include "retro_sdk.h"
 #include "retro_util.h"
 
@@ -37,6 +38,103 @@ Array RetroImporter::detect_build_files(const String &p_path) {
 		}
 	}
 	return out;
+}
+
+static Vector<String> _res_tokens(const String &p_line) {
+	Vector<String> tokens;
+	int i = 0;
+	while (i < p_line.length()) {
+		while (i < p_line.length() && (p_line[i] == ' ' || p_line[i] == '\t' || p_line[i] == '\r')) {
+			i++;
+		}
+		if (i >= p_line.length()) {
+			break;
+		}
+		if (p_line[i] == '"') {
+			i++;
+			const int start = i;
+			while (i < p_line.length() && p_line[i] != '"') {
+				i++;
+			}
+			tokens.push_back(p_line.substr(start, i - start));
+			if (i < p_line.length()) {
+				i++;
+			}
+		} else {
+			const int start = i;
+			while (i < p_line.length() && p_line[i] != ' ' && p_line[i] != '\t' && p_line[i] != '\r') {
+				i++;
+			}
+			tokens.push_back(p_line.substr(start, i - start));
+		}
+	}
+	return tokens;
+}
+
+static Dictionary _scan_sgdk_sprites(const String &p_root) {
+	Dictionary sprites;
+	const Array files = RetroUtil::find_files(p_root, Vector<String>{ "res" }, 7);
+	for (int fi = 0; fi < files.size(); fi++) {
+		const String res_path = files[fi];
+		const String text = RetroUtil::read_text(res_path);
+		const PackedStringArray lines = text.split("\n");
+		for (int i = 0; i < lines.size(); i++) {
+			String line = String(lines[i]);
+			const int comment = line.find(";");
+			if (comment >= 0) {
+				line = line.substr(0, comment);
+			}
+			line = line.strip_edges();
+			if (!line.begins_with("SPRITE")) {
+				continue;
+			}
+			const Vector<String> tokens = _res_tokens(line);
+			if (tokens.size() < 5) {
+				continue;
+			}
+			const String file = tokens[2];
+			const int tiles_w = tokens[3].to_int();
+			const int tiles_h = tokens[4].to_int();
+			if (file.is_empty() || tiles_w <= 0 || tiles_h <= 0) {
+				continue;
+			}
+			const String path = RetroUtil::join(res_path.get_base_dir(), file);
+			Dictionary info;
+			info["frame_w"] = tiles_w * 8;
+			info["frame_h"] = tiles_h * 8;
+			info["sgdk_name"] = tokens[1];
+			info["res_path"] = res_path;
+			sprites[path] = info;
+		}
+	}
+	return sprites;
+}
+
+static Array _frames_for_grid(int p_width, int p_height, int p_frame_w, int p_frame_h) {
+	Array frames;
+	if (p_frame_w <= 0 || p_frame_h <= 0 || p_width < p_frame_w || p_height < p_frame_h) {
+		return frames;
+	}
+	const int columns = p_width / p_frame_w;
+	const int rows = p_height / p_frame_h;
+	if (columns <= 0 || rows <= 0 || columns * rows > 4096) {
+		return frames;
+	}
+	for (int y = 0; y < rows; y++) {
+		for (int x = 0; x < columns; x++) {
+			Dictionary frame;
+			frame["name"] = "sheet_" + itos(frames.size());
+			Array rect;
+			rect.push_back(x * p_frame_w);
+			rect.push_back(y * p_frame_h);
+			rect.push_back(p_frame_w);
+			rect.push_back(p_frame_h);
+			frame["rect"] = rect;
+			frame["duration"] = 6;
+			frames.push_back(frame);
+		}
+	}
+	return frames;
 }
 
 static Dictionary _retro_infer_map_layout(const String &p_map_path, const Dictionary &p_map_widths, bool p_has_stagedata) {
@@ -341,12 +439,24 @@ Dictionary RetroImporter::scan(const String &p_path, const String &p_platform_hi
 			}
 		}
 	}
+	const Dictionary sgdk_sprites = _scan_sgdk_sprites(root);
 	int image_loaded = 0;
 	for (int i = 0; i < files.size(); i++) {
 		const String f = files[i];
 		Dictionary r = _classify_resource(root, f, platform);
 		if (r.get("kind", "unknown") == "unknown") {
 			continue;
+		}
+		if (sgdk_sprites.has(f)) {
+			const Dictionary sprite_info = sgdk_sprites[f];
+			r["editor"] = "sprite";
+			r["kind"] = "sgdk_sprite";
+			r["group"] = "sprite";
+			r["editable"] = true;
+			r["frame_w"] = sprite_info.get("frame_w", 0);
+			r["frame_h"] = sprite_info.get("frame_h", 0);
+			r["sgdk_name"] = sprite_info.get("sgdk_name", "");
+			r["res_path"] = sprite_info.get("res_path", "");
 		}
 		if (!(bool)r.get("editable", false)) {
 			warnings.push_back(String(r["name"]) + ": " + String(r.get("note", "read-only")));
@@ -365,6 +475,13 @@ Dictionary RetroImporter::scan(const String &p_path, const String &p_platform_hi
 				}
 				r["palette_size"] = pal.size();
 				r["has_alpha"] = img->detect_alpha() != Image::ALPHA_NONE;
+				if (String(r.get("kind", "")) == "sgdk_sprite") {
+					const Array frames = _frames_for_grid(img->get_width(), img->get_height(), int(r.get("frame_w", 0)), int(r.get("frame_h", 0)));
+					if (!frames.is_empty()) {
+						r["frames"] = frames;
+						r["frames_count"] = frames.size();
+					}
+				}
 				image_loaded++;
 			}
 			const String map = _find_companion(root, f, "map");
@@ -403,6 +520,21 @@ Dictionary RetroImporter::scan(const String &p_path, const String &p_platform_hi
 			sources.push_back(r);
 		}
 		resources.push_back(r);
+	}
+
+	// Sonic 2 disassembly sprites are decoded from the Flex 2 manifest and
+	// registered as generated indexed PNG sheets.
+	if (platform == "megadrive") {
+		Array s2_resources;
+		Array s2_warnings;
+		if (RetroS2Sprites::extract(root, s2_resources, s2_warnings)) {
+			for (int i = 0; i < s2_resources.size(); i++) {
+				resources.push_back(s2_resources[i]);
+			}
+			for (int i = 0; i < s2_warnings.size(); i++) {
+				warnings.push_back(s2_warnings[i]);
+			}
+		}
 	}
 
 	// Deduplicate read-only warnings.

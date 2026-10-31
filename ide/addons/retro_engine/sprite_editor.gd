@@ -583,10 +583,41 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 	if err != OK:
 		status.emit("Could not open sprite: %s" % path)
 		return
+	var frame_data: Variant = res.get("frames", [])
+	if frame_data is Array and not frame_data.is_empty():
+		var frames: Array = []
+		for fd in frame_data:
+			if typeof(fd) != TYPE_DICTIONARY:
+				continue
+			var frame_dict: Dictionary = fd
+			var rect := Rect2i()
+			var rect_data: Variant = frame_dict.get("rect", null)
+			if rect_data is Rect2i:
+				rect = rect_data
+			elif rect_data is Array and rect_data.size() >= 4:
+				rect = Rect2i(int(rect_data[0]), int(rect_data[1]), int(rect_data[2]), int(rect_data[3]))
+			elif rect_data is Dictionary:
+				rect = Rect2i(int(rect_data.get("x", 0)), int(rect_data.get("y", 0)), int(rect_data.get("w", 0)), int(rect_data.get("h", 0)))
+			if rect.size.x <= 0 or rect.size.y <= 0:
+				continue
+			frames.append({
+				"name": String(frame_dict.get("name", "frame_%d" % frames.size())),
+				"rect": rect,
+				"duration": int(frame_dict.get("duration", 6)),
+				"hitboxes": [],
+				"events": [],
+			})
+		if not frames.is_empty():
+			doc.set_frames(frames)
 	if doc.get_image() != null:
 		SpriteSheet.apply_chroma_key(doc.get_image(), doc.get_palette())
 	_tiles_x.set_value_no_signal(16)
-	if ext in ["png", "bmp", "webp"]:
+	var frame_w := int(res.get("frame_w", 0))
+	var frame_h := int(res.get("frame_h", 0))
+	if frame_w > 0 and frame_h > 0:
+		_split_w.set_value_no_signal(frame_w)
+		_split_h.set_value_no_signal(frame_h)
+	elif ext in ["png", "bmp", "webp"]:
 		var img := doc.get_image()
 		if img and img.get_width() % 16 == 0 and img.get_height() % 16 == 0:
 			_split_w.set_value_no_signal(16)
