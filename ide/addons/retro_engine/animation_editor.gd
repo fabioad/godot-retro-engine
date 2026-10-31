@@ -5,8 +5,10 @@ extends VBoxContainer
 
 signal modified()
 signal status(text: String)
+signal sprite_modified()
 
 const AnimPreview = preload("res://addons/retro_engine/anim_preview.gd")
+const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
 
 var animation: RetroAnimation
 var sprite: RetroSprite
@@ -33,7 +35,7 @@ var _info: Label
 var _frame_info: Label
 var _timeline_buttons: Array = []
 var _zoom_spin: SpinBox
-var _auto_started: bool = false
+var _user_paused: bool = false
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -231,9 +233,7 @@ func set_sprite(doc: RetroSprite) -> void:
 	sprite = doc
 	_preview.set_data(sprite, animation, current_state)
 	_preview.queue_redraw()
-	if not _auto_started:
-		_auto_started = true
-		_ensure_playing()
+	_ensure_playing()
 
 func set_animation(doc: RetroAnimation, p_project: RetroProject = null) -> void:
 	var changed := animation != doc
@@ -271,9 +271,7 @@ func set_animation(doc: RetroAnimation, p_project: RetroProject = null) -> void:
 	_preview.queue_redraw()
 	_info.text = "Animation: %s  (%d states, %d fps)" % [animation.get_name(), animation.get_states().size(), animation.get_fps()]
 	_update_info()
-	if not _auto_started:
-		_auto_started = true
-		_ensure_playing()
+	_ensure_playing()
 
 func _rebuild_transitions() -> void:
 	_transition.clear()
@@ -302,6 +300,7 @@ func _on_state_selected(index: int) -> void:
 	_rebuild_transitions()
 	_refresh_timeline()
 	_update_info()
+	_user_paused = false
 	_ensure_playing()
 
 func _refresh_timeline() -> void:
@@ -437,10 +436,16 @@ func _add_frames_from_sprite() -> void:
 	if animation == null:
 		status.emit("Select or create an animation first.")
 		return
-	if sprite == null or sprite.get_frames().size() < 2:
-		status.emit("Sprite has fewer than two frames. Split the sheet in the Sprite tab first.")
+	if sprite == null:
+		status.emit("Load a sprite first.")
 		return
-	var sprite_frames: Array = sprite.get_frames()
+	var before := sprite.get_frames().size()
+	var sprite_frames: Array = SpriteSheet.ensure_sprite_frames(sprite)
+	if sprite_frames.size() < 2:
+		status.emit("Could not detect separate frames. Check the sprite transparency or split the sheet in the Sprite tab.")
+		return
+	if sprite_frames.size() != before:
+		sprite_modified.emit()
 	var states := animation.get_states()
 	var st: Dictionary = states.get(current_state, {})
 	var out: Array = []
@@ -502,16 +507,18 @@ func _toggle_play() -> void:
 	_playing = not _playing
 	_play_button.text = "Pause" if _playing else "Play"
 	if _playing:
+		_user_paused = false
 		if not _preview.resolve_frame().is_empty():
 			_timer.start()
 		else:
 			_playing = false
 			_play_button.text = "Play"
 	else:
+		_user_paused = true
 		_timer.stop()
 
 func _ensure_playing() -> void:
-	if _playing or _preview.resolve_frame().is_empty():
+	if _playing or _user_paused or _preview.resolve_frame().is_empty():
 		return
 	_playing = true
 	_play_button.text = "Pause"
@@ -519,6 +526,7 @@ func _ensure_playing() -> void:
 
 func _stop() -> void:
 	_playing = false
+	_user_paused = true
 	_play_button.text = "Play"
 	_timer.stop()
 	_time = 0.0

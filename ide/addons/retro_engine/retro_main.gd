@@ -316,6 +316,7 @@ func _build_ui() -> void:
 	animation_editor.name = "Animation"
 	animation_editor.modified.connect(_on_document_modified)
 	animation_editor.status.connect(status_message)
+	animation_editor.sprite_modified.connect(_on_animation_sprite_modified)
 	_tabs.add_child(animation_editor)
 	palette_editor = PaletteEditor.new()
 	palette_editor.name = "Palette"
@@ -1168,6 +1169,18 @@ func _on_document_modified() -> void:
 	hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
 	if _save_timer:
 		_save_timer.start()
+
+func _on_animation_sprite_modified() -> void:
+	# The Anim tab can auto-slice a full sprite sheet; refresh the Sprite tab
+	# and every preview so the new frames are visible immediately.
+	if sprite_editor:
+		sprite_doc = sprite_editor.sprite
+		sprite_editor.set_sprite(sprite_doc, project)
+	_refresh_preview()
+	hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
+	if _save_timer:
+		_save_timer.start()
+	status_message("Sprite sheet split into frames by transparency.")
 
 func _on_collision_modified() -> void:
 	if _save_timer:

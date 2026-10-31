@@ -4,9 +4,12 @@ extends Control
 ##
 ## The preview has two sources:
 ##  - the selected animation state, sampled with its real frame durations;
-##  - a sprite-sheet fallback that cycles the sprite frames when the state has
-##    no frames yet (common after importing a sheet). The fallback is clearly
-##    labelled so it is never mistaken for authored animation data.
+##  - a sprite-sheet fallback that slices the sheet by transparency and cycles
+##    its frames when the state has no frames yet (common after importing a
+##    sheet). The fallback is clearly labelled so it is never mistaken for
+##    authored animation data.
+
+const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
 
 var sprite: RetroSprite
 var animation: RetroAnimation
@@ -19,6 +22,8 @@ var show_origin: bool = true
 
 var _texture: ImageTexture
 var _last_image: Image
+var _sheet_image: Image
+var _sheet_frames: Array = []
 
 func _ready() -> void:
 	clip_contents = true
@@ -52,6 +57,22 @@ func _prepare_texture() -> void:
 	_last_image = image
 	_texture = ImageTexture.create_from_image(image)
 
+## Sheet rects for the current sprite. Authored multi-frame sprites are used
+## directly; a single full-sheet frame is split by transparency once and cached.
+func sprite_sheet_frames() -> Array:
+	if sprite == null:
+		return []
+	var authored: Array = sprite.get_frames()
+	if authored.size() > 1:
+		return authored
+	var image := sprite.get_image()
+	if image == null:
+		return authored
+	if image != _sheet_image:
+		_sheet_image = image
+		_sheet_frames = SpriteSheet.frames_for_sprite(sprite)
+	return _sheet_frames
+
 ## Resolve the frame that must be drawn at `time`.
 ##
 ## Returns an empty dictionary when there is nothing to preview. The returned
@@ -61,47 +82,72 @@ func _prepare_texture() -> void:
 func resolve_frame() -> Dictionary:
 	if sprite == null:
 		return {}
+	var authored: Array = sprite.get_frames()
+	var sheet: Array = sprite_sheet_frames()
+	var has_auto_sheet := sheet.size() > authored.size() and sheet.size() > 1
 	if animation != null:
 		var sample: Dictionary = animation.sample(state_name, time)
 		if not sample.is_empty():
-			var frames: Array = sprite.get_frames()
 			var si := int(sample.get("sprite_frame", 0))
-			if si >= 0 and si < frames.size():
-				sample["image_index"] = si
-				sample["source"] = "animation"
-				return sample
+			if si >= 0 and si < authored.size():
+				var authored_rect: Rect2i = Dictionary(authored[si]).get("rect", Rect2i())
+				var full_sheet := sprite.get_image() != null and authored_rect.size.x >= sprite.get_image().get_width() and authored_rect.size.y >= sprite.get_image().get_height()
+				# A single authored frame that covers the whole sheet is a
+				# placeholder: play the detected sub-frames instead.
+				if not (full_sheet and has_auto_sheet):
+					sample["image_index"] = si
+					sample["source"] = "animation"
+					sample["auto_sheet"] = false
+					return sample
 			var r: Rect2i = sample.get("rect", Rect2i())
 			if r.size.x > 0 and r.size.y > 0 and sprite.get_image() != null:
-				sample["image_index"] = -1
-				sample["source"] = "animation"
-				return sample
-	var frames: Array = sprite.get_frames()
+				var full_image := r.position.x <= 0 and r.position.y <= 0 \
+					and r.size.x >= sprite.get_image().get_width() and r.size.y >= sprite.get_image().get_height()
+				if not (full_image and has_auto_sheet):
+					sample["image_index"] = -1
+					sample["source"] = "animation"
+					sample["auto_sheet"] = false
+					return sample
+	var frames: Array = sheet if not sheet.is_empty() else authored
 	if frames.is_empty():
 		return {}
 	var total := 0
 	for f in frames:
-		total += maxi(1, int(Dictionary(f).get("duration", 1)))
+		total += maxi(1, int(_frame_duration(f)))
 	var tick := int(time * 60.0)
 	var target := tick % total if total > 0 else 0
 	var acc := 0
 	for i in range(frames.size()):
-		var f: Dictionary = frames[i]
-		acc += maxi(1, int(f.get("duration", 1)))
+		var f = frames[i]
+		acc += maxi(1, int(_frame_duration(f)))
 		if target < acc:
-			var result := f.duplicate()
+			var result: Dictionary = {}
+			if f is Dictionary:
+				result = Dictionary(f).duplicate()
+				result["rect"] = Dictionary(f).get("rect", Rect2i())
+			else:
+				result["rect"] = f
 			result["index"] = i
 			result["sprite_frame"] = i
 			result["image_index"] = i
-			result["duration"] = int(f.get("duration", 1))
+			result["duration"] = int(_frame_duration(f))
 			result["source"] = "sprite_sheet"
+			result["auto_sheet"] = has_auto_sheet or sheet.size() > authored.size()
+			result["frame_count"] = frames.size()
 			return result
 	return {}
+
+func _frame_duration(frame) -> int:
+	if frame is Dictionary:
+		return maxi(1, int(Dictionary(frame).get("duration", 6)))
+	return 6
 
 func frame_image(frame: Dictionary) -> Image:
 	if sprite == null or frame.is_empty():
 		return null
 	var si := int(frame.get("image_index", -1))
-	if si >= 0 and si < sprite.get_frames().size():
+	var auto_sheet := bool(frame.get("auto_sheet", false))
+	if si >= 0 and si < sprite.get_frames().size() and not auto_sheet:
 		var image: Image = sprite.render_frame(si)
 		if image != null:
 			return image
@@ -174,7 +220,7 @@ func _draw() -> void:
 		var marker := origin + sprite_origin * draw_zoom
 		draw_line(marker - Vector2(6, 0), marker + Vector2(6, 0), Color("#ffd45e"), 1.0)
 		draw_line(marker - Vector2(0, 6), marker + Vector2(0, 6), Color("#ffd45e"), 1.0)
-	draw_texture_rect(_texture, Rect2(origin, draw_size), true)
+	draw_texture_rect(_texture, Rect2(origin, draw_size), false)
 	draw_rect(Rect2(origin, draw_size), Color("#7fd1ff"), false, 1.0)
 	if show_boxes:
 		for box in frame.get("hitboxes", []):
@@ -185,7 +231,11 @@ func _draw() -> void:
 			draw_rect(Rect2(origin + Vector2(r.position) * draw_zoom, Vector2(r.size) * draw_zoom), c, false, 1.5)
 	var source := String(frame.get("source", "animation"))
 	var title := state_name if source == "animation" else "Sprite sheet"
-	var label := "%s  frame %d  %df @ %dHz" % [title, int(frame.get("index", 0)), int(frame.get("duration", 1)), animation.get_fps() if animation else 60]
+	var frame_count := int(frame.get("frame_count", sprite.get_frames().size()))
+	var label := "%s  frame %d/%d  %df @ %dHz" % [title, int(frame.get("index", 0)), maxi(1, frame_count), int(frame.get("duration", 1)), animation.get_fps() if animation else 60]
 	draw_string(ThemeDB.fallback_font, view.position + Vector2(8, view.size.y - 8), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#cfe0f5"))
 	if source == "sprite_sheet":
-		draw_string(ThemeDB.fallback_font, view.position + Vector2(8, 18), "No frames in '%s' yet - cycling the whole sprite" % state_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ffd45e"))
+		var note := "Auto-split by transparency - %d frames" % frame_count
+		if not bool(frame.get("auto_sheet", false)):
+			note = "No frames in '%s' yet - cycling %d sprite frames" % [state_name, frame_count]
+		draw_string(ThemeDB.fallback_font, view.position + Vector2(8, 18), note, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ffd45e"))

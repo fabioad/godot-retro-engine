@@ -5,6 +5,8 @@ extends SceneTree
 const AnimPreview = preload("res://addons/retro_engine/anim_preview.gd")
 const StageCanvas = preload("res://addons/retro_engine/stage_canvas.gd")
 const StageEditor = preload("res://addons/retro_engine/stage_editor.gd")
+const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
+const AnimationEditor = preload("res://addons/retro_engine/animation_editor.gd")
 
 var ok := true
 
@@ -13,6 +15,8 @@ func _initialize() -> void:
 	var sprite := _make_sprite()
 	var animation := _make_animation()
 	_test_animation(sprite, animation)
+	_test_sheet_auto_split()
+	await _test_animation_editor()
 	await _test_stage(sprite, animation)
 	await _test_flat_stage()
 	print("PREVIEW_TEST ", "PASS" if ok else "FAIL")
@@ -205,4 +209,86 @@ func _test_flat_stage() -> void:
 	_check("stage_clip_pose_1", canvas._stage_animation_pose(entry) == 1)
 	canvas.animation_time = 0.07
 	_check("stage_clip_pose_loop", canvas._stage_animation_pose(entry) == 0)
+	editor.queue_free()
+
+
+func _test_sheet_auto_split() -> void:
+	var sheet := Image.create_empty(64, 16, false, Image.FORMAT_RGBA8)
+	sheet.fill(Color(0, 0, 0, 0))
+	for i in range(4):
+		sheet.fill_rect(Rect2i(i * 16, 0, 12, 16), Color(0.2 + i * 0.2, 0.8, 0.4, 1.0))
+	var sprite := RetroSprite.new()
+	sprite.set_platform("snes")
+	sprite.set_image(sheet)
+	sprite.add_frame("full", Rect2i(0, 0, 64, 16), 6)
+	var animation := RetroAnimation.new()
+	animation.set_fps(60)
+	var states := animation.get_states()
+	for key in states.keys():
+		var st: Dictionary = states[key]
+		st["frames"] = []
+		states[key] = st
+	var idle: Dictionary = states["IDLE"]
+	idle["frames"] = [{"sprite_frame": 0, "duration": 6, "rect": Rect2i(0, 0, 64, 16), "hitboxes": []}]
+	states["IDLE"] = idle
+	animation.set_states(states)
+	var rects := SpriteSheet.frames_for_sprite(sprite)
+	_check("sheet_detected_count", rects.size() == 4, str(rects))
+	if rects.size() == 4:
+		_check("sheet_detected_rect", rects[1] == Rect2i(16, 0, 16, 16), str(rects[1]))
+	var preview = AnimPreview.new()
+	get_root().add_child(preview)
+	preview.size = Vector2(320, 240)
+	preview.set_data(sprite, animation, "IDLE")
+	preview.time = 0.0
+	var f0: Dictionary = preview.resolve_frame()
+	preview.time = 6.0 / 60.0
+	var f1: Dictionary = preview.resolve_frame()
+	_check("sheet_preview_source", String(f0.get("source", "")) == "sprite_sheet" and bool(f0.get("auto_sheet", false)))
+	_check("sheet_preview_advance", int(f0.get("image_index", -1)) == 0 and int(f1.get("image_index", -1)) == 1, str(f0) + " -> " + str(f1))
+	var image := preview.frame_image(f1)
+	_check("sheet_preview_crop", image != null and image.get_size() == Vector2i(16, 16))
+	var materialized := SpriteSheet.ensure_sprite_frames(sprite)
+	_check("sheet_materialized", materialized.size() == 4 and sprite.get_frames().size() == 4)
+	preview.queue_free()
+
+
+func _test_animation_editor() -> void:
+	var sheet := Image.create_empty(64, 16, false, Image.FORMAT_RGBA8)
+	sheet.fill(Color(0, 0, 0, 0))
+	for i in range(4):
+		sheet.fill_rect(Rect2i(i * 16, 0, 12, 16), Color(0.2 + i * 0.2, 0.7, 0.4, 1.0))
+	var sprite := RetroSprite.new()
+	sprite.set_platform("snes")
+	sprite.set_image(sheet)
+	sprite.add_frame("full", Rect2i(0, 0, 64, 16), 6)
+	var animation := RetroAnimation.new()
+	animation.set_fps(60)
+	var states := animation.get_states()
+	for key in states.keys():
+		var st: Dictionary = states[key]
+		st["frames"] = []
+		states[key] = st
+	var idle: Dictionary = states["IDLE"]
+	idle["frames"] = [{"sprite_frame": 0, "duration": 6, "rect": Rect2i(0, 0, 64, 16), "hitboxes": []}]
+	states["IDLE"] = idle
+	animation.set_states(states)
+	var editor = AnimationEditor.new()
+	get_root().add_child(editor)
+	await process_frame
+	editor.set_sprite(sprite)
+	editor.set_animation(animation)
+	_check("editor_autoplay", editor._playing and editor._play_button.text == "Pause")
+	_check("editor_sheet_preview", String(editor._preview.resolve_frame().get("source", "")) == "sprite_sheet")
+	var before: float = editor._time
+	editor._tick()
+	_check("editor_tick_advances", editor._time > before and is_equal_approx(editor._preview.time, editor._time))
+	editor._toggle_play()
+	_check("editor_pause", not editor._playing and editor._user_paused)
+	editor._toggle_play()
+	_check("editor_resume", editor._playing and not editor._user_paused)
+	editor._add_frames_from_sprite()
+	_check("editor_materialized_sprite", sprite.get_frames().size() == 4)
+	_check("editor_materialized_anim", Array(animation.get_state("IDLE").get("frames", [])).size() == 4)
+	_check("editor_anim_preview", String(editor._preview.resolve_frame().get("source", "")) == "animation")
 	editor.queue_free()
