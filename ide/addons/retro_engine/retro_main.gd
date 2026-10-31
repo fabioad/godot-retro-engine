@@ -349,7 +349,6 @@ func _build_ui() -> void:
 	mugen_tools.page_changed.connect(_on_mugen_page_changed)
 	mugen_tools.char_def_requested.connect(_on_mugen_char_def_requested)
 	mugen_tools.sound_imported.connect(_on_mugen_sound_imported)
-	_tabs.add_child(mugen_tools)
 	input_editor = InputEditor.new()
 	input_editor.name = "Inputs"
 	input_editor.modified.connect(_on_document_modified)
@@ -384,6 +383,7 @@ func _build_ui() -> void:
 	audio_editor.status.connect(status_message)
 	audio_editor.modified.connect(_on_document_modified)
 	_tabs.add_child(audio_editor)
+	_tabs.add_child(mugen_tools)
 	native_editor = NativeBridgeEditor.new()
 	native_editor.name = "Native"
 	native_editor.status.connect(status_message)
@@ -399,8 +399,8 @@ func _build_ui() -> void:
 	_tabs.set_tab_title(4, I18n.t("tabs.palette"))
 	_tabs.set_tab_title(5, I18n.t("tabs.code"))
 	_tabs.set_tab_title(6, I18n.t("tabs.build"))
-	_tabs.set_tab_title(7, "MUGEN Tools")
-	_tabs.set_tab_title(8, I18n.t("tabs.audio"))
+	_tabs.set_tab_title(7, I18n.t("tabs.audio"))
+	_tabs.set_tab_title(8, "MUGEN Tools")
 	_tabs.set_tab_title(9, I18n.t("tabs.native"))
 
 	# Right inspector.
@@ -1153,7 +1153,7 @@ func _open_mugen_meta(meta: Dictionary) -> void:
 	var path := String(meta.get("path", ""))
 	if path.is_empty():
 		return
-	_tabs.current_tab = 7
+	_tabs.current_tab = 8
 	match kind:
 		"char":
 			mugen_tools.open_char(path, int(meta.get("action", -1)))
@@ -1186,7 +1186,7 @@ func _open_audio_browser(kind: String) -> void:
 	if audio_editor != null:
 		audio_editor.set_project(project)
 		audio_editor.set_kind_filter(kind)
-		_tabs.current_tab = 8
+		_tabs.current_tab = 7
 		audio_editor.focus_search()
 	status_message(I18n.t("top.audio_browser_status"))
 
@@ -1247,7 +1247,7 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 		if audio_editor:
 			audio_editor.set_project(project)
 			audio_editor.select_asset(String(r.get("path", "")), true)
-			_tabs.current_tab = 8
+			_tabs.current_tab = 7
 		status_message("Audio asset opened in the BGM/SFX editor.")
 		return
 	status_message("Recognized resource, but no visual editor is available for ." + ext)
