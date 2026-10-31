@@ -263,6 +263,27 @@ optional auto transition driven by the node's animation duration.
 The generated files are separate from the game's existing `main.c` and scene
 code. No automatic source rewrite is performed.
 
+### MUGEN tools and native asset import
+
+`mugen_sff.gd` reads SFF v1 (PCX, shared `samepal` palettes) and v2 (raw,
+RLE8, RLE5, LZ5 and PNG payloads). `mugen_air.gd` reads AIR actions, Clsn boxes
+and stage-embedded `[Begin action]` blocks. `mugen_snd.gd` wraps ElecbyteSnd
+WAV entries in `AudioStreamWAV`; `mugen_def.gd` reads character files and stage
+BG/Camera sections.
+
+The **MUGEN Tools** tab contains Char/Anim, Stage Layers, SFF Sprites, Sounds
+and buttons for Inputs/Simulator/State Graph/Hitboxes/Import. Stage Layers
+draws every `[BG]` layer with `start`/`delta` parallax, per-layer visibility,
+thumbnails and a drawn/off-screen report. Hitboxes lists only states with
+frames, can draw the selected sprite behind the boxes, and Import/States loads
+a char DEF plus an AIR action preview.
+
+`mugen_import.gd` converts a char into a 16-colour sprite atlas + RetroSprite
+and RetroAnimation (IDLE/WALK/JUMP/ATTACK/SPECIAL + action states), and a stage
+into a native RetroStage through the validated native stage pipeline. Assets
+are written under `art/mugen/<slug>/`, registered in `.retro/project.json`,
+and offered as optional char/stage fields in New Project.
+
 ### Run
 ```
 ROM -> RetroEmulator.probe_rom()

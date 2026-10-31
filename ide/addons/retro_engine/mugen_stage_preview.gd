@@ -11,6 +11,8 @@ var camera_x: float = 0.0
 var camera_y: float = 0.0
 var time_ticks: float = 0.0
 var zoom: int = 0
+var drawn_layers: int = 0
+var skipped_layers: int = 0
 var _textures: Dictionary = {}
 
 func _ready() -> void:
@@ -57,8 +59,13 @@ func _draw() -> void:
 	var scale := view.size.x / LOGICAL.x
 	var layers: Array = definition.bg_layers.duplicate()
 	layers.sort_custom(func(a, b): return int(a.get("layerno", 0)) < int(b.get("layerno", 0)))
+	drawn_layers = 0
+	skipped_layers = 0
 	for layer in layers:
 		var l: Dictionary = layer
+		if l.has("visible") and not bool(l["visible"]):
+			skipped_layers += 1
+			continue
 		var group := 0
 		var number := 0
 		var ticks := 0
@@ -75,12 +82,15 @@ func _draw() -> void:
 			group = int(pair.x)
 			number = int(pair.y)
 		if group == 0 and number == 0 and not l.has("spriteno"):
+			skipped_layers += 1
 			continue
 		var idx: int = sff.find_index(group, number)
 		if idx < 0:
+			skipped_layers += 1
 			continue
 		var image: Image = sff.render(idx)
 		if image == null:
+			skipped_layers += 1
 			continue
 		var tex: ImageTexture = _textures.get(idx, null)
 		if tex == null:
@@ -89,14 +99,16 @@ func _draw() -> void:
 		var start := _pair(String(l.get("start", "0,0")))
 		var delta := _pair(String(l.get("delta", "1,1")))
 		var axis: Vector2i = sff.sprite_at(idx).get("axis", Vector2i.ZERO)
-		var pos := Vector2(start.x + camera_x * delta.x, start.y + camera_y * delta.y) - Vector2(axis)
+		var pos := Vector2(LOGICAL.x * 0.5 + start.x + camera_x * delta.x, start.y + camera_y * delta.y) - Vector2(axis)
 		var dest := Rect2(view.position + pos * scale, Vector2(image.get_width(), image.get_height()) * scale)
 		var visible := dest.intersection(view)
 		if visible.size.x <= 0 or visible.size.y <= 0:
+			skipped_layers += 1
 			continue
 		var src := Rect2((visible.position - dest.position) / scale, visible.size / scale)
 		draw_texture_rect_region(tex, visible, src)
-	var label := "camera %.0f,%.0f   layers %d" % [camera_x, camera_y, layers.size()]
+		drawn_layers += 1
+	var label := "camera %.0f,%.0f   drawn %d/%d   off/missing %d" % [camera_x, camera_y, drawn_layers, layers.size(), skipped_layers]
 	draw_string(ThemeDB.fallback_font, view.position + Vector2(8, view.size.y - 8), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#cfe0f5"))
 
 static func _pair(text: String) -> Vector2:

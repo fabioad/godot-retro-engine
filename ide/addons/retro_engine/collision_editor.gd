@@ -68,6 +68,12 @@ func _ready() -> void:
 	_runtime_check.tooltip_text = "Drive the player state/frame from the Sim tab"
 	_runtime_check.toggled.connect(func(v): runtime_mode = v; if v: _apply_runtime_state())
 	head.add_child(_runtime_check)
+	var sprites_check := CheckBox.new()
+	sprites_check.text = "Show sprites"
+	sprites_check.button_pressed = true
+	sprites_check.tooltip_text = "Draw the selected char sprite behind the hit/hurt boxes"
+	sprites_check.toggled.connect(func(v): _canvas.show_sprites = v; _canvas.queue_redraw())
+	head.add_child(sprites_check)
 	var head2 := HBoxContainer.new()
 	add_child(head2)
 	var imp_air := Button.new()
@@ -245,7 +251,12 @@ func _ready() -> void:
 	olabel.add_theme_color_override("font_color", Color("#7fd1ff"))
 	side.add_child(olabel)
 	_opponent_state = OptionButton.new()
-	_opponent_state.item_selected.connect(func(_i): opponent_state = _opponent_state.get_item_text(_opponent_state.selected); _refresh_opponent_canvas())
+	_opponent_state.item_selected.connect(func(i):
+		var key = _opponent_state.get_item_metadata(i)
+		if key != null:
+			opponent_state = String(key)
+			opponent_frame = 0
+			_refresh_opponent_canvas())
 	side.add_child(_opponent_state)
 	var orow := HBoxContainer.new()
 	side.add_child(orow)
@@ -382,9 +393,33 @@ func _populate_states() -> void:
 	_opponent_state.clear()
 	if animation == null:
 		return
-	for key in animation.get_states().keys():
-		_state_option.add_item(String(key))
-		_opponent_state.add_item(String(key))
+	var keys: Array = animation.get_states().keys()
+	keys.sort_custom(func(a, b):
+		var sa := String(a)
+		var sb := String(b)
+		var oa := 0 if sa in ["IDLE", "WALK", "JUMP", "CROUCH", "ATTACK", "HIT", "BLOCK", "SPECIAL", "SUPER", "THROW"] else 1
+		var ob := 0 if sb in ["IDLE", "WALK", "JUMP", "CROUCH", "ATTACK", "HIT", "BLOCK", "SPECIAL", "SUPER", "THROW"] else 1
+		if oa != ob:
+			return oa < ob
+		return sa.naturalnocasecmp_to(sb) < 0)
+	for k in keys:
+		var key := String(k)
+		var frames: Array = animation.get_state(key).get("frames", [])
+		if frames.is_empty():
+			continue
+		var text := "%s  (%df)" % [key, frames.size()]
+		_state_option.add_item(text)
+		_state_option.set_item_metadata(_state_option.item_count - 1, key)
+		_opponent_state.add_item(text)
+		_opponent_state.set_item_metadata(_opponent_state.item_count - 1, key)
+	if _state_option.item_count == 0:
+		state = "IDLE"
+		opponent_state = "IDLE"
+		return
+	if not animation.get_states().has(state):
+		state = String(_state_option.get_item_metadata(0))
+	if not animation.get_states().has(opponent_state):
+		opponent_state = state
 	_select_state_option()
 	_select_option(_opponent_state, opponent_state)
 
@@ -392,9 +427,9 @@ func _select_state_option() -> void:
 	_select_option(_state_option, state)
 	_select_option(_opponent_state, opponent_state)
 
-func _select_option(opt: OptionButton, text: String) -> void:
+func _select_option(opt: OptionButton, key: String) -> void:
 	for i in range(opt.item_count):
-		if opt.get_item_text(i) == text:
+		if String(opt.get_item_metadata(i)) == key:
 			opt.select(i)
 			return
 	if opt.item_count > 0:
@@ -403,7 +438,10 @@ func _select_option(opt: OptionButton, text: String) -> void:
 func _on_state_selected(index: int) -> void:
 	if animation == null:
 		return
-	state = _state_option.get_item_text(index)
+	var key = _state_option.get_item_metadata(index)
+	if key == null:
+		return
+	state = String(key)
 	frame = 0
 	_rebuild_timeline()
 	_load_frame()

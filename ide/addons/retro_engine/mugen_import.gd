@@ -193,7 +193,7 @@ static func import_stage(project: RetroProject, def_path: String, target: String
 		var start := _pair(String(l.get("start", "0,0")))
 		var delta := _pair(String(l.get("delta", "1,1")))
 		var axis: Vector2i = sff.sprite_at(idx).get("axis", Vector2i.ZERO)
-		var pos := Vector2i(int(start.x), int(start.y)) - axis
+		var pos := Vector2i(int(logical.x * 0.5 + start.x), int(start.y)) - axis
 		_blit_clipped(canvas, img, pos)
 	var native := Vector2(256, 224) if target == "snes" else Vector2(320, 224)
 	canvas.resize(int(native.x), int(native.y), Image.INTERPOLATE_NEAREST)

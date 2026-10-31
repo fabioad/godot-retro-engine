@@ -113,6 +113,7 @@ func _parse_v1(data: PackedByteArray) -> void:
 	var shared := data[0x24] != 0
 	var seen: Dictionary = {}
 	var local_palettes: Array = []
+	var current_palette := PackedColorArray()
 	for i in range(count):
 		if offset == 0 or offset >= data.size() or seen.has(offset):
 			break
@@ -138,9 +139,11 @@ func _parse_v1(data: PackedByteArray) -> void:
 			s["height"] = int(decoded.get("height", 0))
 			s["pixels"] = decoded.get("pixels", PackedByteArray())
 			var pal: PackedColorArray = decoded.get("palette", PackedColorArray())
-			if not samepal or local_palettes.is_empty():
-				local_palettes.append(pal)
-			s["palette"] = pal if not pal.is_empty() else (local_palettes.back() if not local_palettes.is_empty() else PackedColorArray())
+			if not samepal or current_palette.is_empty():
+				if not pal.is_empty():
+					current_palette = pal
+					local_palettes.append(pal)
+			s["palette"] = current_palette
 		elif link < sprites.size():
 			var src: Dictionary = sprites[link]
 			s["width"] = int(src.get("width", 0))

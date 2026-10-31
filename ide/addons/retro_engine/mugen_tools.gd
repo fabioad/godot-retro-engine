@@ -6,6 +6,8 @@ extends VBoxContainer
 signal modified()
 signal status(text: String)
 signal assets_imported(result: Dictionary)
+signal page_changed(id: String)
+signal char_def_requested(path: String)
 
 const SffBank = preload("res://addons/retro_engine/mugen_sff.gd")
 const AirAnim = preload("res://addons/retro_engine/mugen_air.gd")
@@ -46,7 +48,9 @@ var _char_playing := false
 
 # Stage page.
 var _stage_path: Label
-var _stage_layers: ItemList
+var _stage_layers: Tree
+var _stage_layer_preview: TextureRect
+var _stage_layer_info: Label
 var _stage_preview
 var _stage_play: Button
 var _stage_auto: CheckBox
@@ -114,6 +118,7 @@ func show_page(id: String) -> void:
 		var page: Control = _pages[key]
 		page.visible = key == id
 	_current = id
+	page_changed.emit(id)
 	for key in _buttons.keys():
 		var b: Button = _buttons[key]
 		b.button_pressed = key == id
@@ -132,6 +137,8 @@ func _add_page(id: String, title: String, control: Control) -> void:
 	_toolbar.add_child(button)
 	_buttons[id] = button
 	control.visible = false
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	control.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_content.add_child(control)
 	_pages[id] = control
 
@@ -171,6 +178,18 @@ func _build_char_page() -> Control:
 	import_char.tooltip_text = "Convert this char's SFF/AIR to a native sprite + animation in the current project"
 	import_char.pressed.connect(_import_char)
 	left.add_child(import_char)
+	var to_import := Button.new()
+	to_import.text = "Open Import / States"
+	to_import.pressed.connect(func():
+		if _char_def != null:
+			show_page("import")
+			char_def_requested.emit(_char_def.path))
+	left.add_child(to_import)
+	var to_hitboxes := Button.new()
+	to_hitboxes.text = "Import + Hitboxes"
+	to_hitboxes.tooltip_text = "Import this char and open its hit/hurt boxes in the Hitboxes page"
+	to_hitboxes.pressed.connect(_import_char_to_hitboxes)
+	left.add_child(to_hitboxes)
 
 	var center := VBoxContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -234,11 +253,46 @@ func _build_stage_page() -> Control:
 	_stage_path.add_theme_color_override("font_color", Color("#9fb4d0"))
 	left.add_child(_stage_path)
 	var ll := Label.new()
-	ll.text = "BG layers"
+	ll.text = "BG layers (check to show)"
 	left.add_child(ll)
-	_stage_layers = ItemList.new()
+	_stage_layers = Tree.new()
+	_stage_layers.columns = 2
+	_stage_layers.hide_root = true
+	_stage_layers.column_titles_visible = true
+	_stage_layers.set_column_title(0, "On")
+	_stage_layers.set_column_title(1, "Layer")
+	_stage_layers.set_column_expand(0, false)
+	_stage_layers.set_column_custom_minimum_width(0, 36)
+	_stage_layers.set_column_expand(1, true)
 	_stage_layers.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_stage_layers.item_edited.connect(_on_stage_layer_edited)
+	_stage_layers.item_selected.connect(func(): _on_stage_layer_selected())
 	left.add_child(_stage_layers)
+	_stage_layer_preview = TextureRect.new()
+	_stage_layer_preview.custom_minimum_size = Vector2(260, 150)
+	_stage_layer_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_stage_layer_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_stage_layer_preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	left.add_child(_stage_layer_preview)
+	_stage_layer_info = Label.new()
+	_stage_layer_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_stage_layer_info.add_theme_color_override("font_color", Color("#9fb4d0"))
+	left.add_child(_stage_layer_info)
+	var layer_hint := Label.new()
+	layer_hint.text = "The thumbnail shows the selected layer even when the camera puts it off-screen. Use Auto camera to sweep all layers."
+	layer_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	layer_hint.add_theme_color_override("font_color", Color("#8b98ad"))
+	left.add_child(layer_hint)
+	var layer_buttons := HBoxContainer.new()
+	var show_all := Button.new()
+	show_all.text = "Show all"
+	show_all.pressed.connect(_show_all_stage_layers)
+	layer_buttons.add_child(show_all)
+	var solo := Button.new()
+	solo.text = "Solo selected"
+	solo.pressed.connect(_solo_stage_layer)
+	layer_buttons.add_child(solo)
+	left.add_child(layer_buttons)
 	var import_stage := Button.new()
 	import_stage.text = "Import stage to project"
 	import_stage.tooltip_text = "Render this stage's layers and convert them to a native RetroStage in the current project"
@@ -344,6 +398,7 @@ func _build_snd_page() -> Control:
 	box.add_child(split)
 	_snd_list = ItemList.new()
 	_snd_list.item_activated.connect(_on_snd_activated)
+	_snd_list.item_selected.connect(_on_snd_selected)
 	split.add_child(_snd_list)
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 280
@@ -420,14 +475,7 @@ func open_stage(def_path: String) -> bool:
 	_stage_sff = sff
 	_stage_air = air
 	_stage_path.text = def_path
-	_stage_layers.clear()
-	for i in range(def.bg_layers.size()):
-		var l: Dictionary = def.bg_layers[i]
-		var kind := String(l.get("type", "normal"))
-		var ref := String(l.get("spriteno", ""))
-		if kind == "anim":
-			ref = "action " + String(l.get("actionno", "?"))
-		_stage_layers.add_item("%02d  %s  %s  delta %s" % [i, kind, ref, String(l.get("delta", ""))])
+	_populate_stage_layers()
 	var cam: Dictionary = def.sections.get("Camera", def.sections.get("camera", {}))
 	_stage_bound_l = float(String(cam.get("boundleft", "-216")))
 	_stage_bound_r = float(String(cam.get("boundright", "216")))
@@ -461,6 +509,9 @@ func open_snd(snd_path: String) -> bool:
 	var bank = SndBank.new()
 	if not bank.load_file(snd_path):
 		status.emit("Could not read SND: " + snd_path)
+		return false
+	if bank.entry_count() == 0:
+		status.emit("SND has no entries: " + snd_path)
 		return false
 	_snd_bank = bank
 	_snd_path.text = snd_path
@@ -576,6 +627,10 @@ func _import_char() -> void:
 	else:
 		status.emit("MUGEN char import failed: " + String(result.get("error", "unknown")))
 
+func _import_char_to_hitboxes() -> void:
+	_import_char()
+	show_page("hitboxes")
+
 func _import_stage() -> void:
 	if project == null:
 		status.emit("Open a SNES/Mega Drive project first.")
@@ -593,6 +648,103 @@ func _import_stage() -> void:
 # --------------------------------------------------------------------------
 # Stage page callbacks
 # --------------------------------------------------------------------------
+func _populate_stage_layers() -> void:
+	_stage_layers.clear()
+	if _stage_def == null:
+		return
+	var root := _stage_layers.create_item()
+	for i in range(_stage_def.bg_layers.size()):
+		var l: Dictionary = _stage_def.bg_layers[i]
+		if not l.has("visible"):
+			l["visible"] = true
+			_stage_def.bg_layers[i] = l
+		var kind := String(l.get("type", "normal"))
+		var ref := String(l.get("spriteno", ""))
+		if kind == "anim":
+			ref = "action " + String(l.get("actionno", "?"))
+		var item := _stage_layers.create_item(root)
+		item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
+		item.set_editable(0, true)
+		item.set_checked(0, bool(l.get("visible", true)))
+		item.set_text(1, "%02d  %s  %s  delta %s" % [i, kind, ref, String(l.get("delta", ""))])
+		item.set_metadata(0, i)
+		item.set_metadata(1, i)
+	if root.get_child_count() > 0:
+		_stage_layers.set_selected(root.get_child(0), 1)
+		_on_stage_layer_selected()
+
+func _on_stage_layer_selected() -> void:
+	var item := _stage_layers.get_selected()
+	if item == null or _stage_def == null or _stage_sff == null:
+		return
+	var idx := int(item.get_metadata(1))
+	if idx < 0 or idx >= _stage_def.bg_layers.size():
+		return
+	var l: Dictionary = _stage_def.bg_layers[idx]
+	var kind := String(l.get("type", "normal"))
+	var group := 0
+	var number := 0
+	if kind == "anim" and _stage_air != null:
+		var fr: Dictionary = _stage_air.frame_at(_to_int(String(l.get("actionno", ""))), 0)
+		if not fr.is_empty():
+			group = int(fr.get("group", 0))
+			number = int(fr.get("number", 0))
+	else:
+		var pair := _pair(String(l.get("spriteno", "")))
+		group = int(pair.x)
+		number = int(pair.y)
+	var sidx: int = _stage_sff.find_index(group, number)
+	if sidx < 0:
+		_stage_layer_preview.texture = null
+		_stage_layer_info.text = "Layer %d: sprite %d,%d not found." % [idx, group, number]
+		return
+	var img: Image = _stage_sff.render(sidx)
+	if img:
+		_stage_layer_preview.texture = ImageTexture.create_from_image(img)
+	var sp: Dictionary = _stage_sff.sprite_at(sidx)
+	var axis: Vector2i = sp.get("axis", Vector2i.ZERO)
+	var start := _pair(String(l.get("start", "0,0")))
+	var delta := _pair(String(l.get("delta", "1,1")))
+	var screen_pos := Vector2(160, 0) + start - Vector2(axis) + Vector2(_stage_cam * delta.x, 0)
+	var onscreen := Rect2(screen_pos, Vector2(img.get_width(), img.get_height()) if img else Vector2.ZERO).intersects(Rect2(0, 0, 320, 240))
+	_stage_layer_info.text = "Layer %d  %s  %d,%d  %dx%d axis %s\nstart %s delta %s  %s" % [
+		idx, kind, group, number, int(sp.get("width", 0)), int(sp.get("height", 0)), str(axis),
+		str(start), str(delta), "on-screen" if onscreen else "off-screen at camera %.0f" % _stage_cam]
+
+func _on_stage_layer_edited() -> void:
+	var item := _stage_layers.get_edited()
+	if item == null or _stage_def == null:
+		return
+	var idx := int(item.get_metadata(1))
+	if idx < 0 or idx >= _stage_def.bg_layers.size():
+		return
+	var l: Dictionary = _stage_def.bg_layers[idx]
+	l["visible"] = item.is_checked(0)
+	_stage_def.bg_layers[idx] = l
+	_stage_preview.queue_redraw()
+
+func _show_all_stage_layers() -> void:
+	if _stage_def == null:
+		return
+	for i in range(_stage_def.bg_layers.size()):
+		var l: Dictionary = _stage_def.bg_layers[i]
+		l["visible"] = true
+		_stage_def.bg_layers[i] = l
+	_populate_stage_layers()
+	_stage_preview.queue_redraw()
+
+func _solo_stage_layer() -> void:
+	var item := _stage_layers.get_selected()
+	if item == null or _stage_def == null:
+		return
+	var target := int(item.get_metadata(1))
+	for i in range(_stage_def.bg_layers.size()):
+		var l: Dictionary = _stage_def.bg_layers[i]
+		l["visible"] = i == target
+		_stage_def.bg_layers[i] = l
+	_populate_stage_layers()
+	_stage_preview.queue_redraw()
+
 func _toggle_stage_play() -> void:
 	_stage_auto_scroll = not _stage_auto_scroll
 	_stage_auto.set_pressed_no_signal(_stage_auto_scroll)
@@ -672,6 +824,7 @@ func _populate_snd() -> void:
 	if _snd_bank == null:
 		return
 	_snd_list.clear()
+	_snd_info.text = "[b]%s[/b]\n%d sound entries" % [_snd_path.text.get_file(), _snd_bank.entry_count()]
 	for e in _snd_bank.entries:
 		var entry: Dictionary = e
 		_snd_list.add_item("%d,%d  %d B" % [int(entry.get("group", 0)), int(entry.get("number", 0)), int(entry.get("size", 0))])
@@ -679,6 +832,19 @@ func _populate_snd() -> void:
 
 func _on_snd_activated(index: int) -> void:
 	_play_snd_index(index)
+
+func _on_snd_selected(index: int) -> void:
+	if _snd_bank == null or index < 0 or index >= _snd_list.item_count:
+		return
+	var meta = _snd_list.get_item_metadata(index)
+	if meta is Array and meta.size() >= 2:
+		var e: Dictionary = _snd_bank.find(int(meta[0]), int(meta[1]))
+		var stream: AudioStreamWAV = e.get("stream", null)
+		var length := (float(stream.data.size()) / float(stream.mix_rate * (2 if stream.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if stream.stereo else 1))) if stream else 0.0
+		_snd_info.text = "[b]Sound %d,%d[/b]\n%d bytes\n%s\n%.2f s @ %d Hz" % [
+			int(meta[0]), int(meta[1]), int(e.get("size", 0)),
+			"PCM 16-bit" if stream and stream.format == AudioStreamWAV.FORMAT_16_BITS else "PCM 8-bit",
+			length, stream.mix_rate if stream else 0]
 
 func _play_selected_snd() -> void:
 	if _snd_list.get_selected_items().is_empty():
@@ -690,12 +856,35 @@ func _play_snd_index(index: int) -> void:
 		return
 	var meta = _snd_list.get_item_metadata(index)
 	if meta is Array and meta.size() >= 2:
+		_on_snd_selected(index)
 		_play_stream(_snd_bank.stream_for(int(meta[0]), int(meta[1])))
+
+static func _pair(text: String) -> Vector2:
+	var parts := text.split(",")
+	if parts.size() < 2:
+		return Vector2.ZERO
+	return Vector2(float(parts[0].strip_edges()), float(parts[1].strip_edges()))
+
+static func _to_int(text: String) -> int:
+	var s := text.strip_edges()
+	if s.is_empty():
+		return -1
+	var v := 0
+	var neg := false
+	for c in s:
+		if c == "-" and v == 0:
+			neg = true
+		elif c >= "0" and c <= "9":
+			v = v * 10 + int(c)
+		else:
+			break
+	return -v if neg else v
 
 func _play_stream(stream: AudioStreamWAV) -> void:
 	if stream == null:
-		status.emit("Sound has no playable WAV payload.")
+		status.emit("Sound has no playable WAV payload (not RIFF/WAVE or truncated).")
 		return
+	_snd_player.stop()
 	_snd_player.stream = stream
 	_snd_player.play()
 	status.emit("Playing MUGEN sound @ %d Hz" % stream.mix_rate)

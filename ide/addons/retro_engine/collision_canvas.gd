@@ -15,6 +15,7 @@ var player_pos: Vector2i = Vector2i(24, 24)
 var opponent_pos: Vector2i = Vector2i(204, 24)
 var zoom: int = 2
 var show_boxes: bool = true
+var show_sprites: bool = true
 var show_opponent: bool = true
 var contacts: Array = []
 var selected_box: int = -1
@@ -83,13 +84,13 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, Vector2(12, 24), "State '%s' has no frame %d." % [player_state, player_frame], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#ffd45e"))
 		return
 	var p_img := _get_frame_image(player_state, player_frame)
-	if p_img:
+	if show_sprites and p_img:
 		var key := player_state + ":" + str(player_frame)
 		if not _textures.has(key) or _textures[key] == null:
 			_textures[key] = ImageTexture.create_from_image(p_img)
 		draw_texture_rect(_textures[key], Rect2(Vector2(player_pos) * zoom, Vector2(p_img.get_width(), p_img.get_height()) * zoom), false)
 	var o_img: Image = null
-	if show_opponent:
+	if show_opponent and show_sprites:
 		o_img = _get_frame_image(opponent_state, opponent_frame)
 		if o_img:
 			var okey := opponent_state + ":" + str(opponent_frame) + ":o"

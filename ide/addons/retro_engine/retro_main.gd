@@ -346,6 +346,8 @@ func _build_ui() -> void:
 	mugen_tools.status.connect(status_message)
 	mugen_tools.modified.connect(_on_document_modified)
 	mugen_tools.assets_imported.connect(_on_mugen_assets_imported)
+	mugen_tools.page_changed.connect(_on_mugen_page_changed)
+	mugen_tools.char_def_requested.connect(_on_mugen_char_def_requested)
 	_tabs.add_child(mugen_tools)
 	input_editor = InputEditor.new()
 	input_editor.name = "Inputs"
@@ -935,26 +937,45 @@ func _refresh_resource_tree() -> void:
 			continue
 		var key := resource_category(r)
 		categories[key].append(i)
-	_build_mugen_tree(root, filter)
+	_scan_mugen_defs()
+	var mugen_visible := false
+	for d in _mugen_defs:
+		if filter == "" or String(d.get("path", "")).to_lower().contains(filter) or String(d.get("name", "")).to_lower().contains(filter):
+			mugen_visible = true
+			break
 	for key in ["Sprites", "Tiles", "Images", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
 		var list: Array = categories[key]
+		if key == "Sprites":
+			if list.is_empty() and not mugen_visible:
+				continue
+			var cat := _resource_tree.create_item(root)
+			var count := list.size()
+			cat.set_text(0, "%s (%d)" % [String(category_labels.get(key, key)), count] if count > 0 else String(category_labels.get(key, key)))
+			cat.set_selectable(0, false)
+			_build_mugen_tree(cat, filter)
+			for idx in list:
+				_add_resource_item(cat, idx)
+			continue
 		if list.is_empty():
 			continue
 		var cat := _resource_tree.create_item(root)
 		cat.set_text(0, "%s (%d)" % [String(category_labels.get(key, key)), list.size()])
 		cat.set_selectable(0, false)
 		for idx in list:
-			var r: Dictionary = resources[idx]
-			var item := _resource_tree.create_item(cat)
-			var editable := "E" if bool(r.get("editable", false)) else "RO"
-			var extra := ""
-			if r.has("width"):
-				extra = "  %dx%d" % [int(r.get("width", 0)), int(r.get("height", 0))]
-			item.set_text(0, "[%s] %s%s" % [editable, String(r.get("name", "")), extra])
-			item.set_tooltip_text(0, String(r.get("rel_path", "")))
-			item.set_metadata(0, idx)
-			if not bool(r.get("editable", false)):
-				item.set_custom_color(0, Color("#8b98ad"))
+			_add_resource_item(cat, idx)
+
+func _add_resource_item(cat: TreeItem, idx: int) -> void:
+	var r: Dictionary = resources[idx]
+	var item := _resource_tree.create_item(cat)
+	var editable := "E" if bool(r.get("editable", false)) else "RO"
+	var extra := ""
+	if r.has("width"):
+		extra = "  %dx%d" % [int(r.get("width", 0)), int(r.get("height", 0))]
+	item.set_text(0, "[%s] %s%s" % [editable, String(r.get("name", "")), extra])
+	item.set_tooltip_text(0, String(r.get("rel_path", "")))
+	item.set_metadata(0, idx)
+	if not bool(r.get("editable", false)):
+		item.set_custom_color(0, Color("#8b98ad"))
 
 func _scan_mugen_defs() -> void:
 	if project == null:
@@ -1012,7 +1033,6 @@ func _scan_def_dir(dir: String, depth: int, seen: Dictionary) -> void:
 	da.list_dir_end()
 
 func _build_mugen_tree(root: TreeItem, filter: String) -> void:
-	_scan_mugen_defs()
 	if _mugen_defs.is_empty():
 		return
 	var chars: Array = []
@@ -1367,12 +1387,40 @@ func _on_input_changed() -> void:
 	if _preview and input_editor:
 		_preview.set_input_map(input_editor.get_input_map())
 
+func _on_mugen_char_def_requested(path: String) -> void:
+	if mugen_editor and not path.is_empty():
+		mugen_editor.load_char_def(path)
+
+func _on_mugen_page_changed(id: String) -> void:
+	if mugen_tools == null:
+		return
+	var imap: RetroInputMap = input_editor.get_input_map() if input_editor else null
+	match id:
+		"inputs":
+			if input_editor:
+				input_editor.set_context(project, platform, anim_doc)
+		"simulator":
+			if state_simulator:
+				state_simulator.set_context(project, platform, anim_doc, sprite_doc)
+				if imap:
+					state_simulator.set_input_map(imap)
+		"graph":
+			if state_graph:
+				state_graph.set_context(project, platform, imap, anim_doc)
+		"hitboxes":
+			if collision_editor:
+				collision_editor.set_context(project, platform, sprite_doc, anim_doc)
+		"import":
+			if mugen_editor:
+				mugen_editor.set_context(project, platform, anim_doc, imap)
+
 func _on_mugen_assets_imported(result: Dictionary) -> void:
 	if project == null:
 		return
 	resources = project.get_resources()
 	_refresh_resource_tree()
 	_restore_session_docs()
+	_on_document_modified()
 	if result.has("sprite"):
 		_tabs.current_tab = 1
 	elif result.has("stage_json"):

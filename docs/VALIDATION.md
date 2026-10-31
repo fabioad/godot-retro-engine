@@ -1305,3 +1305,30 @@ The MUGEN Tools tab exposes Char/Anim, Stage Layers, SFF Sprites, Sounds and
 the existing Inputs/Simulator/State Graph/Hitboxes/Import pages. The resource
 tree scans the project for `*.def`, groups characters and stages under MUGEN
 submenus, and opens the selected char/stage/SFF/SND in that tab.
+
+
+### MUGEN regression fixes (0.1.23)
+
+```text
+MUGEN sff_v1_shared_palette PASS (Kyo Action 0 frames share palette 1)
+MUGEN tools_stage_layers PASS (10 layer tree items)
+MUGEN tools_snd_list PASS (156 entries)
+MUGEN_TOOLS_TEST PASS
+PREVIEW_TEST PASS
+```
+
+Additional checks:
+
+- Resource tree: **MUGEN Chars** and **MUGEN Stages** are submenus of
+  **Sprites**.
+- Stage Layers: every layer has a visibility checkbox, a solo button, a
+  selected-layer thumbnail and an on-screen/off-screen position report; the
+  main preview reports `drawn X/N`.
+- Sounds: the SND page reports entries, selected group/number, PCM format,
+  duration/rate and plays through an `AudioStreamPlayer`.
+- Simulator: contexts are refreshed when its page is opened; 10 default
+  actions and ATTACK progression were verified.
+- Hitboxes: only states with frames are listed with frame counts; a
+  **Show sprites** checkbox draws the selected char behind the boxes.
+- Import/States: a **Char DEF...** button resolves CNS/AIR/CMD + SFF and shows
+  an AIR action preview with Play/Step.

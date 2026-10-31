@@ -28,6 +28,9 @@ func _initialize() -> void:
 	_check("sff_v1_count", sff.sprite_count() > 2000, str(sff.sprite_count()))
 	var img: Image = sff.render(0)
 	_check("sff_v1_render", img != null and img.get_width() > 0)
+	var pal_a: PackedColorArray = sff.find(0, 0).get("palette", PackedColorArray())
+	var pal_b: PackedColorArray = sff.find(0, 2).get("palette", PackedColorArray())
+	_check("sff_v1_shared_palette", pal_a.size() == 256 and pal_b.size() == 256 and pal_a.slice(0, 6) == pal_b.slice(0, 6), str(pal_a.slice(0, 3)) + " / " + str(pal_b.slice(0, 3)))
 
 	var sff2 = SffBank.new()
 	_check("sff_v2_load", sff2.load_file(KOF + "/assets/stages/stage0.sff"), sff2.error_message())
@@ -56,8 +59,10 @@ func _initialize() -> void:
 	await process_frame
 	_check("tools_char", tools.open_char(kyo_def, 20) and tools.current_page() == "char")
 	_check("tools_stage", tools.open_stage(stage_def) and tools.current_page() == "stage")
+	_check("tools_stage_layers", tools._stage_layers.get_root() != null and tools._stage_layers.get_root().get_child_count() == 10, str(tools._stage_layers.get_root().get_child_count() if tools._stage_layers.get_root() else 0))
 	_check("tools_sff", tools.open_sff(kyo_sff) and tools.current_page() == "sff")
 	_check("tools_snd", tools.open_snd(kyo_snd) and tools.current_page() == "sounds")
+	_check("tools_snd_list", tools._snd_list.item_count > 0, str(tools._snd_list.item_count))
 	tools.queue_free()
 
 	var root := "/tmp/opencode/mugen_tools_test"

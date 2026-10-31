@@ -10,6 +10,11 @@ signal graph_built(graph, moves)
 signal state_imported(target_state: String)
 signal states_imported(count: int)
 
+const MugenDef = preload("res://addons/retro_engine/mugen_def.gd")
+const SffBank = preload("res://addons/retro_engine/mugen_sff.gd")
+const AirBank = preload("res://addons/retro_engine/mugen_air.gd")
+const MugenPreview = preload("res://addons/retro_engine/mugen_preview.gd")
+
 var project: RetroProject
 var platform: String = "snes"
 var animation: RetroAnimation
@@ -39,6 +44,11 @@ var _anim_target: OptionButton
 var _anim_custom: LineEdit
 var _build_info: RichTextLabel
 var _max_nodes: SpinBox
+var _char_def_path: String = ""
+var _sff_bank
+var _air_bank
+var _air_preview
+var _air_play: Button
 
 func _ready() -> void:
 	importer = RetroMugenImport.new()
@@ -51,6 +61,11 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 14)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
+	var load_def := Button.new()
+	load_def.text = "Char DEF..."
+	load_def.tooltip_text = "Load a MUGEN character DEF and resolve CNS/AIR/CMD + SFF preview"
+	load_def.pressed.connect(_pick_char_def)
+	head.add_child(load_def)
 	var load_cns := Button.new()
 	load_cns.text = "CNS..."
 	load_cns.tooltip_text = "Open a MUGEN character .cns (Statedef/ChangeAnim/ChangeState/HitDef)"
@@ -185,6 +200,26 @@ func _ready() -> void:
 	_info.fit_content = true
 	_info.custom_minimum_size.y = 150
 	side.add_child(_info)
+	var preview_label := Label.new()
+	preview_label.text = "AIR action preview"
+	preview_label.add_theme_color_override("font_color", Color("#7fd1ff"))
+	side.add_child(preview_label)
+	_air_preview = MugenPreview.new()
+	_air_preview.custom_minimum_size = Vector2(280, 220)
+	side.add_child(_air_preview)
+	var preview_controls := HBoxContainer.new()
+	_air_play = Button.new()
+	_air_play.text = "Play"
+	_air_play.pressed.connect(func():
+		_air_preview.playing = not _air_preview.playing
+		_air_preview.set_process(_air_preview.playing)
+		_air_play.text = "Pause" if _air_preview.playing else "Play")
+	preview_controls.add_child(_air_play)
+	var preview_step := Button.new()
+	preview_step.text = "Step"
+	preview_step.pressed.connect(func(): _air_preview.set_time_ticks(_air_preview.time_ticks + 1.0))
+	preview_controls.add_child(preview_step)
+	side.add_child(preview_controls)
 
 	side.add_child(HSeparator.new())
 	var mlabel := Label.new()
@@ -327,11 +362,43 @@ func _load_session() -> void:
 	if typeof(mappings) == TYPE_DICTIONARY:
 		_mapping = mappings.duplicate(true)
 
+func _pick_char_def() -> void:
+	var dlg := FileDialog.new()
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dlg.add_filter("*.def", "MUGEN character DEF")
+	dlg.file_selected.connect(func(path):
+		load_char_def(path)
+		dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered_ratio(0.65)
+
+func load_char_def(path: String) -> bool:
+	var def = MugenDef.new()
+	if not def.load_file(path) or not def.is_character():
+		status.emit("Not a MUGEN character DEF: " + path)
+		return false
+	var files := def.character_files()
+	_char_def_path = path
+	_cns_path = String(files.get("st", ""))
+	if _cns_path.is_empty() or not FileAccess.file_exists(_cns_path):
+		_cns_path = String(files.get("cns", ""))
+	_air_path = String(files.get("anim", ""))
+	_cmd_path = String(files.get("cmd", ""))
+	_sff_bank = SffBank.new()
+	_sff_bank.load_file(String(files.get("sprite", "")))
+	_air_bank = AirBank.new()
+	_air_bank.load_file(_air_path)
+	_refresh_paths()
+	_parse()
+	status.emit("MUGEN char DEF: %s (%s)" % [def.display_name(), path.get_file()])
+	return true
+
 func _pick_cns() -> void:
 	var dlg := FileDialog.new()
 	dlg.access = FileDialog.ACCESS_FILESYSTEM
 	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	dlg.add_filter("*.cns, *.cmd, *.def", "MUGEN CNS / command definitions")
+	dlg.add_filter("*.cns, *.cmd", "MUGEN CNS / command definitions")
 	dlg.file_selected.connect(func(path):
 		_cns_path = path
 		_refresh_paths()
@@ -481,6 +548,8 @@ func _on_selected() -> void:
 	_suggestion.text = "Suggestion: " + String(st.get("suggested", "-"))
 	_target.text = String(_mapping.get(str(_selected), ""))
 	_refresh_anim_targets()
+	if _sff_bank != null and _air_bank != null:
+		_air_preview.set_char(_sff_bank, _air_bank, int(st.get("air_action", 0)))
 
 func _on_edited() -> void:
 	var item := _tree.get_edited()
