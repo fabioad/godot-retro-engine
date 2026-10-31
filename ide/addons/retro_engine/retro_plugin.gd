@@ -9,6 +9,7 @@ var toolbar: HBoxContainer
 var platform_selector: OptionButton
 var _titlebar_controls: Control
 var _titlebar_node: Control
+var _applied_title: String = ""
 
 func _enter_tree() -> void:
 	main_screen = RetroMainScreen.new()
@@ -19,6 +20,10 @@ func _enter_tree() -> void:
 	call_deferred("_install_titlebar_double_click")
 	# Land directly in the Retro workspace on startup.
 	call_deferred("_select_retro_screen")
+	call_deferred("_apply_window_title")
+	var win := get_window()
+	if win != null and not win.title_changed.is_connected(_on_window_title_changed):
+		win.title_changed.connect(_on_window_title_changed)
 
 func _select_retro_screen() -> void:
 	await get_tree().create_timer(1.5).timeout
@@ -31,6 +36,7 @@ func _select_retro_screen() -> void:
 	EditorInterface.set_main_screen_editor("Retro")
 	if main_screen:
 		main_screen.visible = true
+	_apply_window_title()
 
 func _install_titlebar_double_click() -> void:
 	if _titlebar_node != null:
@@ -76,6 +82,9 @@ func _exit_tree() -> void:
 	if _titlebar_node != null and _titlebar_node.gui_input.is_connected(_on_titlebar_gui_input):
 		_titlebar_node.gui_input.disconnect(_on_titlebar_gui_input)
 	_titlebar_node = null
+	var win := get_window()
+	if win != null and win.title_changed.is_connected(_on_window_title_changed):
+		win.title_changed.disconnect(_on_window_title_changed)
 	if toolbar:
 		remove_control_from_container(CONTAINER_TOOLBAR, toolbar)
 		toolbar.queue_free()
@@ -92,6 +101,50 @@ func _make_visible(visible: bool) -> void:
 		main_screen.visible = visible
 		if visible:
 			main_screen.refresh_all()
+			call_deferred("_apply_window_title")
+
+func _apply_window_title() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var win := get_window()
+	if win == null:
+		return
+	var version := _plugin_version()
+	var build := _build_code()
+	var title := "Godot Retro Engine %s (build %s) - Godot Engine" % [version, build]
+	if win.title == title:
+		_applied_title = title
+		return
+	_applied_title = title
+	win.title = title
+
+func _on_window_title_changed() -> void:
+	var win := get_window()
+	if win != null and win.title != _applied_title:
+		call_deferred("_apply_window_title")
+
+func _plugin_version() -> String:
+	var path := "res://addons/retro_engine/plugin.cfg"
+	if FileAccess.file_exists(path):
+		for line in FileAccess.get_file_as_string(path).split("\n"):
+			var trimmed := line.strip_edges()
+			if trimmed.begins_with("version="):
+				return trimmed.substr(8).strip_edges().trim_prefix("\"").trim_suffix("\"")
+	return "0.0.0"
+
+func _build_code() -> String:
+	var stamp := ""
+	var stamp_path := "res://.package_stamp"
+	if FileAccess.file_exists(stamp_path):
+		stamp = FileAccess.get_file_as_string(stamp_path).strip_edges()
+	if stamp.is_empty():
+		stamp = OS.get_environment("GODOT_RETRO_BUILD").strip_edges()
+	if stamp.is_empty():
+		return "dev"
+	var parts := stamp.split("-")
+	if parts.size() >= 2 and not parts[1].is_empty():
+		return parts[1]
+	return stamp
 
 func _get_plugin_name() -> String:
 	return "Retro"
