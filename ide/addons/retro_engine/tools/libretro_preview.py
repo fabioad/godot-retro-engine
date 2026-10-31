@@ -65,6 +65,7 @@ RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE = 65
 RETRO_ENVIRONMENT_GET_GAME_INFO_EXT = 66
 
 RETRO_DEVICE_JOYPAD = 1
+RETRO_DEVICE_MDPAD_6B = 1 | (1 << 8)
 
 # libretro joypad button ids
 PAD_B = 0
@@ -326,7 +327,8 @@ class LibretroHost:
         av = SystemAVInfo()
         self.lib.retro_get_system_av_info(C.byref(av))
         fps = float(av.timing.fps) or 60.0
-        self.lib.retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD)
+        device = RETRO_DEVICE_MDPAD_6B if self.platform == "megadrive" else RETRO_DEVICE_JOYPAD
+        self.lib.retro_set_controller_port_device(0, device)
         self._serialize_size = int(self.lib.retro_serialize_size())
         self.audio_rate = float(av.timing.sample_rate)
         return {

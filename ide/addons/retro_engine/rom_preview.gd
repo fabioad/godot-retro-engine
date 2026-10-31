@@ -17,13 +17,16 @@ signal build_requested()
 const HELPER := "res://addons/retro_engine/tools/libretro_preview.py"
 const CORE_BASE := 46100
 const MAX_LOG := 300
+# Values are real libretro joypad masks (1 << button id).
 const RETRO_BITS_SNES := {
-	"B": 0, "Y": 1, "SELECT": 2, "START": 3, "UP": 4, "DOWN": 5,
-	"LEFT": 6, "RIGHT": 7, "A": 8, "X": 9, "L": 10, "R": 11,
+	"B": 1 << 0, "Y": 1 << 1, "SELECT": 1 << 2, "START": 1 << 3,
+	"UP": 1 << 4, "DOWN": 1 << 5, "LEFT": 1 << 6, "RIGHT": 1 << 7,
+	"A": 1 << 8, "X": 1 << 9, "L": 1 << 10, "R": 1 << 11,
 }
 const RETRO_BITS_MD := {
-	"A": 1, "B": 0, "C": 8, "X": 10, "Y": 9, "Z": 11, "MODE": 2,
-	"SELECT": 2, "START": 3, "UP": 4, "DOWN": 5, "LEFT": 6, "RIGHT": 7,
+	"B": 1 << 0, "A": 1 << 1, "MODE": 1 << 2, "START": 1 << 3,
+	"UP": 1 << 4, "DOWN": 1 << 5, "LEFT": 1 << 6, "RIGHT": 1 << 7,
+	"C": 1 << 8, "Y": 1 << 9, "X": 1 << 10, "Z": 1 << 11,
 }
 
 var project: RetroProject

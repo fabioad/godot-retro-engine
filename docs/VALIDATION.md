@@ -1151,3 +1151,23 @@ ROM_PREVIEW megadrive ... audio=true audio_off=true audio_on=true ... PASS
 
 The pad layout still fits the narrow preview (minimum 686 px against a 705 px
 tab) after adding the audio checkbox.
+
+
+### Pad mask fix (0.1.12)
+
+The on-screen pad and keyboard InputMap bridge were sending the libretro
+button **index** instead of the button **mask**. Directions were therefore
+combined with unrelated face/Select bits (Left used bits 1+2, Start used B+Y,
+etc.). The tables now use `1 << button_id`, and tests assert the exact masks
+for both consoles:
+
+```text
+SNES: LEFT=64 RIGHT=128 UP=16 DOWN=32
+      A=256 B=1 X=512 Y=2 L=1024 R=2048 START=8 SELECT=4
+MD:   LEFT=64 RIGHT=128 UP=16 DOWN=32
+      A=2 B=1 C=256 X=1024 Y=512 Z=2048 START=8 MODE=4
+PAD_CONTROLS PASS
+```
+
+The Mega Drive core is also initialized as a 6-button pad instead of the
+default 3-button mode.
