@@ -1204,7 +1204,7 @@ TERMINAL_TEST PASS
 ```
 
 
-### Anim and Cen animated previews (0.1.15)
+### Anim and Cen animated previews (0.1.16)
 
 The **Anim** tab now shows a console-shaped sprite preview that auto-plays the
 selected animation state and follows the timeline playhead. When a state has
