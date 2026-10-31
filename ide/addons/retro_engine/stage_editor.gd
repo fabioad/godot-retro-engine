@@ -122,6 +122,50 @@ func _ready() -> void:
 	_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	side.add_child(_stats)
 
+	var scroll_label_title := Label.new()
+	scroll_label_title.text = "Animated stage / parallax preview"
+	side.add_child(scroll_label_title)
+	_scroll_label = Label.new()
+	_scroll_label.text = "X 0  Y 0"
+	_scroll_label.add_theme_color_override("font_color", Color("#9fb4d0"))
+	side.add_child(_scroll_label)
+	_scroll_x = HSlider.new()
+	_scroll_x.min_value = 0
+	_scroll_x.max_value = 2048
+	_scroll_x.value_changed.connect(_on_scroll_changed)
+	side.add_child(_scroll_x)
+	_scroll_y = HSlider.new()
+	_scroll_y.min_value = 0
+	_scroll_y.max_value = 2048
+	_scroll_y.value_changed.connect(_on_scroll_changed)
+	side.add_child(_scroll_y)
+	var srow := HFlowContainer.new()
+	_animate_check = CheckBox.new()
+	_animate_check.text = "Animate scroll"
+	_animate_check.button_pressed = true
+	_animate_check.toggled.connect(_on_animate_toggled)
+	srow.add_child(_animate_check)
+	_speed_spin = _spin(0, 240, 24, "Speed ")
+	_speed_spin.suffix = "px/s"
+	_speed_spin.tooltip_text = "Preview speed. Authored stage scroll speeds take priority (converted from pixels/frame)."
+	srow.add_child(_speed_spin)
+	var reset_scroll := Button.new()
+	reset_scroll.text = "Reset"
+	reset_scroll.pressed.connect(_reset_preview)
+	srow.add_child(reset_scroll)
+	side.add_child(srow)
+	var srow2 := HFlowContainer.new()
+	_sprite_check = CheckBox.new()
+	_sprite_check.text = "Sprite"
+	_sprite_check.button_pressed = true
+	_sprite_check.toggled.connect(func(v): _canvas.show_sprites = v; _canvas.queue_redraw())
+	srow2.add_child(_sprite_check)
+	_state_option = OptionButton.new()
+	_state_option.custom_minimum_size.x = 130
+	_state_option.item_selected.connect(_on_preview_state_selected)
+	srow2.add_child(_state_option)
+	side.add_child(srow2)
+
 	var mrow := HBoxContainer.new()
 	_map_w = _spin(1, 128, 32, "W")
 	_map_h = _spin(1, 128, 32, "H")
@@ -182,49 +226,6 @@ func _ready() -> void:
 	lrow2.add_child(apply_parallax)
 	side.add_child(lrow2)
 
-	var scroll_label_title := Label.new()
-	scroll_label_title.text = "Animated stage / parallax preview"
-	side.add_child(scroll_label_title)
-	_scroll_label = Label.new()
-	_scroll_label.text = "X 0  Y 0"
-	_scroll_label.add_theme_color_override("font_color", Color("#9fb4d0"))
-	side.add_child(_scroll_label)
-	_scroll_x = HSlider.new()
-	_scroll_x.min_value = 0
-	_scroll_x.max_value = 2048
-	_scroll_x.value_changed.connect(_on_scroll_changed)
-	side.add_child(_scroll_x)
-	_scroll_y = HSlider.new()
-	_scroll_y.min_value = 0
-	_scroll_y.max_value = 2048
-	_scroll_y.value_changed.connect(_on_scroll_changed)
-	side.add_child(_scroll_y)
-	var srow := HFlowContainer.new()
-	_animate_check = CheckBox.new()
-	_animate_check.text = "Animate scroll"
-	_animate_check.button_pressed = true
-	_animate_check.toggled.connect(_on_animate_toggled)
-	srow.add_child(_animate_check)
-	_speed_spin = _spin(0, 240, 24, "Speed ")
-	_speed_spin.suffix = "px/s"
-	_speed_spin.tooltip_text = "Preview speed. Authored stage scroll speeds take priority (converted from pixels/frame)."
-	srow.add_child(_speed_spin)
-	var reset_scroll := Button.new()
-	reset_scroll.text = "Reset"
-	reset_scroll.pressed.connect(_reset_preview)
-	srow.add_child(reset_scroll)
-	side.add_child(srow)
-	var srow2 := HFlowContainer.new()
-	_sprite_check = CheckBox.new()
-	_sprite_check.text = "Sprite"
-	_sprite_check.button_pressed = true
-	_sprite_check.toggled.connect(func(v): _canvas.show_sprites = v; _canvas.queue_redraw())
-	srow2.add_child(_sprite_check)
-	_state_option = OptionButton.new()
-	_state_option.custom_minimum_size.x = 130
-	_state_option.item_selected.connect(_on_preview_state_selected)
-	srow2.add_child(_state_option)
-	side.add_child(srow2)
 
 	var col_label := Label.new()
 	col_label.text = "Collision areas (world pixels)"
@@ -364,8 +365,7 @@ func _on_preview_state_selected(index: int) -> void:
 	_preview_state = "" if text == "Sprite sheet" else text
 	_canvas.animation_state = _preview_state
 	_preview_time = 0.0
-	_canvas.animation_time = 0.0
-	_canvas.queue_redraw()
+	_canvas.set_animation_time(0.0)
 
 func _on_animate_toggled(v: bool) -> void:
 	if v:
@@ -416,8 +416,7 @@ func _preview_speed() -> Vector2:
 
 func _apply_preview_scroll(offset: Vector2) -> void:
 	_canvas.scroll_offset = offset
-	_canvas.animation_time = _preview_time
-	_canvas.queue_redraw()
+	_canvas.set_animation_time(_preview_time)
 	_scroll_x.set_value_no_signal(int(offset.x))
 	_scroll_y.set_value_no_signal(int(offset.y))
 	if _scroll_label:

@@ -298,7 +298,7 @@ func _on_state_selected(index: int) -> void:
 	var st: Dictionary = animation.get_state(current_state)
 	_loop.set_pressed_no_signal(bool(st.get("loop", true)))
 	_preview.set_data(sprite, animation, current_state)
-	_preview.time = 0.0
+	_preview.set_time(0.0)
 	_rebuild_transitions()
 	_refresh_timeline()
 	_update_info()
@@ -350,8 +350,7 @@ func _frame_start_time(index: int) -> float:
 func _select_frame(i: int) -> void:
 	current_frame = i
 	_time = _frame_start_time(i)
-	_preview.time = _time
-	_preview.queue_redraw()
+	_preview.set_time(_time)
 	_set_playhead(i)
 	_update_info()
 	if animation and animation.get_state(current_state).has("frames"):
@@ -459,7 +458,7 @@ func _add_frames_from_sprite() -> void:
 	animation.set_states(states)
 	current_frame = 0
 	_time = 0.0
-	_preview.time = 0.0
+	_preview.set_time(0.0)
 	_refresh_timeline()
 	_update_info()
 	_ensure_playing()
@@ -523,8 +522,7 @@ func _stop() -> void:
 	_play_button.text = "Play"
 	_timer.stop()
 	_time = 0.0
-	_preview.time = 0.0
-	_preview.queue_redraw()
+	_preview.set_time(0.0)
 
 func _tick() -> void:
 	if not _playing:
@@ -544,8 +542,7 @@ func _tick() -> void:
 		var sample: Dictionary = animation.sample(current_state, _time)
 		if not sample.is_empty():
 			_set_playhead(int(sample.get("index", 0)))
-	_preview.time = _time
-	_preview.queue_redraw()
+	_preview.set_time(_time)
 
 func _export_snes() -> void:
 	if animation == null:

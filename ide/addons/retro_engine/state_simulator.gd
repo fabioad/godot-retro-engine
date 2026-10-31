@@ -358,8 +358,7 @@ func _update_ui() -> void:
 	_frame_label.text = "Frame: %d%s" % [_elapsed, (" / %d" % dur) if dur > 0 else ""]
 	_pending_label.text = ("Pending: " + _pending) if not _pending.is_empty() else "Pending: -"
 	_preview.set_data(sprite, animation, _state)
-	_preview.time = _elapsed / 60.0
-	_preview.queue_redraw()
+	_preview.set_time(_elapsed / 60.0)
 	state_changed.emit(_state, _elapsed)
 
 func _log_line(text: String) -> void:

@@ -28,6 +28,8 @@ var _texture: ImageTexture
 var _render: Image
 var _layer_textures: Array = []
 var _layer_images: Array = []
+var _sprite_image: Image
+var _sprite_texture: ImageTexture
 var _dirty: bool = true
 
 func _ready() -> void:
@@ -49,6 +51,34 @@ func set_sprite(p_sprite: RetroSprite, p_animation: RetroAnimation = null) -> vo
 func set_animation(p_animation: RetroAnimation) -> void:
 	animation = p_animation
 	queue_redraw()
+
+## Set the sprite animation time and pre-build its texture outside `_draw`.
+func set_animation_time(value: float) -> void:
+	animation_time = value
+	_prepare_sprite_texture()
+	queue_redraw()
+
+func _current_sprite_image() -> Image:
+	if sprite == null:
+		return null
+	var image: Image = null
+	var frame_index := sprite_frame_index()
+	if frame_index >= 0:
+		image = sprite.render_frame(frame_index)
+	if image == null and animation != null:
+		var sample := animation.sample(animation_state, animation_time)
+		if not sample.is_empty() and sprite.get_image() != null:
+			var r: Rect2i = sample.get("rect", Rect2i())
+			if r.size.x > 0 and r.size.y > 0:
+				image = sprite.get_image().get_region(r)
+	return image
+
+func _prepare_sprite_texture() -> void:
+	var image := _current_sprite_image()
+	if image == null or image == _sprite_image:
+		return
+	_sprite_image = image
+	_sprite_texture = ImageTexture.create_from_image(image)
 
 func refresh() -> void:
 	_dirty = true
@@ -163,21 +193,18 @@ func _draw() -> void:
 			draw_rect(Rect2(p, Vector2(r.size) * scale), Color(1.0, 0.35, 0.35, 0.75), false, 2.0)
 	# Sprite preview.
 	if show_sprites and sprite != null:
-		var image: Image = null
-		var frame_index := sprite_frame_index()
-		if frame_index >= 0:
-			image = sprite.render_frame(frame_index)
-		if image == null and animation != null:
-			var sample := animation.sample(animation_state, animation_time)
-			if not sample.is_empty() and sprite.get_image() != null:
-				var r: Rect2i = sample.get("rect", Rect2i())
-				if r.size.x > 0 and r.size.y > 0:
-					image = sprite.get_image().get_region(r)
+		var image := _current_sprite_image()
 		if image != null:
-			var tex := ImageTexture.create_from_image(image)
+			if image != _sprite_image or _sprite_texture == null:
+				_sprite_image = image
+				_sprite_texture = ImageTexture.create_from_image(image)
 			var sp := origin + (sprite_pos - base_scroll) * scale
-			draw_texture_rect(tex, Rect2(sp, Vector2(image.get_width(), image.get_height()) * scale), false)
-			draw_rect(Rect2(sp, Vector2(image.get_width(), image.get_height()) * scale), Color("#ffd45e"), false, 1.0)
+			var draw_rect := Rect2(sp, Vector2(image.get_width(), image.get_height()) * scale)
+			var visible := draw_rect.intersection(Rect2(origin, view_size))
+			if visible.size.x > 0 and visible.size.y > 0 and _sprite_texture != null:
+				var src := Rect2((visible.position - draw_rect.position) / scale, visible.size / scale)
+				draw_texture_rect_region(_sprite_texture, visible, src)
+				draw_rect(visible, Color("#ffd45e"), false, 1.0)
 	# Sprite-per-line limit indicator (uses the stage collision markers as a
 	# conservative sample; real OAM/VDP evaluation is done by the Hardware tab).
 	if show_limits:

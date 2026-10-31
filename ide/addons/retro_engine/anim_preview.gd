@@ -33,8 +33,24 @@ func set_data(p_sprite: RetroSprite, p_animation: RetroAnimation, p_state: Strin
 	queue_redraw()
 
 func tick(delta: float) -> void:
-	time += delta
+	set_time(time + delta)
+
+## Set the preview time and pre-build the frame texture outside `_draw`, so a
+## new animation frame never flashes an uninitialized white texture.
+func set_time(value: float) -> void:
+	time = value
+	_prepare_texture()
 	queue_redraw()
+
+func _prepare_texture() -> void:
+	var frame := resolve_frame()
+	if frame.is_empty():
+		return
+	var image := frame_image(frame)
+	if image == null or image == _last_image:
+		return
+	_last_image = image
+	_texture = ImageTexture.create_from_image(image)
 
 ## Resolve the frame that must be drawn at `time`.
 ##
