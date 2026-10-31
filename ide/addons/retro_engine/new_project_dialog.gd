@@ -29,7 +29,7 @@ var _mugen_stage: LineEdit
 
 func _ready() -> void:
 	title = I18n.t("new_project.title")
-	size = Vector2i(820, 560)
+	size = Vector2i(820, 660)
 	unresizable = false
 	var root := VBoxContainer.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -160,7 +160,7 @@ func open(default_dir: String) -> void:
 		_name.text = "my_snes_game"
 	else:
 		_name.text = "my_megadrive_game"
-	popup_centered(Vector2i(820, 560))
+	popup_centered(Vector2i(820, 660))
 
 func _selected_target() -> String:
 	return "snes" if _platform.selected == 0 else "megadrive"
