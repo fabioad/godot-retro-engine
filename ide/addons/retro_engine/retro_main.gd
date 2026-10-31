@@ -25,7 +25,7 @@ const NativeBridgeEditor = preload("res://addons/retro_engine/native_bridge.gd")
 const AudioEditor = preload("res://addons/retro_engine/audio_editor.gd")
 const SDKDownloader = preload("res://addons/retro_engine/sdk_downloader.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
-const GamePreview = preload("res://addons/retro_engine/game_preview.gd")
+const RomPreview = preload("res://addons/retro_engine/rom_preview.gd")
 const IMAGE_EXTS := ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif"]
 
 const CONFIG_PATH := "user://retro_engine.cfg"
@@ -58,16 +58,11 @@ var _tabs: TabContainer
 var _main_split: HBoxContainer
 var _status: Label
 var _preview
-var _preview_scroll_x: HSlider
-var _preview_scroll_y: HSlider
-var _preview_sprites: CheckBox
-var _preview_collisions: CheckBox
-var _preview_limits: CheckBox
 var _game_status: Label
 var _game_pause: Button
-var _game_pause_transition: CheckBox
 var _game_speed: OptionButton
 var _game_log: RichTextLabel
+var _preview_pending_start := false
 var sprite_editor
 var stage_editor
 var animation_editor
@@ -433,31 +428,13 @@ func _build_preview_tab() -> void:
 	var preview_box := VBoxContainer.new()
 	preview_box.name = "Preview"
 	_tabs.add_child(preview_box)
-	var row := HBoxContainer.new()
-	preview_box.add_child(row)
 	var note := Label.new()
 	note.text = I18n.t("preview.note")
 	note.add_theme_color_override("font_color", Color("#ffd45e"))
 	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	note.clip_text = true
-	note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.tooltip_text = note.text
-	row.add_child(note)
-	_preview_sprites = CheckBox.new()
-	_preview_sprites.text = I18n.t("preview.sprites")
-	_preview_sprites.button_pressed = true
-	_preview_sprites.toggled.connect(func(v): _preview.set_sprites_visible(v))
-	row.add_child(_preview_sprites)
-	_preview_collisions = CheckBox.new()
-	_preview_collisions.text = I18n.t("preview.collisions")
-	_preview_collisions.button_pressed = true
-	_preview_collisions.toggled.connect(func(v): _preview.set_collisions_visible(v))
-	row.add_child(_preview_collisions)
-	_preview_limits = CheckBox.new()
-	_preview_limits.text = I18n.t("preview.limits")
-	_preview_limits.button_pressed = true
-	_preview_limits.toggled.connect(func(v): _preview.set_limits_visible(v))
-	row.add_child(_preview_limits)
+	preview_box.add_child(note)
 	var game_row := HBoxContainer.new()
 	preview_box.add_child(game_row)
 	var power := Button.new()
@@ -465,6 +442,11 @@ func _build_preview_tab() -> void:
 	power.tooltip_text = I18n.t("preview.power_tip")
 	power.pressed.connect(func(): _preview.power_on())
 	game_row.add_child(power)
+	var build := Button.new()
+	build.text = I18n.t("preview.build_rom")
+	build.tooltip_text = I18n.t("preview.build_rom_tip")
+	build.pressed.connect(_on_preview_build_requested)
+	game_row.add_child(build)
 	_game_pause = Button.new()
 	_game_pause.text = I18n.t("preview.pause")
 	_game_pause.tooltip_text = I18n.t("preview.pause_tip")
@@ -479,15 +461,24 @@ func _build_preview_tab() -> void:
 	step10.text = I18n.t("preview.step10")
 	step10.pressed.connect(func(): _preview.step_frames(10))
 	game_row.add_child(step10)
+	var rewind := Button.new()
+	rewind.text = I18n.t("preview.rewind")
+	rewind.tooltip_text = I18n.t("preview.rewind_tip")
+	rewind.pressed.connect(func(): _preview.rewind_frames(1))
+	game_row.add_child(rewind)
+	var rewind10 := Button.new()
+	rewind10.text = I18n.t("preview.rewind10")
+	rewind10.pressed.connect(func(): _preview.rewind_frames(10))
+	game_row.add_child(rewind10)
 	var reset := Button.new()
 	reset.text = I18n.t("preview.reset")
 	reset.pressed.connect(func(): _preview.reset())
 	game_row.add_child(reset)
-	_game_pause_transition = CheckBox.new()
-	_game_pause_transition.text = I18n.t("preview.pause_transition")
-	_game_pause_transition.tooltip_text = I18n.t("preview.pause_transition_tip")
-	_game_pause_transition.toggled.connect(func(v): _preview.pause_on_transition = v)
-	game_row.add_child(_game_pause_transition)
+	var pause_input := CheckBox.new()
+	pause_input.text = I18n.t("preview.pause_after_input")
+	pause_input.tooltip_text = I18n.t("preview.pause_after_input_tip")
+	pause_input.toggled.connect(func(v): _preview.pause_on_input = v)
+	game_row.add_child(pause_input)
 	var speed_label := Label.new()
 	speed_label.text = I18n.t("preview.speed")
 	game_row.add_child(speed_label)
@@ -506,34 +497,14 @@ func _build_preview_tab() -> void:
 	game_hint.add_theme_color_override("font_color", Color("#8b98ad"))
 	game_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	preview_box.add_child(game_hint)
-	var scroll_row := HBoxContainer.new()
-	preview_box.add_child(scroll_row)
-	var scroll_note := Label.new()
-	scroll_note.text = I18n.t("preview.scroll_x")
-	scroll_row.add_child(scroll_note)
-	_preview_scroll_x = HSlider.new()
-	_preview_scroll_x.min_value = 0
-	_preview_scroll_x.max_value = 4096
-	_preview_scroll_x.custom_minimum_size.x = 110
-	_preview_scroll_x.value_changed.connect(func(_v): _preview.scroll_offset = Vector2(_preview_scroll_x.value, _preview_scroll_y.value); _preview.queue_redraw())
-	scroll_row.add_child(_preview_scroll_x)
-	var scroll_note_y := Label.new()
-	scroll_note_y.text = I18n.t("preview.scroll_y")
-	scroll_row.add_child(scroll_note_y)
-	_preview_scroll_y = HSlider.new()
-	_preview_scroll_y.min_value = 0
-	_preview_scroll_y.max_value = 4096
-	_preview_scroll_y.custom_minimum_size.x = 110
-	_preview_scroll_y.value_changed.connect(func(_v): _preview.scroll_offset = Vector2(_preview_scroll_x.value, _preview_scroll_y.value); _preview.queue_redraw())
-	scroll_row.add_child(_preview_scroll_y)
-	_preview = GamePreview.new()
-	_preview.name = "GamePreview"
+	_preview = RomPreview.new()
+	_preview.name = "RomPreview"
 	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_preview.status.connect(status_message)
-	_preview.status_changed.connect(_on_game_status_changed)
-	_preview.screen_changed.connect(_on_game_screen_changed)
+	_preview.state_changed.connect(_on_game_status_changed)
 	_preview.pause_changed.connect(_on_game_pause_changed)
 	_preview.log_changed.connect(_refresh_game_log)
+	_preview.build_requested.connect(_on_preview_build_requested)
 	preview_box.add_child(_preview)
 	var log_row := HBoxContainer.new()
 	preview_box.add_child(log_row)
@@ -558,19 +529,23 @@ func _build_preview_tab() -> void:
 
 func _on_tab_changed(index: int) -> void:
 	if _preview:
-		_preview.input_enabled = index == 0
+		_preview.set_active(index == 0)
 
 func _on_game_status_changed(text: String) -> void:
 	if _game_status:
 		_game_status.text = text
 
-func _on_game_screen_changed(from_screen: String, to_screen: String, trigger: String, at_frame: int) -> void:
-	status_message("Screen %s -> %s (%s) at frame %d" % [from_screen, to_screen, trigger, at_frame])
-	_refresh_game_log()
-
 func _on_game_pause_changed(is_paused: bool) -> void:
 	if _game_pause:
 		_game_pause.text = I18n.t("preview.resume") if is_paused else I18n.t("preview.pause")
+
+func _on_preview_build_requested() -> void:
+	if project == null:
+		status_message(I18n.t("audio.project_missing"))
+		return
+	_preview_pending_start = true
+	_tabs.current_tab = 6
+	build_panel.start_build(false, false)
 
 func _refresh_game_log() -> void:
 	if _game_log and _preview:
@@ -781,7 +756,7 @@ func _select_project(p: RetroProject) -> void:
 		native_editor.set_context(project, platform, mode)
 	if _preview:
 		_preview.set_input_map(input_editor.get_input_map() if input_editor else null)
-		_preview.reset()
+		_preview.set_project(project)
 	status_message(I18n.t("top.opened", {"name": project.get_name(), "sdk": project.get_sdk_version(), "count": resources.size()}))
 
 func _load_projects() -> void:
@@ -1255,11 +1230,7 @@ func _refresh_preview() -> void:
 		return
 	_preview.set_platform(platform)
 	_preview.set_input_map(input_editor.get_input_map() if input_editor else null)
-	_preview.set_stage(stage_doc)
-	_preview.set_sprite(sprite_doc, anim_doc)
-	if anim_doc and anim_doc.get_states().has("IDLE"):
-		_preview.animation_state = "IDLE"
-	_preview.queue_redraw()
+	_preview.set_project(project)
 	_refresh_game_log()
 
 func _save_session_docs() -> void:
@@ -1483,6 +1454,11 @@ func _on_rom_built(path: String) -> void:
 	_rom_label.text = "%s  %s" % [path.get_file(), _size_text(_last_rom_size)]
 	hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
 	status_message(I18n.t("top.rom_built", {"rom": path, "size": _size_text(_last_rom_size)}))
+	if _preview:
+		_preview.set_project(project)
+		if _preview_pending_start or _tabs.current_tab == 0:
+			_preview_pending_start = false
+			_tabs.current_tab = 0
 
 func _export_rom() -> void:
 	if project == null or _last_rom == "" or not FileAccess.file_exists(_last_rom):

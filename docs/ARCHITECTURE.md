@@ -101,16 +101,27 @@ RetroInputMap (actions + animation states)
 The editor State Simulator mirrors this matcher for keyboard/gamepad-driven
 preview without compiling a ROM.
 
-The **Preview** tab also includes an editor-side boot/screen simulator. It
-powers on, shows a boot logo, an attract/title screen and the gameplay view,
-then reacts to the InputMap commands (`start`, `select`, buttons and
-directions). Screen transitions use a frame-locked fade and are written to a
-transition log with the frame number and triggering command. `Pause` freezes
-the simulation, `Step`/`+10 frames` advance one or ten 60 Hz frames, and
-`Pause on transition` stops automatically at the start of each fade so
-transition frames can be inspected. This is an approximation of the game
-flow for editor review; Build + Run remains the source of truth for the real
-ROM.
+The **Preview** tab executes the project's actual built ROM in a libretro
+core. `tools/libretro_preview.py` is a thin frontend over the installed
+snes9x/bsnes or genesis_plus_gx core: it streams the real emulator frames to
+`rom_preview.gd`, accepts joypad presses derived from the Inputs editor and
+exposes pause, single-frame step, +10 frames and save-state rewind. There is
+no scripted boot or fake title screen: the first frame is whatever the ROM's
+own reset vector and boot code produce. Building the project is required, and
+the real emulator remains the source of truth.
+
+Real preview requirements are the same as the existing Python audio tools plus
+an installed libretro core:
+
+- `python3` with `numpy`;
+- `snes9x_libretro.so` or `bsnes_libretro.so` for SNES;
+- `genesis_plus_gx_libretro.so`, `picodrive_libretro.so` or
+  `blastem_libretro.so` for Mega Drive.
+
+The editor searches the standard RetroArch core directories (including the
+Flatpak path and `retroarch.cfg`'s `libretro_directory`). Audio is currently
+not streamed into the editor; the focus of this preview is the real video,
+input, pause, frame step and rewind behavior.
 
 The Hitbox Timeline editor stores `hitboxes[]` per animation frame. Each box has
 `rect` + `type` (`hit`/`hurt`). AIR import replaces the frames of a explicitly

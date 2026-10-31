@@ -1080,19 +1080,20 @@ RESOURCE_CATEGORY PASS
 ```
 
 
-### Game preview boot/transition simulator (0.1.8)
+### Real ROM preview via libretro (0.1.9)
 
-The Preview tab now boots like a console (OFF -> BOOT -> TITLE -> GAMEPLAY),
-detects InputMap commands (Start/Enter, gamepad Start, buttons and directions),
-logs every command and screen transition with a frame number, and exposes
-Pause, single-frame step, +10 frames and Pause-on-transition.
+The Preview tab no longer fakes a boot sequence. It executes the project's
+built ROM in the installed libretro core (snes9x for SNES, genesis_plus_gx for
+Mega Drive), streams real frames into the editor and injects the Inputs
+editor's joypad commands. Pause, Step, +10 frames and Rewind (libretro save
+states) operate on emulated frames.
 
 ```text
-GAME_PREVIEW boot screen=TITLE
-GAME_PREVIEW pause=true step=true auto=true detected=true
-GAME_PREVIEW PASS
+ROM_PREVIEW snes first=11 frozen=true stepped=true command=true log=true rewind=true texture=true stopped=true
+ROM_PREVIEW megadrive first=11 frozen=true stepped=true command=true log=true rewind=true texture=true stopped=true
+ROM_PREVIEW PASS
 ```
 
-The test covers the power-on timeline, TITLE -> GAMEPLAY -> PAUSE -> GAMEPLAY
-transitions, command detection through a real Enter key event, frozen frames,
-frame stepping, automatic pause at a transition and the transition log.
+The KOF98 SNES ROM boots through its real "CHECKING MSU-1 SUPPORT" screen and
+title; the SGDK platformer ROM runs its real gameplay. Both were exercised
+through the same host/protocol used by the editor.
