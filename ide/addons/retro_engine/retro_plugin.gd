@@ -22,6 +22,7 @@ func _enter_tree() -> void:
 	# Land directly in the Retro workspace on startup.
 	call_deferred("_select_retro_screen")
 	call_deferred("_apply_window_title")
+	call_deferred("_sync_platform_toolbar")
 	call_deferred("_install_title_watch")
 	_title_timer = Timer.new()
 	_title_timer.wait_time = 2.0
@@ -117,9 +118,17 @@ func _install_title_watch() -> void:
 		win.title_changed.connect(_on_window_title_changed)
 	_apply_window_title()
 
+func _sync_platform_toolbar() -> void:
+	if platform_selector == null or main_screen == null:
+		return
+	var index := 0 if main_screen.platform == "snes" else 1
+	if platform_selector.selected != index:
+		platform_selector.select(index)
+
 func _apply_window_title() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	_sync_platform_toolbar()
 	var win := get_window()
 	if win == null:
 		return
