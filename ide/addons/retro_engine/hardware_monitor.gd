@@ -123,10 +123,22 @@ func refresh(stage: RetroStage, sprite: RetroSprite, animation: RetroAnimation, 
 	if sprite != null:
 		var sa := sprite.analyze()
 		var frames := int(sa.get("frames", 0))
-		sprite_count = frames
-		usage["sprites"] = frames
-		usage["sprite_w"] = int(sprite.get_image().get_width()) if sprite.get_image() else 16
-		usage["sprite_h"] = int(sprite.get_image().get_height()) if sprite.get_image() else 16
+		# A sprite document is one object on screen; its frame list is not a
+		# list of simultaneous OAM entries. Estimate VRAM from the largest
+		# frame instead of multiplying the whole sheet by its frame count.
+		sprite_count = 1 if frames > 0 else 0
+		usage["sprites"] = sprite_count
+		var frame_w := 16
+		var frame_h := 16
+		for f in sprite.get_frames():
+			var rect: Rect2i = Dictionary(f).get("rect", Rect2i())
+			frame_w = maxi(frame_w, rect.size.x)
+			frame_h = maxi(frame_h, rect.size.y)
+		if sprite.get_frames().is_empty() and sprite.get_image():
+			frame_w = sprite.get_image().get_width()
+			frame_h = sprite.get_image().get_height()
+		usage["sprite_w"] = frame_w
+		usage["sprite_h"] = frame_h
 		if animation != null:
 			var aa := animation.analyze()
 			extra += I18n.t("hardware.animation", {
