@@ -37,6 +37,18 @@ func _initialize() -> void:
 	notes.append({"step": 8, "length": 8, "pitch": 67, "velocity": 110,
 		"slide": 0.0, "vibrato": 0.0, "delay": 0.0, "gate": 0.9})
 	seq._roll.queue_redraw()
+	# Long songs get a horizontal scrollbar; playback follows the playhead.
+	seq._steps.value = 512
+	await process_frame
+	seq._roll._sync_hscroll()
+	var scrollable: bool = seq._roll._hscroll.max_value - seq._roll._hscroll.page > 0.0
+	seq._roll.set_playhead(400)
+	var followed: bool = seq._roll.scroll_x > 0.0
+	seq._roll.scroll_to_start()
+	ok = ok and scrollable and followed and is_zero_approx(seq._roll.scroll_x)
+	seq._roll.set_playhead(-1)
+	seq._steps.value = 32
+	await process_frame
 	seq._save_bgm()
 	await process_frame
 

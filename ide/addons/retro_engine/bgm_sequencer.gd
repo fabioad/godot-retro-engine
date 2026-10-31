@@ -734,6 +734,9 @@ func _play() -> void:
 		_status.text = "Could not load preview WAV."
 		return
 	_player.stream = stream
+	if _roll != null:
+		_roll.scroll_to_start()
+		_roll.set_playhead(0)
 	_player.play()
 	_playing = true
 	_play_started = Time.get_ticks_msec()

@@ -10,6 +10,7 @@ signal note_selected(track: int, note: int)
 signal song_changed()
 
 const KEY_WIDTH := 42.0
+const SCROLLBAR_H := 18.0
 const MIN_PITCH := 24
 const MAX_PITCH := 96
 const TRACK_COLORS := [
@@ -26,12 +27,23 @@ var scroll_y := 0.0
 var playhead := -1
 var _selected_note := -1
 var _drag: Dictionary = {}
+var _hscroll: HScrollBar
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(560, 380)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_ALL
 	clip_contents = true
+	_hscroll = HScrollBar.new()
+	_hscroll.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	_hscroll.offset_top = -SCROLLBAR_H
+	_hscroll.offset_bottom = 0.0
+	_hscroll.value_changed.connect(func(value: float):
+		scroll_x = float(value)
+		queue_redraw())
+	add_child(_hscroll)
+	resized.connect(_sync_hscroll)
+	_sync_hscroll()
 
 func set_song(p_song: Dictionary, p_track := 0, p_zoom := 1.0) -> void:
 	song = p_song
@@ -39,6 +51,7 @@ func set_song(p_song: Dictionary, p_track := 0, p_zoom := 1.0) -> void:
 	zoom = clampf(p_zoom, 0.5, 2.5)
 	_selected_note = -1
 	_drag = {}
+	_sync_hscroll()
 	queue_redraw()
 
 func set_selected_track(index: int) -> void:
@@ -49,11 +62,43 @@ func set_selected_track(index: int) -> void:
 
 func set_zoom(value: float) -> void:
 	zoom = clampf(value, 0.5, 2.5)
+	_sync_hscroll()
 	queue_redraw()
 
 func set_playhead(step: int) -> void:
 	playhead = step
+	if step >= 0:
+		_follow_playhead(step)
 	queue_redraw()
+
+func scroll_to_start() -> void:
+	scroll_x = 0.0
+	_sync_hscroll()
+	queue_redraw()
+
+func _follow_playhead(step: int) -> void:
+	if size.x <= 0.0:
+		return
+	var col_w := _col_w()
+	var px := KEY_WIDTH + float(step) * col_w - scroll_x
+	if px > size.x * 0.70:
+		scroll_x = KEY_WIDTH + float(step) * col_w - size.x * 0.70
+	elif px < KEY_WIDTH + col_w * 2.0:
+		scroll_x = KEY_WIDTH + float(step) * col_w - KEY_WIDTH - col_w * 2.0
+	scroll_x = clampf(scroll_x, 0.0, _max_scroll_x())
+	_sync_hscroll()
+
+func _sync_hscroll() -> void:
+	if _hscroll == null:
+		return
+	var content := KEY_WIDTH + float(_steps()) * _col_w()
+	var view := maxf(1.0, size.x)
+	_hscroll.min_value = 0.0
+	_hscroll.max_value = maxf(content, view)
+	_hscroll.page = view
+	_hscroll.step = maxf(1.0, _col_w())
+	var limit := maxf(0.0, _hscroll.max_value - view)
+	_hscroll.set_value_no_signal(clampf(scroll_x, 0.0, limit))
 
 func select_note(track: int, note: int) -> void:
 	selected_track = clampi(track, 0, maxi(0, _tracks().size() - 1))
@@ -79,7 +124,7 @@ func _max_scroll_x() -> float:
 	return maxf(0.0, KEY_WIDTH + _steps() * _col_w() - size.x)
 
 func _max_scroll_y() -> float:
-	return maxf(0.0, (MAX_PITCH - MIN_PITCH + 1) * _row_h() - size.y)
+	return maxf(0.0, (MAX_PITCH - MIN_PITCH + 1) * _row_h() - (size.y - SCROLLBAR_H))
 
 func _pitch_at(y: float) -> int:
 	return clampi(MAX_PITCH - int(floor((y + scroll_y) / _row_h())), MIN_PITCH, MAX_PITCH)
@@ -113,7 +158,9 @@ func _hit_any(pos: Vector2) -> Dictionary:
 
 func _draw() -> void:
 	var font: Font = ThemeDB.fallback_font
+	var view_bottom := size.y - SCROLLBAR_H
 	draw_rect(Rect2(Vector2.ZERO, size), Color("#141a21"))
+	draw_rect(Rect2(0.0, view_bottom, size.x, SCROLLBAR_H), Color("#0e1318"))
 	if song.is_empty():
 		draw_string(font, Vector2(48, 34), "No BGM loaded", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#9fb4d0"))
 		return
@@ -125,7 +172,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, KEY_WIDTH, size.y), Color("#0e1318"))
 	for pitch in range(MIN_PITCH, MAX_PITCH + 1):
 		var y := float(MAX_PITCH - pitch) * row_h - scroll_y
-		if y + row_h < 0 or y > size.y:
+		if y + row_h < 0 or y > view_bottom:
 			continue
 		var pc := pitch % 12
 		var black := pc in [1, 3, 6, 8, 10]
@@ -144,7 +191,7 @@ func _draw() -> void:
 			color = Color("#405268")
 		elif step % spb == 0:
 			color = Color("#2b3948")
-		draw_line(Vector2(x, 0), Vector2(x, size.y), color, 1.0)
+		draw_line(Vector2(x, 0), Vector2(x, view_bottom), color, 1.0)
 	# Notes, all tracks (selected track editable/bright).
 	var tracks := _tracks()
 	var soloed := false
@@ -163,7 +210,7 @@ func _draw() -> void:
 		for ni in range(notes.size()):
 			var note: Dictionary = notes[ni]
 			var rect := _note_rect(ti, note)
-			if rect.position.x > size.x or rect.position.x + rect.size.x < KEY_WIDTH or rect.end.y < 0 or rect.position.y > size.y:
+			if rect.position.x > size.x or rect.position.x + rect.size.x < KEY_WIDTH or rect.end.y < 0 or rect.position.y > view_bottom:
 				continue
 			var color := base
 			if ti == selected_track and ni == _selected_note:
@@ -176,7 +223,7 @@ func _draw() -> void:
 	# Playhead.
 	if playhead >= 0 and playhead <= steps:
 		var px := KEY_WIDTH + playhead * col_w - scroll_x
-		draw_line(Vector2(px, 0), Vector2(px, size.y), Color("#ff5c7a"), 2.0)
+		draw_line(Vector2(px, 0), Vector2(px, view_bottom), Color("#ff5c7a"), 2.0)
 
 func _note_name(pitch: int) -> String:
 	var names := ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -190,6 +237,7 @@ func _gui_input(event: InputEvent) -> void:
 				scroll_x = clampf(scroll_x - 40, 0, _max_scroll_x())
 			else:
 				scroll_y = clampf(scroll_y - 40, 0, _max_scroll_y())
+			_sync_hscroll()
 			queue_redraw()
 			accept_event()
 			return
@@ -198,11 +246,12 @@ func _gui_input(event: InputEvent) -> void:
 				scroll_x = clampf(scroll_x + 40, 0, _max_scroll_x())
 			else:
 				scroll_y = clampf(scroll_y + 40, 0, _max_scroll_y())
+			_sync_hscroll()
 			queue_redraw()
 			accept_event()
 			return
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			if mb.position.x < KEY_WIDTH:
+			if mb.position.x < KEY_WIDTH or mb.position.y > size.y - SCROLLBAR_H:
 				return
 			grab_focus()
 			var hit := _hit_any(mb.position)

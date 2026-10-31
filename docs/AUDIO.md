@@ -82,7 +82,10 @@ The piano roll supports:
 
 - left click to add a note, left drag to move it, drag its right edge to resize;
 - right click or `Delete`/`Backspace` to remove the selected note;
-- mouse wheel to scroll vertically, `Shift` + wheel horizontally;
+- mouse wheel to scroll vertically, `Shift` + wheel horizontally, or use the
+  horizontal scrollbar for long step counts;
+- during `Preview` the roll follows the playhead horizontally and stops
+  following as soon as `Stop` is pressed;
 - per-track colors, mute/solo, zoom and step/BPM controls.
 
 The chip panel exposes the per-track controls used by the target hardware:
