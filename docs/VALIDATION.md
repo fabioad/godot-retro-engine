@@ -1067,7 +1067,7 @@ Localization coverage now reports 501 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
 
 
-### Resource categories (0.1.6)
+### Resource categories (0.1.7)
 
 Game sprites (`editor == "sprite"`) remain under **Sprites**. Generic
 PNG/JPG/BMP/WebP images and unknown image files now appear under a separate
