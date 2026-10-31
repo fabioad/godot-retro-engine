@@ -124,6 +124,9 @@ class LibretroHost:
         self.buttons = 0
         self._frame_payload = b""
         self._frame_format = FORMAT_RGBA8888
+        self._audio = bytearray()
+        self.audio_enabled = True
+        self.audio_rate = 0.0
         self._last_payload = b""
         self._last_w = 0
         self._last_h = 0
@@ -272,6 +275,22 @@ class LibretroHost:
         self._last_format = fmt
         self.frame_index += 1
 
+    def _audio_sample(self, left, right) -> None:
+        if self.audio_enabled:
+            self._audio += struct.pack("<hh", int(left), int(right))
+
+    def _audio_batch(self, data, frames) -> int:
+        if self.audio_enabled and data and frames > 0:
+            self._audio += C.string_at(data, int(frames) * 4)
+        return int(frames)
+
+    def take_audio(self) -> bytes:
+        if not self._audio:
+            return b""
+        data = bytes(self._audio)
+        self._audio.clear()
+        return data
+
     def _input_state(self, port, device, index, button_id) -> int:
         if port != 0:
             return 0
@@ -284,9 +303,8 @@ class LibretroHost:
     def _set_callbacks(self) -> None:
         self._env_cb = C.CFUNCTYPE(C.c_bool, C.c_uint, C.c_void_p)(self._env)
         self._video_cb = C.CFUNCTYPE(None, C.c_void_p, C.c_uint, C.c_uint, C.c_size_t)(self._video)
-        self._audio_cb = C.CFUNCTYPE(None, C.c_int16, C.c_int16)(lambda _l, _r: None)
-        self._batch_cb = C.CFUNCTYPE(C.c_size_t, C.POINTER(C.c_int16), C.c_size_t)(
-            lambda _data, frames: frames)
+        self._audio_cb = C.CFUNCTYPE(None, C.c_int16, C.c_int16)(self._audio_sample)
+        self._batch_cb = C.CFUNCTYPE(C.c_size_t, C.POINTER(C.c_int16), C.c_size_t)(self._audio_batch)
         self._poll_cb = C.CFUNCTYPE(None)(lambda: None)
         self._state_cb = C.CFUNCTYPE(C.c_int16, C.c_uint, C.c_uint, C.c_uint, C.c_uint)(self._input_state)
         lib = self.lib
@@ -310,8 +328,10 @@ class LibretroHost:
         fps = float(av.timing.fps) or 60.0
         self.lib.retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD)
         self._serialize_size = int(self.lib.retro_serialize_size())
+        self.audio_rate = float(av.timing.sample_rate)
         return {
             "ok": True,
+            "audio_rate": self.audio_rate,
             "width": int(av.geometry.base_width),
             "height": int(av.geometry.base_height),
             "max_width": int(av.geometry.max_width),
@@ -323,13 +343,15 @@ class LibretroHost:
             "rom": os.path.basename(self.rom_path),
         }
 
-    def run_frame(self) -> bytes:
+    def run_frame(self):
         self.lib.retro_run()
+        audio = self.take_audio()
         if not self._frame_payload:
-            return b""
-        return b"LRF1" + struct.pack("<IIIII", self.width, self.height,
-                                     self._frame_format, self.frame_index,
-                                     len(self._frame_payload)) + self._frame_payload
+            return b"", audio
+        packet = b"LRF1" + struct.pack("<IIIII", self.width, self.height,
+                                       self._frame_format, self.frame_index,
+                                       len(self._frame_payload)) + self._frame_payload
+        return packet, audio
 
     def serialize(self) -> bytes:
         if self._serialize_size <= 0:
@@ -457,8 +479,11 @@ def main() -> None:
 
     def run_one(remember_frame: bool = True) -> None:
         nonlocal frames_since_pause
-        packet = host.run_frame()
+        packet, audio = host.run_frame()
         queue(packet)
+        if audio:
+            queue(b"AUD0" + struct.pack("<III", int(host.audio_rate),
+                                        len(audio) // 4, len(audio)) + audio)
         if remember_frame:
             remember(packet)
         frames_since_pause += 1
@@ -496,6 +521,9 @@ def main() -> None:
             for _ in range(count):
                 run_one()
             host.buttons &= ~mask
+        elif cmd == "audio":
+            host.audio_enabled = len(parts) > 1 and parts[1].strip() not in ("0", "off", "false")
+            host._audio.clear()
         elif cmd == "rewind":
             count = max(1, int(parts[1])) if len(parts) > 1 else 1
             idx = len(history) - 1 - count

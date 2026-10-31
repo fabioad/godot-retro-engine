@@ -119,9 +119,11 @@ an installed libretro core:
   `blastem_libretro.so` for Mega Drive.
 
 The editor searches the standard RetroArch core directories (including the
-Flatpak path and `retroarch.cfg`'s `libretro_directory`). Audio is currently
-not streamed into the editor; the focus of this preview is the real video,
-input, pause, frame step and rewind behavior.
+Flatpak path and `retroarch.cfg`'s `libretro_directory`). The helper also
+streams the core's PCM audio over the same socket; the Preview tab feeds it to
+an `AudioStreamGenerator`, and the **Audio** checkbox mutes the real game sound
+without stopping emulation. The focus remains the real video, input, pause,
+frame step and rewind behavior.
 
 A compact on-screen pad sits beside the Preview log so the layout does not
 grow. It always shows the full action set (D-pad, six face/shoulder buttons and

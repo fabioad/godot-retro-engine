@@ -478,6 +478,12 @@ func _build_preview_tab() -> void:
 	game_row.add_child(reset)
 	var options_row := HBoxContainer.new()
 	preview_box.add_child(options_row)
+	var audio_check := CheckBox.new()
+	audio_check.text = I18n.t("preview.audio")
+	audio_check.tooltip_text = I18n.t("preview.audio_tip")
+	audio_check.button_pressed = true
+	audio_check.toggled.connect(func(v): _preview.set_audio_enabled(v))
+	options_row.add_child(audio_check)
 	var pause_input := CheckBox.new()
 	pause_input.text = I18n.t("preview.pause_after_input")
 	pause_input.tooltip_text = I18n.t("preview.pause_after_input_tip")

@@ -52,6 +52,14 @@ func _exercise(rom: String, platform: String, map: RetroInputMap) -> bool:
 		return false
 	var first_frame: int = int(preview.frame)
 	var texture_ok: bool = preview._screen.texture != null
+	var audio_ok: bool = preview.audio_packets > 0
+	var audio_before: int = int(preview.audio_packets)
+	preview.set_audio_enabled(false)
+	await _wait_frames(12)
+	var audio_off_ok: bool = int(preview.audio_packets) <= audio_before + 2
+	preview.set_audio_enabled(true)
+	var audio_on_ok := await _wait_until(func(): return int(preview.audio_packets) > audio_before + 4, 3000)
+	ok = ok and audio_ok and audio_off_ok and audio_on_ok
 	preview.set_pause(true)
 	await _wait_frames(20)
 	var frozen_frame: int = int(preview.frame)
@@ -80,6 +88,7 @@ func _exercise(rom: String, platform: String, map: RetroInputMap) -> bool:
 	print("ROM_PREVIEW ", platform, " first=", first_frame, " frozen=", frozen,
 		" stepped=", stepped_ok, " command=", command_ok, " log=", log_ok,
 		" rewind=", rewind_ok, " button=", button_ok, " button_log=", button_log,
+		" audio=", audio_ok, " audio_off=", audio_off_ok, " audio_on=", audio_on_ok,
 		" texture=", texture_ok, " stopped=", stopped, " status=", status)
 	preview.queue_free()
 	await process_frame

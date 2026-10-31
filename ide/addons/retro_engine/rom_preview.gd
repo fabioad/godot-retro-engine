@@ -36,6 +36,9 @@ var frame := 0
 var speed := 1.0
 var pause_on_input := false
 var pause_on_change := true
+var audio_enabled := true
+var audio_packets := 0
+var audio_frames := 0
 var auto_start := true
 var input_enabled := true
 var last_command := ""
@@ -56,6 +59,10 @@ var _fps := 60.0
 var _core_name := ""
 var _rom_name := ""
 var _frame_format := FORMAT_RGB565
+var _audio_rate := 0.0
+var _audio_player: AudioStreamPlayer
+var _audio_generator: AudioStreamGenerator
+var _audio_playback: AudioStreamGeneratorPlayback
 var _have_frame := false
 var _stopping := false
 var _start_ms := 0
@@ -103,6 +110,9 @@ func _ready() -> void:
 	_message.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_message)
 	_message.text = "No ROM loaded."
+	_audio_player = AudioStreamPlayer.new()
+	_audio_player.bus = "Master"
+	add_child(_audio_player)
 	set_process(true)
 
 func _exit_tree() -> void:
@@ -214,6 +224,9 @@ func start() -> bool:
 	_frame_format = FORMAT_RGB565
 	paused = false
 	_press_frames.clear()
+	audio_packets = 0
+	audio_frames = 0
+	_stop_audio()
 	pause_changed.emit(false)
 	_pause_after_frame = -1
 	_core_name = core_path.get_file()
@@ -245,6 +258,7 @@ func stop() -> void:
 	running = false
 	paused = false
 	_press_frames.clear()
+	_stop_audio()
 	_start_ms = 0
 	_stopping = false
 
@@ -261,6 +275,9 @@ func reset() -> void:
 	_send("reset\n")
 	paused = false
 	_press_frames.clear()
+	_stop_audio()
+	if audio_enabled:
+		_start_audio()
 	_pause_after_frame = -1
 	_log("ROM reset")
 	pause_changed.emit(false)
@@ -377,8 +394,11 @@ func get_status_text() -> String:
 func get_full_status_text() -> String:
 	if not running:
 		return get_status_text()
+	var suffix := " | PAUSED" if paused else ""
+	if not audio_enabled:
+		suffix += " | MUTE"
 	return "%s | %s | frame %d | %.2f fps%s" % [
-		_core_name, _rom_name, frame, _fps, " | PAUSED" if paused else ""]
+		_core_name, _rom_name, frame, _fps, suffix]
 
 func _process(_delta: float) -> void:
 	if running:
@@ -430,6 +450,19 @@ func _parse_buffer() -> void:
 			_buffer = _buffer.slice(total)
 			_apply_frame(width, height, fmt, index, payload)
 			continue
+		if _buffer.slice(0, 4).get_string_from_ascii() == "AUD0":
+			if _buffer.size() < 16:
+				return
+			var rate := _buffer.decode_u32(4)
+			var frames := _buffer.decode_u32(8)
+			var size := _buffer.decode_u32(12)
+			var total := 16 + size
+			if _buffer.size() < total:
+				return
+			var audio := _buffer.slice(16, total)
+			_buffer = _buffer.slice(total)
+			_on_audio(rate, frames, audio)
+			continue
 		var newline := _buffer.find(10)
 		if newline < 0:
 			if _buffer.size() > 65536:
@@ -449,6 +482,7 @@ func _parse_buffer() -> void:
 			return
 		_hello = hello
 		_fps = float(hello.get("fps", 60.0))
+		_audio_rate = float(hello.get("audio_rate", 0.0))
 		_core_name = String(hello.get("core", _core_name))
 		_rom_name = String(hello.get("rom", _rom_name))
 		running = true
@@ -457,6 +491,10 @@ func _parse_buffer() -> void:
 		_message.visible = false
 		_log("ROM running: %s with %s" % [_rom_name, _core_name])
 		status.emit("Real ROM preview running: %s" % _rom_name)
+		if audio_enabled:
+			_start_audio()
+		else:
+			_send("audio 0\n")
 		_update_overlay()
 		_emit_state()
 
@@ -520,6 +558,62 @@ func _signature_diff(a: PackedByteArray, b: PackedByteArray) -> float:
 		total += absi(int(a[i + 2]) - int(b[i + 2]))
 	var samples := (count / 4) * 3
 	return float(total) / (float(samples) * 255.0)
+
+func set_audio_enabled(enabled: bool) -> void:
+	if audio_enabled == enabled:
+		return
+	audio_enabled = enabled
+	_send("audio %d\n" % (1 if audio_enabled else 0))
+	if audio_enabled:
+		_start_audio()
+	else:
+		_stop_audio()
+	_log("audio ON" if audio_enabled else "audio OFF")
+	_update_overlay()
+	_emit_state()
+
+func _start_audio() -> void:
+	if not audio_enabled or _audio_player == null or _audio_rate <= 0.0:
+		return
+	if _audio_playback != null and _audio_generator != null and is_equal_approx(_audio_generator.mix_rate, _audio_rate):
+		return
+	_audio_player.stop()
+	_audio_generator = AudioStreamGenerator.new()
+	_audio_generator.mix_rate = _audio_rate
+	_audio_generator.buffer_length = 0.25
+	_audio_player.stream = _audio_generator
+	_audio_player.play()
+	_audio_playback = _audio_player.get_stream_playback() as AudioStreamGeneratorPlayback
+
+func _stop_audio() -> void:
+	if _audio_player != null:
+		_audio_player.stop()
+		_audio_player.stream = null
+	_audio_generator = null
+	_audio_playback = null
+
+func _on_audio(rate: int, frames: int, payload: PackedByteArray) -> void:
+	if not audio_enabled or frames <= 0:
+		return
+	audio_packets += 1
+	if _audio_playback == null or not is_equal_approx(_audio_rate, float(rate)):
+		_audio_rate = float(rate)
+		_start_audio()
+	if _audio_playback == null:
+		return
+	var available := _audio_playback.get_frames_available()
+	var count := mini(frames, available)
+	if count <= 0:
+		return
+	var out := PackedVector2Array()
+	out.resize(count)
+	for i in range(count):
+		var offset := i * 4
+		out[i] = Vector2(
+			float(payload.decode_s16(offset)) / 32768.0,
+			float(payload.decode_s16(offset + 2)) / 32768.0)
+	if _audio_playback.push_buffer(out):
+		audio_frames += count
 
 func _update_overlay() -> void:
 	_hud.text = get_full_status_text()

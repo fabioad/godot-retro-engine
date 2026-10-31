@@ -1063,7 +1063,7 @@ Mega Drive VGM      16.2 s   preview 188.14 s, 48050-byte VGM
 SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
 ```
 
-Localization coverage now reports 519 keys for all 41 locales and
+Localization coverage now reports 521 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
 
 
@@ -1133,3 +1133,21 @@ Mega Drive ROM previews with a Start press:
 ```text
 ROM_PREVIEW ... button=true button_log=true ... PASS
 ```
+
+
+### Real game audio (0.1.11)
+
+The libretro helper now forwards the core's stereo PCM alongside the video
+frames. The Preview tab plays it through an `AudioStreamGenerator`, and the
+**Audio** checkbox enables/mutes it. Muting also tells the helper to stop
+sending audio packets.
+
+The real ROM test checks audio packets, mute and resume on both consoles:
+
+```text
+ROM_PREVIEW snes ... audio=true audio_off=true audio_on=true ... PASS
+ROM_PREVIEW megadrive ... audio=true audio_off=true audio_on=true ... PASS
+```
+
+The pad layout still fits the narrow preview (minimum 686 px against a 705 px
+tab) after adding the audio checkbox.
