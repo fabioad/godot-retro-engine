@@ -81,6 +81,7 @@ var _sff_entries: Array = []
 var _snd_path: Label
 var _snd_list: Tree
 var _snd_filter: LineEdit
+var _snd_split: HSplitContainer
 var _snd_player: AudioStreamPlayer
 var _snd_info: RichTextLabel
 var _snd_bank
@@ -127,8 +128,10 @@ func show_page(id: String) -> void:
 	# Refresh asset lists when entering a page.
 	if id == "sff" and _sff_bank != null:
 		_populate_sff()
-	elif id == "sounds" and _snd_bank != null:
-		_populate_snd()
+	elif id == "sounds":
+		balance_snd_split_deferred()
+		if _snd_bank != null:
+			_populate_snd()
 
 func _add_page(id: String, title: String, control: Control) -> void:
 	var button := Button.new()
@@ -423,8 +426,12 @@ func _build_snd_page() -> Control:
 	var split := HSplitContainer.new()
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	split.split_offset = 520
+	split.resized.connect(_balance_snd_split)
+	_snd_split = split
 	box.add_child(split)
 	_snd_list = Tree.new()
+	_snd_list.custom_minimum_size.x = 420
 	_snd_list.columns = 5
 	_snd_list.hide_root = true
 	_snd_list.column_titles_visible = true
@@ -446,7 +453,7 @@ func _build_snd_page() -> Control:
 	_snd_list.item_activated.connect(_on_snd_activated)
 	split.add_child(_snd_list)
 	var right := VBoxContainer.new()
-	right.custom_minimum_size.x = 300
+	right.custom_minimum_size.x = 240
 	split.add_child(right)
 	_snd_info = RichTextLabel.new()
 	_snd_info.bbcode_enabled = true
@@ -878,6 +885,16 @@ func _on_sff_selected(index: int) -> void:
 # --------------------------------------------------------------------------
 # Sound page
 # --------------------------------------------------------------------------
+func balance_snd_split_deferred() -> void:
+	call_deferred("_balance_snd_split")
+
+func _balance_snd_split() -> void:
+	if _snd_split == null:
+		return
+	var target := int(_snd_split.size.x * 0.5)
+	if target > 0 and absi(_snd_split.split_offset - target) > 2:
+		_snd_split.split_offset = target
+
 func _populate_snd() -> void:
 	if _snd_bank == null or _snd_list == null:
 		return
