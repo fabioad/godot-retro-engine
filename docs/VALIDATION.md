@@ -1348,3 +1348,31 @@ RESULT resources=1
 RESULT res=audio wav art/mugen/Kyo-KOF98/sounds/Kyo_0_0.wav exists=true
 MUGEN_TOOLS_TEST PASS
 ```
+
+### demo-Masiaka Mega Drive import (0.1.26)
+
+`https://github.com/ResistanceVault/demo-Masiaka` was cloned to
+`/run/media/fabio/Dados/Fabio/sgdk-test-projects/demo-Masiaka` and imported
+linked in place (`copy=false`), so the upstream repository keeps its original
+demo sources and release files.
+
+- Project metadata: `platform=megadrive`, `mode=h40`, `build_system=sgdk`,
+  `build_file=Makefile`, `build_target=release`, 138 resources.
+- A root `Makefile` wraps `src/makefile.gen`, which expects `src/` as its
+  working directory. Linux/Wine wrappers for the SGDK tools live in the SDK
+  `bin`, including a new `xgmtool` wrapper for the XGM resources.
+- The original demo was built with SGDK 1.31. SGDK 2.11 rejects several legacy
+  palette/sprite calls at compile time, so the checked-in release ROM
+  (`release/Masiaka-by-Resistance-2017.bin`) is the preview/build result.
+- Verified in the IDE: the project appears as **demo-Masiaka** under Mega
+  Drive/H40 with **SGDK 2.11 | toolchain pronto | recursos pronto**, and the
+  real ROM preview starts.
+
+```text
+FOUND name=demo-Masiaka platform=megadrive mode=h40
+BUILD system=sgdk file=Makefile target=release clean=clean
+ROM=.../demo-Masiaka/release/Masiaka-by-Resistance-2017.bin exists=true
+RES=138 SDK=SGDK 2.11
+ROM_PREVIEW megadrive first=61 frozen=true stepped=true command=true log=true
+ROM_PREVIEW PASS
+```
