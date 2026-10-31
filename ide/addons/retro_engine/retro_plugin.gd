@@ -126,11 +126,12 @@ func _apply_window_title() -> void:
 	var version := _plugin_version()
 	var build := _build_code()
 	var title := "Godot Retro Engine %s (build %s) - Godot Engine" % [version, build]
-	if win.title == title:
-		_applied_title = title
-		return
 	_applied_title = title
-	win.title = title
+	if win.title != title:
+		win.title = title
+	# The editor's own _update_title() writes directly through DisplayServer,
+	# without changing Window.title. Re-assert the OS title from the timer.
+	DisplayServer.window_set_title(title)
 
 func _on_window_title_changed() -> void:
 	var win := get_window()
