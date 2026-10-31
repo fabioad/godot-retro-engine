@@ -1204,7 +1204,7 @@ TERMINAL_TEST PASS
 ```
 
 
-### Anim and Cen animated previews (0.1.18)
+### Anim and Cen animated previews (0.1.19)
 
 The **Anim** tab now shows a console-shaped sprite preview that auto-plays the
 selected animation state and follows the timeline playhead. When a state has
@@ -1243,8 +1243,10 @@ PREVIEW_TEST PASS
 The Daniel sprite sheet (432x32, single full-image frame) is now detected as
 18 frames of 24x32 by alpha-gap pitch. The preview shows one character at a
 time over the checkerboard transparency and the Play/Pause button advances
-frames at 60 Hz. **Frames from sprite** replaces the single full-sheet frame
-with those 18 frames and fills the selected animation state.
+frames at 60 Hz. The auto-sheet loops over its own 18-frame duration; a live
+run measured frame 6 at 0.655 s and frame 13 at 1.355 s. **Frames from
+sprite** replaces the single full-sheet frame with those 18 frames and fills
+the selected animation state.
 
 Visual check: `AnimPreview` rendered frames 0 and 1 with the timeline label,
 and `StageCanvas` moved the base map and the 0.5-parallax cloud layer at

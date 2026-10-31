@@ -21,7 +21,6 @@ var _state_list: ItemList
 var _timeline: HBoxContainer
 var _preview
 var _play_button: Button
-var _timer: Timer
 var _playing: bool = false
 var _time: float = 0.0
 var _fps: SpinBox
@@ -36,6 +35,7 @@ var _frame_info: Label
 var _timeline_buttons: Array = []
 var _zoom_spin: SpinBox
 var _user_paused: bool = false
+var _last_process_ms: int = 0
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -203,10 +203,7 @@ func _ready() -> void:
 	note.add_theme_color_override("font_color", Color("#8b98ad"))
 	right.add_child(note)
 
-	_timer = Timer.new()
-	_timer.wait_time = 1.0 / 60.0
-	_timer.timeout.connect(_tick)
-	add_child(_timer)
+	set_process(false)
 
 func _mk(parent: Node, text: String) -> void:
 	var l := Label.new()
@@ -509,34 +506,56 @@ func _toggle_play() -> void:
 	if _playing:
 		_user_paused = false
 		if not _preview.resolve_frame().is_empty():
-			_timer.start()
+			_last_process_ms = Time.get_ticks_msec()
+			set_process(true)
 		else:
 			_playing = false
 			_play_button.text = "Play"
+			set_process(false)
 	else:
 		_user_paused = true
-		_timer.stop()
+		set_process(false)
 
 func _ensure_playing() -> void:
 	if _playing or _user_paused or _preview.resolve_frame().is_empty():
 		return
 	_playing = true
 	_play_button.text = "Pause"
-	_timer.start()
+	_last_process_ms = Time.get_ticks_msec()
+	set_process(true)
 
 func _stop() -> void:
 	_playing = false
 	_user_paused = true
 	_play_button.text = "Play"
-	_timer.stop()
+	set_process(false)
 	_time = 0.0
 	_preview.set_time(0.0)
+
+func _process(_delta: float) -> void:
+	if not _playing or _user_paused:
+		return
+	var now := Time.get_ticks_msec()
+	var elapsed := maxf(0.0, float(now - _last_process_ms) / 1000.0)
+	_last_process_ms = now
+	_advance_time(elapsed)
 
 func _tick() -> void:
 	if not _playing:
 		return
-	_time += 1.0 / 60.0
-	if animation != null:
+	_advance_time(1.0 / 60.0)
+
+## Advance with real frame delta instead of a fixed timer tick. This keeps the
+## preview playing at the right speed even when the editor is throttled or the
+## tab has just regained focus.
+func _advance_time(delta: float) -> void:
+	_time += maxf(0.0, delta)
+	var sheet: bool = _preview.sheet_mode()
+	if sheet:
+		var sheet_duration: float = _preview.sheet_duration_seconds()
+		if sheet_duration > 0.0:
+			_time = fmod(_time, sheet_duration)
+	elif animation != null:
 		var total := animation.total_duration(current_state)
 		if total > 0:
 			var duration := total / 60.0
@@ -546,7 +565,7 @@ func _tick() -> void:
 				_time = maxf(0.0, duration - 1.0 / 60.0)
 				_playing = false
 				_play_button.text = "Play"
-				_timer.stop()
+				set_process(false)
 		var sample: Dictionary = animation.sample(current_state, _time)
 		if not sample.is_empty():
 			_set_playhead(int(sample.get("index", 0)))

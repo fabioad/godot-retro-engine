@@ -142,6 +142,16 @@ func _frame_duration(frame) -> int:
 		return maxi(1, int(Dictionary(frame).get("duration", 6)))
 	return 6
 
+func sheet_mode() -> bool:
+	return String(resolve_frame().get("source", "")) == "sprite_sheet"
+
+func sheet_duration_seconds() -> float:
+	var frames := sprite_sheet_frames()
+	var total := 0
+	for f in frames:
+		total += maxi(1, int(_frame_duration(f)))
+	return float(total) / 60.0
+
 func frame_image(frame: Dictionary) -> Image:
 	if sprite == null or frame.is_empty():
 		return null

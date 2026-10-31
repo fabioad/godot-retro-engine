@@ -70,10 +70,12 @@ auto-plays at 60 Hz, follows the timeline playhead, shows hitboxes/origin and
 falls back to cycling the sprite sheet when a state has no frames yet.
 `SpriteSheet` detects the frame pitch from transparent gaps, splits a single
 full-sheet frame into individual scenes, preserves alpha and labels the
-fallback ("Auto-split by transparency - N frames"). **Frames from sprite**
-materialises those detected frames into the sprite document (and fills the
-current animation state), so the timeline and native exports use the same
-split.
+fallback ("Auto-split by transparency - N frames"). Playback uses the real
+frame delta, and the auto-sheet loops over the detected frames' own duration,
+so all 18 Daniel frames play rather than the single authored frame.
+**Frames from sprite** materialises those detected frames into the sprite
+document (and fills the current animation state), so the timeline and native
+exports use the same split.
 
 The **Cen** tab plays the same stage data used by export:
 `StageCanvas` renders the base map plus every visible authored layer with its
