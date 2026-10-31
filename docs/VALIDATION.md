@@ -1501,3 +1501,14 @@ SONIC  EMPTY keys=[] is_empty=true
 
 Clicking IDLE, WALK, RUN, JUMP, etc. now plays only that state. An empty state
 stays empty instead of replaying the entire sheet.
+
+### MUGEN Tools tab order (0.1.32)
+
+The MUGEN Tools tab now follows the Audio tab. The workspace order is:
+
+```text
+Prev | Spr | Cen | Anim | Pal | Cód | Comp | Áudio | MUGEN Tools | Native
+```
+
+The numeric tab targets used when opening audio assets and MUGEN resources
+were swapped accordingly, so both still select the correct tab.
