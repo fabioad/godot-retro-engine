@@ -7,6 +7,7 @@ signal modified()
 signal status(text: String)
 
 const PixelCanvas = preload("res://addons/retro_engine/pixel_canvas.gd")
+const SpriteSheet = preload("res://addons/retro_engine/sprite_sheet.gd")
 
 var sprite: RetroSprite
 var project: RetroProject
@@ -304,6 +305,10 @@ func set_sprite(doc: RetroSprite, p_project: RetroProject = null) -> void:
 		_frame_list.clear()
 		_info.text = "No sprite loaded"
 		return
+	# Indexed sheets often encode transparency as palette index 0 (usually
+	# magenta). Convert that to alpha for editing/preview; encoding still
+	# writes those pixels back as index 0.
+	SpriteSheet.apply_sprite_key(sprite)
 	_canvas.set_image(sprite.get_image())
 	_canvas.set_palette(sprite.get_palette())
 	_canvas.origin = sprite.get_origin()
@@ -339,6 +344,12 @@ func _rebuild_frames() -> void:
 	if sprite == null:
 		return
 	var frames := sprite.get_frames()
+	if frames.size() <= 1 and sprite.get_image():
+		# Imported sheets arrive as one full-image frame. Split by alpha gaps
+		# so the frame list and stats count the real scenes immediately.
+		var detected := SpriteSheet.ensure_sprite_frames(sprite)
+		if detected.size() > 1:
+			frames = detected
 	if frames.is_empty() and sprite.get_image():
 		sprite.add_frame("full", Rect2i(0, 0, sprite.get_image().get_width(), sprite.get_image().get_height()), 6)
 		frames = sprite.get_frames()
@@ -555,7 +566,7 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 	var doc := RetroSprite.new()
 	doc.set_platform(platform)
 	var err := FAILED
-	if ext == "png" or ext == "bmp" or ext == "webp":
+	if ext in ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif"]:
 		err = doc.load_image(path)
 	elif ext == "chr" or ext == "pic":
 		var pal_path := String(res.get("palette_path", ""))
@@ -572,8 +583,10 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 	if err != OK:
 		status.emit("Could not open sprite: %s" % path)
 		return
+	if doc.get_image() != null:
+		SpriteSheet.apply_chroma_key(doc.get_image(), doc.get_palette())
 	_tiles_x.set_value_no_signal(16)
-	if ext == "png" or ext == "bmp":
+	if ext in ["png", "bmp", "webp"]:
 		var img := doc.get_image()
 		if img and img.get_width() % 16 == 0 and img.get_height() % 16 == 0:
 			_split_w.set_value_no_signal(16)

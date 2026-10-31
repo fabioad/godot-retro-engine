@@ -16,6 +16,7 @@ func _initialize() -> void:
 	var animation := _make_animation()
 	_test_animation(sprite, animation)
 	_test_sheet_auto_split()
+	_test_chroma_and_grid()
 	await _test_animation_editor()
 	await _test_stage(sprite, animation)
 	await _test_flat_stage()
@@ -292,3 +293,33 @@ func _test_animation_editor() -> void:
 	_check("editor_materialized_anim", Array(animation.get_state("IDLE").get("frames", [])).size() == 4)
 	_check("editor_anim_preview", String(editor._preview.resolve_frame().get("source", "")) == "animation")
 	editor.queue_free()
+
+
+func _test_chroma_and_grid() -> void:
+	var keyed := Image.create_empty(32, 32, false, Image.FORMAT_RGBA8)
+	keyed.fill(Color(1, 0, 1, 1))
+	keyed.fill_rect(Rect2i(8, 8, 16, 16), Color(0.2, 0.8, 0.3, 1.0))
+	var palette := PackedColorArray([Color(1, 0, 1, 1), Color(0.2, 0.8, 0.3, 1.0)])
+	var changed := SpriteSheet.apply_chroma_key(keyed, palette)
+	_check("chroma_key_changed", changed)
+	_check("chroma_key_alpha", is_zero_approx(keyed.get_pixel(0, 0).a) and is_equal_approx(keyed.get_pixel(16, 16).a, 1.0))
+	var grid := Image.create_empty(64, 128, false, Image.FORMAT_RGBA8)
+	grid.fill(Color(0, 0, 0, 0))
+	for y in range(4):
+		for x in range(2):
+			grid.fill_rect(Rect2i(x * 32 + 4, y * 32 + 4, 24, 24), Color(0.2 + x * 0.4, 0.8, 0.3 + y * 0.1, 1.0))
+	var rects := SpriteSheet.detect_frames(grid)
+	var grid_ok := rects.size() == 8
+	if grid_ok:
+		for r in rects:
+			var rect: Rect2i = r
+			if rect.size.x != 32 or rect.size.y != 32:
+				grid_ok = false
+				break
+	_check("sheet_grid_2x4", grid_ok, str(rects))
+	var vertical := SpriteSheet.detect_frames(grid, "vertical")
+	_check("sheet_mode_vertical", vertical.size() == 4 and vertical[0].size == Vector2i(64, 32), str(vertical))
+	var horizontal := SpriteSheet.detect_frames(grid, "horizontal")
+	_check("sheet_mode_horizontal", horizontal.size() == 2 and horizontal[0].size == Vector2i(32, 128), str(horizontal))
+	var whole := SpriteSheet.detect_frames(grid, "whole")
+	_check("sheet_mode_whole", whole.size() == 1 and whole[0].size == Vector2i(64, 128), str(whole))

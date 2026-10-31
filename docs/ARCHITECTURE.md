@@ -68,14 +68,23 @@ document: `RetroAnimation.sample(state, time)` selects the frame, while
 `RetroSprite.render_frame()` crops the exact sprite region. The preview
 auto-plays at 60 Hz, follows the timeline playhead, shows hitboxes/origin and
 falls back to cycling the sprite sheet when a state has no frames yet.
-`SpriteSheet` detects the frame pitch from transparent gaps, splits a single
-full-sheet frame into individual scenes, preserves alpha and labels the
-fallback ("Auto-split by transparency - N frames"). Playback uses the real
-frame delta, and the auto-sheet loops over the detected frames' own duration,
-so all 18 Daniel frames play rather than the single authored frame.
+`SpriteSheet` detects the frame pitch from transparent gaps on both axes,
+splits a single full-sheet frame into individual scenes, preserves alpha and
+labels the fallback ("Auto-split by transparency - N frames"). Indexed SNES
+sheets whose transparency is palette index 0 (magenta or green) are keyed to
+alpha on load, so Gothicvania's ghost/cat sheets show transparency and count
+their four frames. The **Frames** selector can force Auto/Horizontal/Vertical/
+Grid/Whole-sheet when a cell contains two sprites. Playback uses the real
+frame delta, and the auto-sheet loops over the detected frames' own duration.
 **Frames from sprite** materialises those detected frames into the sprite
 document (and fills the current animation state), so the timeline and native
 exports use the same split.
+
+Resource images are classified without opening a floating preview:
+alpha or strip dimensions -> **Sprites**; tile/bg/stage names or a companion
+`.map` -> **Tiles/Stages**; otherwise **Images**. Double-click opens sprite-like
+images in the Sprite tab (and propagates the selection to Anim) and tile-like
+images in the Stage tab.
 
 The **Cen** tab plays the same stage data used by export:
 `StageCanvas` renders the base map plus every visible authored layer with its

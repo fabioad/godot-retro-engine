@@ -19,6 +19,7 @@ var zoom: int = 0
 var auto_fit: bool = true
 var show_boxes: bool = true
 var show_origin: bool = true
+var slice_mode: String = "auto"
 
 var _texture: ImageTexture
 var _last_image: Image
@@ -29,6 +30,16 @@ func _ready() -> void:
 	clip_contents = true
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size = Vector2(300, 220)
+
+func set_slice_mode(mode: String) -> void:
+	if slice_mode == mode:
+		return
+	slice_mode = mode
+	_sheet_image = null
+	_sheet_frames = []
+	_last_image = null
+	_prepare_texture()
+	queue_redraw()
 
 func set_data(p_sprite: RetroSprite, p_animation: RetroAnimation, p_state: String) -> void:
 	sprite = p_sprite
@@ -70,7 +81,7 @@ func sprite_sheet_frames() -> Array:
 		return authored
 	if image != _sheet_image:
 		_sheet_image = image
-		_sheet_frames = SpriteSheet.frames_for_sprite(sprite)
+		_sheet_frames = SpriteSheet.frames_for_sprite(sprite, slice_mode)
 	return _sheet_frames
 
 ## Resolve the frame that must be drawn at `time`.
@@ -85,7 +96,13 @@ func resolve_frame() -> Dictionary:
 	var authored: Array = sprite.get_frames()
 	var sheet: Array = sprite_sheet_frames()
 	var has_auto_sheet := sheet.size() > authored.size() and sheet.size() > 1
+	var state_frames: Array = []
 	if animation != null:
+		state_frames = animation.get_state(state_name).get("frames", [])
+	# A state with 0/1 frame plus a multi-frame sprite sheet is an imported
+	# placeholder. Cycle the split frames rather than freezing on one image.
+	var force_sheet := sheet.size() > 1 and state_frames.size() <= 1
+	if animation != null and not force_sheet:
 		var sample: Dictionary = animation.sample(state_name, time)
 		if not sample.is_empty():
 			var si := int(sample.get("sprite_frame", 0))
@@ -132,7 +149,7 @@ func resolve_frame() -> Dictionary:
 			result["image_index"] = i
 			result["duration"] = int(_frame_duration(f))
 			result["source"] = "sprite_sheet"
-			result["auto_sheet"] = has_auto_sheet or sheet.size() > authored.size()
+			result["auto_sheet"] = has_auto_sheet or sheet.size() > authored.size() or force_sheet
 			result["frame_count"] = frames.size()
 			return result
 	return {}

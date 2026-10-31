@@ -851,10 +851,19 @@ static func resource_category(r: Dictionary) -> String:
 		ext = String(r.get("rel_path", "")).get_extension().to_lower()
 	if editor == "sprite":
 		return "Sprites"
-	if editor == "image" or (editor == "none" and ext in IMAGE_EXTS):
-		return "Images"
 	if editor == "stage":
+		# A plain tileset PNG without a companion map is a tile sheet, not a
+		# full stage yet.
+		if ext in ["png", "bmp", "webp"] and String(r.get("map_path", "")).is_empty():
+			return "Tiles"
 		return "Stages"
+	if editor == "image" or (editor == "none" and ext in IMAGE_EXTS):
+		var lower := String(r.get("rel_path", r.get("name", ""))).to_lower()
+		if _looks_like_tileset(lower):
+			return "Tiles"
+		if _looks_like_sprite_sheet(r):
+			return "Sprites"
+		return "Images"
 	if editor == "palette":
 		return "Palettes"
 	if editor == "animation":
@@ -869,15 +878,38 @@ static func resource_category(r: Dictionary) -> String:
 		return "Read-only"
 	return "Other"
 
+static func _looks_like_tileset(lower: String) -> bool:
+	for hint in ["tile", "tileset", "bg", "background", "stage", "ground", "deco", "parallax", "level", "font"]:
+		if lower.contains(hint):
+			return true
+	return false
+
+static func _looks_like_sprite_sheet(r: Dictionary) -> bool:
+	if bool(r.get("has_alpha", false)) or bool(r.get("palette_key", false)):
+		return true
+	var lower := String(r.get("rel_path", r.get("name", ""))).to_lower()
+	for hint in ["sprite", "char", "player", "enemy", "obj", "hero", "npc", "monster", "ghost", "gato", "boss", "skel"]:
+		if lower.contains(hint):
+			return true
+	var w := int(r.get("width", 0))
+	var h := int(r.get("height", 0))
+	if w > 0 and h > 0 and String(r.get("map_path", "")).is_empty():
+		# Horizontal/vertical strips are sprite sheets even when the indexed
+		# PNG has no alpha channel (transparency is palette index 0).
+		if w >= h * 2 or h >= w * 2:
+			return true
+	return false
+
 func _refresh_resource_tree() -> void:
 	_resource_tree.clear()
 	var root := _resource_tree.create_item()
 	var categories := {
-		"Sprites": [], "Images": [], "Stages": [], "Palettes": [], "Animations": [],
+		"Sprites": [], "Tiles": [], "Images": [], "Stages": [], "Palettes": [], "Animations": [],
 		"Code": [], "Resources": [], "Audio": [], "Read-only": [], "Other": [],
 	}
 	var category_labels := {
 		"Sprites": I18n.t("resources.sprites"),
+		"Tiles": "Tiles / Tilesets",
 		"Images": I18n.t("resources.images"),
 		"Stages": I18n.t("resources.stages"),
 		"Palettes": I18n.t("resources.palettes"),
@@ -896,7 +928,7 @@ func _refresh_resource_tree() -> void:
 			continue
 		var key := resource_category(r)
 		categories[key].append(i)
-	for key in ["Sprites", "Images", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
+	for key in ["Sprites", "Tiles", "Images", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
 		var list: Array = categories[key]
 		if list.is_empty():
 			continue
@@ -936,7 +968,7 @@ func _show_resource_info(r: Dictionary) -> void:
 	var pal := String(r.get("palette_path", ""))
 	var map := String(r.get("map_path", ""))
 	var txt := "[b]%s[/b]\n" % String(r.get("rel_path", ""))
-	txt += "Kind: %s | Editor: %s | Editable: %s\n" % [String(r.get("kind", "")), String(r.get("editor", "")), editable]
+	txt += "Kind: %s | Editor: %s | Category: %s | Editable: %s\n" % [String(r.get("kind", "")), String(r.get("editor", "")), resource_category(r), editable]
 	txt += "Size: %s" % _size_text(int(r.get("size", 0)))
 	if r.has("width"):
 		txt += " | %dx%d px | palette %d" % [int(r.get("width", 0)), int(r.get("height", 0)), int(r.get("palette_size", 0))]
@@ -1016,7 +1048,22 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 			_refresh_preview()
 			hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
 		elif editor == "image" or (editor == "none" and ext in IMAGE_EXTS):
-			_show_image_preview(r)
+			# Never open a floating preview: select the asset in a real editor
+			# tab. Tile-like sheets go to the Stage tab; sprite-like sheets go
+			# to the Sprite tab, so the Anim tab immediately follows them.
+			if resource_category(r) == "Tiles":
+				stage_editor.open_resource(r, project)
+				stage_doc = stage_editor.stage
+				_tabs.current_tab = 2
+				_refresh_preview()
+				hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
+			else:
+				sprite_editor.open_resource(r, project)
+				sprite_doc = sprite_editor.sprite
+				_tabs.current_tab = 1
+				animation_editor.set_sprite(sprite_doc)
+				_refresh_preview()
+				hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
 		else:
 			sprite_editor.open_resource(r, project)
 			sprite_doc = sprite_editor.sprite
@@ -1037,46 +1084,6 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 		status_message("Audio asset opened in the BGM/SFX editor.")
 		return
 	status_message("Recognized resource, but no visual editor is available for ." + ext)
-
-func _show_image_preview(r: Dictionary) -> void:
-	var path := String(r.get("path", ""))
-	if path.is_empty() or not FileAccess.file_exists(path):
-		status_message("Image not found: " + path)
-		return
-	var img := Image.load_from_file(path)
-	if img == null:
-		status_message("Could not load image: " + path)
-		return
-	var dlg := Window.new()
-	dlg.title = String(r.get("name", path.get_file()))
-	dlg.min_size = Vector2i(560, 420)
-	dlg.size = Vector2i(720, 560)
-	var box := VBoxContainer.new()
-	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	box.offset_left = 8
-	box.offset_top = 8
-	box.offset_right = -8
-	box.offset_bottom = -8
-	box.add_theme_constant_override("separation", 6)
-	dlg.add_child(box)
-	var info := Label.new()
-	info.text = "%dx%d px | %s" % [img.get_width(), img.get_height(), path.get_file()]
-	box.add_child(info)
-	var tex := TextureRect.new()
-	tex.texture = ImageTexture.create_from_image(img)
-	tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tex.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(tex)
-	var close := Button.new()
-	close.text = I18n.t("common.close")
-	close.pressed.connect(func(): dlg.queue_free())
-	box.add_child(close)
-	dlg.close_requested.connect(func(): dlg.queue_free())
-	add_child(dlg)
-	dlg.popup_centered_ratio(0.65)
-	status_message("Image preview: " + path.get_file())
 
 func _show_readonly_dialog(name: String, note: String) -> void:
 	var dlg := AcceptDialog.new()

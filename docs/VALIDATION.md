@@ -1204,7 +1204,7 @@ TERMINAL_TEST PASS
 ```
 
 
-### Anim and Cen animated previews (0.1.19)
+### Anim and Cen animated previews (0.1.20)
 
 The **Anim** tab now shows a console-shaped sprite preview that auto-plays the
 selected animation state and follows the timeline playhead. When a state has
@@ -1237,8 +1237,29 @@ PREVIEW editor_tick_advances PASS
 PREVIEW editor_pause PASS
 PREVIEW editor_resume PASS
 PREVIEW editor_materialized_anim PASS
+PREVIEW chroma_key_changed PASS
+PREVIEW chroma_key_alpha PASS
+PREVIEW sheet_grid_2x4 PASS
+PREVIEW sheet_mode_vertical PASS
+PREVIEW sheet_mode_horizontal PASS
+PREVIEW sheet_mode_whole PASS
 PREVIEW_TEST PASS
 ```
+
+Gothicvania validation:
+
+```text
+gato  alpha=1 frames=4 first=[P: (0,0), S: (128,64)] 4bpp
+ghost alpha=1 frames=4 first=[P: (0,0), S: (128,64)] 4bpp
+hero  frames=21 first=[P: (0,0), S: (128,64)]
+skeleton frames=19 first=[P: (0,0), S: (128,64)]
+RESOURCE_CATEGORY PASS
+```
+
+`res/ghost.png` and `res/gato.png` use palette index 0 = magenta. The chroma
+key is converted to alpha on load, the Sprite tab auto-materialises four
+128x64 frames, and the Anim preview cycles them even with no authored
+animation frames.
 
 The Daniel sprite sheet (432x32, single full-image frame) is now detected as
 18 frames of 24x32 by alpha-gap pitch. The preview shows one character at a

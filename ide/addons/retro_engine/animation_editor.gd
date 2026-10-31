@@ -34,6 +34,7 @@ var _info: Label
 var _frame_info: Label
 var _timeline_buttons: Array = []
 var _zoom_spin: SpinBox
+var _slice_option: OptionButton
 var _user_paused: bool = false
 var _last_process_ms: int = 0
 
@@ -70,6 +71,15 @@ func _ready() -> void:
 	preview_title.add_theme_font_size_override("font_size", 15)
 	preview_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	preview_head.add_child(preview_title)
+	_slice_option = OptionButton.new()
+	_slice_option.add_item("Frames: Auto")
+	_slice_option.add_item("Frames: Horizontal")
+	_slice_option.add_item("Frames: Vertical")
+	_slice_option.add_item("Frames: Grid")
+	_slice_option.add_item("Frames: Whole sheet")
+	_slice_option.tooltip_text = "Auto uses transparency and both axes. Choose Horizontal/Vertical/Grid when a frame contains two sprites or the auto split is wrong."
+	_slice_option.item_selected.connect(_on_slice_mode_selected)
+	preview_head.add_child(_slice_option)
 	_zoom_spin = _spin(0, 16, 0)
 	_zoom_spin.prefix = "Zoom "
 	_zoom_spin.tooltip_text = "0 = fit the preview; 1-16 = fixed pixel zoom"
@@ -429,6 +439,13 @@ func _remove_frame() -> void:
 		_ensure_playing()
 		modified.emit()
 
+func _on_slice_mode_selected(index: int) -> void:
+	var modes := ["auto", "horizontal", "vertical", "grid", "whole"]
+	var mode: String = modes[clampi(index, 0, modes.size() - 1)]
+	_preview.set_slice_mode(mode)
+	_update_info()
+	_ensure_playing()
+
 func _add_frames_from_sprite() -> void:
 	if animation == null:
 		status.emit("Select or create an animation first.")
@@ -437,7 +454,7 @@ func _add_frames_from_sprite() -> void:
 		status.emit("Load a sprite first.")
 		return
 	var before := sprite.get_frames().size()
-	var sprite_frames: Array = SpriteSheet.ensure_sprite_frames(sprite)
+	var sprite_frames: Array = SpriteSheet.ensure_sprite_frames(sprite, 6, _preview.slice_mode)
 	if sprite_frames.size() < 2:
 		status.emit("Could not detect separate frames. Check the sprite transparency or split the sheet in the Sprite tab.")
 		return
