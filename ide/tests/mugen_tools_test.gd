@@ -62,7 +62,8 @@ func _initialize() -> void:
 	_check("tools_stage_layers", tools._stage_layers.get_root() != null and tools._stage_layers.get_root().get_child_count() == 10, str(tools._stage_layers.get_root().get_child_count() if tools._stage_layers.get_root() else 0))
 	_check("tools_sff", tools.open_sff(kyo_sff) and tools.current_page() == "sff")
 	_check("tools_snd", tools.open_snd(kyo_snd) and tools.current_page() == "sounds")
-	_check("tools_snd_list", tools._snd_list.item_count > 0, str(tools._snd_list.item_count))
+	var snd_root: TreeItem = tools._snd_list.get_root()
+	_check("tools_snd_list", snd_root != null and snd_root.get_child_count() > 0, str(snd_root.get_child_count() if snd_root else 0))
 	tools.queue_free()
 
 	var root := "/tmp/opencode/mugen_tools_test"

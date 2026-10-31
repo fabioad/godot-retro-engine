@@ -8,6 +8,7 @@ signal status(text: String)
 signal assets_imported(result: Dictionary)
 signal page_changed(id: String)
 signal char_def_requested(path: String)
+signal sound_imported(path: String)
 
 const SffBank = preload("res://addons/retro_engine/mugen_sff.gd")
 const AirAnim = preload("res://addons/retro_engine/mugen_air.gd")
@@ -78,7 +79,8 @@ var _sff_entries: Array = []
 
 # Sound page.
 var _snd_path: Label
-var _snd_list: ItemList
+var _snd_list: Tree
+var _snd_filter: LineEdit
 var _snd_player: AudioStreamPlayer
 var _snd_info: RichTextLabel
 var _snd_bank
@@ -178,6 +180,10 @@ func _build_char_page() -> Control:
 	import_char.tooltip_text = "Convert this char's SFF/AIR to a native sprite + animation in the current project"
 	import_char.pressed.connect(_import_char)
 	left.add_child(import_char)
+	var to_sounds := Button.new()
+	to_sounds.text = "Open SND in Sounds"
+	to_sounds.pressed.connect(_open_char_snd)
+	left.add_child(to_sounds)
 	var to_import := Button.new()
 	to_import.text = "Open Import / States"
 	to_import.pressed.connect(func():
@@ -380,7 +386,7 @@ func _build_sff_page() -> Control:
 
 func _build_snd_page() -> Control:
 	var box := VBoxContainer.new()
-	var top := HBoxContainer.new()
+	var top := HFlowContainer.new()
 	box.add_child(top)
 	var open := Button.new()
 	open.text = "Open SND..."
@@ -392,25 +398,66 @@ func _build_snd_page() -> Control:
 	_snd_path.clip_text = true
 	_snd_path.add_theme_color_override("font_color", Color("#9fb4d0"))
 	top.add_child(_snd_path)
+	_snd_filter = LineEdit.new()
+	_snd_filter.placeholder_text = "Filter group,index..."
+	_snd_filter.custom_minimum_size.x = 170
+	_snd_filter.text_changed.connect(func(_t): _populate_snd())
+	top.add_child(_snd_filter)
+	var play := Button.new()
+	play.text = "Play"
+	play.pressed.connect(_play_selected_snd)
+	top.add_child(play)
+	var stop := Button.new()
+	stop.text = "Stop"
+	stop.pressed.connect(func(): _snd_player.stop())
+	top.add_child(stop)
+	var export_wav := Button.new()
+	export_wav.text = "Export WAV..."
+	export_wav.pressed.connect(_export_snd_wav)
+	top.add_child(export_wav)
+	var import_wav := Button.new()
+	import_wav.text = "Import to project"
+	import_wav.tooltip_text = "Write the selected sound as WAV under art/mugen/... and register it in the project"
+	import_wav.pressed.connect(_import_snd_to_project)
+	top.add_child(import_wav)
 	var split := HSplitContainer.new()
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(split)
-	_snd_list = ItemList.new()
-	_snd_list.item_activated.connect(_on_snd_activated)
+	_snd_list = Tree.new()
+	_snd_list.columns = 5
+	_snd_list.hide_root = true
+	_snd_list.column_titles_visible = true
+	_snd_list.set_column_title(0, "Group")
+	_snd_list.set_column_title(1, "Index")
+	_snd_list.set_column_title(2, "Bytes")
+	_snd_list.set_column_title(3, "Rate")
+	_snd_list.set_column_title(4, "Seconds")
+	_snd_list.set_column_expand(0, false)
+	_snd_list.set_column_custom_minimum_width(0, 70)
+	_snd_list.set_column_expand(1, false)
+	_snd_list.set_column_custom_minimum_width(1, 70)
+	_snd_list.set_column_expand(2, false)
+	_snd_list.set_column_custom_minimum_width(2, 90)
+	_snd_list.set_column_expand(3, false)
+	_snd_list.set_column_custom_minimum_width(3, 80)
+	_snd_list.set_column_expand(4, true)
 	_snd_list.item_selected.connect(_on_snd_selected)
+	_snd_list.item_activated.connect(_on_snd_activated)
 	split.add_child(_snd_list)
 	var right := VBoxContainer.new()
-	right.custom_minimum_size.x = 280
+	right.custom_minimum_size.x = 300
 	split.add_child(right)
-	var play := Button.new()
-	play.text = "Play selected"
-	play.pressed.connect(_play_selected_snd)
-	right.add_child(play)
 	_snd_info = RichTextLabel.new()
 	_snd_info.bbcode_enabled = true
 	_snd_info.fit_content = true
+	_snd_info.custom_minimum_size.y = 120
 	right.add_child(_snd_info)
+	var hint := Label.new()
+	hint.text = "Double-click plays; Export WAV writes the original PCM; Import to project registers the WAV as an audio resource."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_color_override("font_color", Color("#8b98ad"))
+	right.add_child(hint)
 	return box
 
 # --------------------------------------------------------------------------
@@ -612,6 +659,17 @@ func _on_char_sound(index: int) -> void:
 	var meta = _char_sounds.get_item_metadata(index)
 	if meta is Array and meta.size() >= 2:
 		_play_stream(_char_snd.stream_for(int(meta[0]), int(meta[1])))
+
+func _open_char_snd() -> void:
+	if _char_def == null or _char_snd == null:
+		status.emit("Open a MUGEN char with a SND file first.")
+		return
+	var files: Dictionary = _char_def.character_files()
+	_snd_bank = _char_snd
+	_snd_path.text = String(files.get("sound", ""))
+	_populate_snd()
+	show_page("sounds")
+	status.emit("SND loaded in Sounds: %d entries" % _snd_bank.entry_count())
 
 func _import_char() -> void:
 	if project == null:
@@ -821,43 +879,118 @@ func _on_sff_selected(index: int) -> void:
 # Sound page
 # --------------------------------------------------------------------------
 func _populate_snd() -> void:
-	if _snd_bank == null:
+	if _snd_bank == null or _snd_list == null:
 		return
 	_snd_list.clear()
-	_snd_info.text = "[b]%s[/b]\n%d sound entries" % [_snd_path.text.get_file(), _snd_bank.entry_count()]
+	var root := _snd_list.create_item()
+	var filter := _snd_filter.text.strip_edges().to_lower() if _snd_filter else ""
+	var shown := 0
 	for e in _snd_bank.entries:
 		var entry: Dictionary = e
-		_snd_list.add_item("%d,%d  %d B" % [int(entry.get("group", 0)), int(entry.get("number", 0)), int(entry.get("size", 0))])
-		_snd_list.set_item_metadata(_snd_list.item_count - 1, [int(entry.get("group", 0)), int(entry.get("number", 0))])
+		var group := int(entry.get("group", 0))
+		var number := int(entry.get("number", 0))
+		var stream: AudioStreamWAV = entry.get("stream", null)
+		var text := "%d,%d" % [group, number]
+		if not filter.is_empty() and not text.contains(filter):
+			continue
+		var item := _snd_list.create_item(root)
+		item.set_text(0, str(group))
+		item.set_text(1, str(number))
+		item.set_text(2, str(int(entry.get("size", 0))))
+		item.set_text(3, str(stream.mix_rate) if stream else "-")
+		item.set_text(4, "%.2f" % _snd_duration(stream) if stream else "-")
+		item.set_metadata(0, [group, number])
+		shown += 1
+	_snd_info.text = "[b]%s[/b]\n%d entries shown / %d total" % [_snd_path.text.get_file(), shown, _snd_bank.entry_count()]
+	if root.get_child_count() > 0:
+		_snd_list.set_selected(root.get_child(0), 0)
+		_on_snd_selected()
 
-func _on_snd_activated(index: int) -> void:
-	_play_snd_index(index)
+func _snd_duration(stream: AudioStreamWAV) -> float:
+	if stream == null:
+		return 0.0
+	var sample_bytes := 2 if stream.format == AudioStreamWAV.FORMAT_16_BITS else 1
+	var channels := 2 if stream.stereo else 1
+	if stream.mix_rate <= 0:
+		return 0.0
+	return float(stream.data.size()) / float(stream.mix_rate * sample_bytes * channels)
 
-func _on_snd_selected(index: int) -> void:
-	if _snd_bank == null or index < 0 or index >= _snd_list.item_count:
-		return
-	var meta = _snd_list.get_item_metadata(index)
+func _selected_snd_entry() -> Dictionary:
+	if _snd_bank == null or _snd_list == null:
+		return {}
+	var item := _snd_list.get_selected()
+	if item == null:
+		return {}
+	var meta = item.get_metadata(0)
 	if meta is Array and meta.size() >= 2:
-		var e: Dictionary = _snd_bank.find(int(meta[0]), int(meta[1]))
-		var stream: AudioStreamWAV = e.get("stream", null)
-		var length := (float(stream.data.size()) / float(stream.mix_rate * (2 if stream.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if stream.stereo else 1))) if stream else 0.0
-		_snd_info.text = "[b]Sound %d,%d[/b]\n%d bytes\n%s\n%.2f s @ %d Hz" % [
-			int(meta[0]), int(meta[1]), int(e.get("size", 0)),
-			"PCM 16-bit" if stream and stream.format == AudioStreamWAV.FORMAT_16_BITS else "PCM 8-bit",
-			length, stream.mix_rate if stream else 0]
+		return _snd_bank.find(int(meta[0]), int(meta[1]))
+	return {}
+
+func _on_snd_activated(_item: TreeItem) -> void:
+	_play_selected_snd()
+
+func _on_snd_selected() -> void:
+	var e := _selected_snd_entry()
+	if e.is_empty():
+		return
+	var stream: AudioStreamWAV = e.get("stream", null)
+	_snd_info.text = "[b]Sound %d,%d[/b]\n%d bytes\n%s\n%.2f s @ %d Hz" % [
+		int(e.get("group", 0)), int(e.get("number", 0)), int(e.get("size", 0)),
+		"PCM 16-bit" if stream and stream.format == AudioStreamWAV.FORMAT_16_BITS else ("PCM 8-bit" if stream else "unsupported payload"),
+		_snd_duration(stream), stream.mix_rate if stream else 0]
 
 func _play_selected_snd() -> void:
-	if _snd_list.get_selected_items().is_empty():
+	var e := _selected_snd_entry()
+	if e.is_empty():
+		status.emit("Select a sound first.")
 		return
-	_play_snd_index(_snd_list.get_selected_items()[0])
+	var stream: AudioStreamWAV = e.get("stream", null)
+	_on_snd_selected()
+	_play_stream(stream)
 
-func _play_snd_index(index: int) -> void:
-	if _snd_bank == null or index < 0 or index >= _snd_list.item_count:
+func _export_snd_wav() -> void:
+	var e := _selected_snd_entry()
+	if e.is_empty() or _snd_bank == null:
+		status.emit("Select a sound first.")
 		return
-	var meta = _snd_list.get_item_metadata(index)
-	if meta is Array and meta.size() >= 2:
-		_on_snd_selected(index)
-		_play_stream(_snd_bank.stream_for(int(meta[0]), int(meta[1])))
+	var dlg := FileDialog.new()
+	dlg.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.add_filter("*.wav", "WAV sound")
+	dlg.current_file = "%s_%d_%d.wav" % [_snd_path.text.get_file().get_basename(), int(e.get("group", 0)), int(e.get("number", 0))]
+	if project != null:
+		dlg.current_dir = project.resolve("art/mugen/sounds")
+	dlg.file_selected.connect(func(path):
+		if _snd_bank.export_wav(int(e.get("group", 0)), int(e.get("number", 0)), path):
+			status.emit("Exported WAV: " + path)
+		else:
+			status.emit("Could not export WAV: " + path)
+		dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered_ratio(0.7)
+
+func _import_snd_to_project() -> void:
+	if project == null:
+		status.emit("Open a SNES/Mega Drive project first.")
+		return
+	var e := _selected_snd_entry()
+	if e.is_empty() or _snd_bank == null:
+		status.emit("Select a sound first.")
+		return
+	var slug := ""
+	if _char_def != null:
+		slug = _char_def.display_name().to_lower().replace(" ", "_")
+	elif not _snd_path.text.is_empty():
+		slug = _snd_path.text.get_base_dir().get_file().to_lower().replace(" ", "_")
+	var dir := project.resolve("art/mugen/sounds" if slug.is_empty() else "art/mugen/%s/sounds" % slug)
+	var file := "%s_%d_%d.wav" % [_snd_path.text.get_file().get_basename(), int(e.get("group", 0)), int(e.get("number", 0))]
+	var path := dir.path_join(file)
+	if not _snd_bank.export_wav(int(e.get("group", 0)), int(e.get("number", 0)), path):
+		status.emit("Could not write WAV: " + path)
+		return
+	MugenImport.register_audio(project, path)
+	sound_imported.emit(path)
+	status.emit("Sound imported into project: " + path)
 
 static func _pair(text: String) -> Vector2:
 	var parts := text.split(",")

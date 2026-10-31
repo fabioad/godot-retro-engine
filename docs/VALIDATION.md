@@ -1332,3 +1332,19 @@ Additional checks:
   **Show sprites** checkbox draws the selected char behind the boxes.
 - Import/States: a **Char DEF...** button resolves CNS/AIR/CMD + SFF and shows
   an AIR action preview with Play/Step.
+
+
+### MUGEN Sounds list, WAV export and project import (0.1.24)
+
+The Sounds page now uses a five-column tree (Group, Index, Bytes, Rate,
+Seconds), a filter, Play/Stop, Export WAV and Import to project. The selected
+entry can be written to an exact RIFF/WAVE file and registered under
+`art/mugen/<char>/sounds/` as an audio resource.
+
+```text
+RESULT ok=true rows=156 selected=0,0
+RESULT playing=true
+RESULT resources=1
+RESULT res=audio wav art/mugen/Kyo-KOF98/sounds/Kyo_0_0.wav exists=true
+MUGEN_TOOLS_TEST PASS
+```

@@ -348,6 +348,7 @@ func _build_ui() -> void:
 	mugen_tools.assets_imported.connect(_on_mugen_assets_imported)
 	mugen_tools.page_changed.connect(_on_mugen_page_changed)
 	mugen_tools.char_def_requested.connect(_on_mugen_char_def_requested)
+	mugen_tools.sound_imported.connect(_on_mugen_sound_imported)
 	_tabs.add_child(mugen_tools)
 	input_editor = InputEditor.new()
 	input_editor.name = "Inputs"
@@ -1386,6 +1387,15 @@ func _on_input_changed() -> void:
 		mugen_editor.set_input_map(input_editor.get_input_map())
 	if _preview and input_editor:
 		_preview.set_input_map(input_editor.get_input_map())
+
+func _on_mugen_sound_imported(path: String) -> void:
+	if project == null:
+		return
+	resources = project.get_resources()
+	_refresh_resource_tree()
+	if audio_editor:
+		audio_editor.set_project(project)
+	status_message("MUGEN sound imported: " + path.get_file())
 
 func _on_mugen_char_def_requested(path: String) -> void:
 	if mugen_editor and not path.is_empty():

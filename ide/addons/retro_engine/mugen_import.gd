@@ -235,6 +235,11 @@ static func import_stage(project: RetroProject, def_path: String, target: String
 	return {"ok": true, "slug": slug, "stage_json": stage_json, "layers": layers.size(),
 		"result": result}
 
+static func register_audio(project: RetroProject, path: String, note: String = "MUGEN SND exported sound") -> void:
+	if project == null:
+		return
+	_register(project, [{"path": path, "editor": "audio", "kind": "audio", "note": note}])
+
 static func _choose_actions(air: AirAnim, max_actions: int) -> Array:
 	var out: Array = []
 	for a in COMMON_ACTIONS:

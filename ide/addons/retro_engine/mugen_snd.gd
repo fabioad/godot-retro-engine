@@ -31,10 +31,11 @@ func load_file(p_path: String) -> bool:
 		var number := _u32(data, offset + 12)
 		var entry: Dictionary = {
 			"group": group, "number": number, "size": size,
-			"offset": offset + 16, "stream": null,
+			"offset": offset + 16, "stream": null, "wav": PackedByteArray(),
 		}
 		if size > 0 and offset + 16 + size <= data.size():
 			var wav := data.slice(offset + 16, offset + 16 + size)
+			entry["wav"] = wav
 			entry["stream"] = _decode_wav(wav)
 		entries.append(entry)
 		_by_key["%d,%d" % [group, number]] = entry
@@ -46,6 +47,21 @@ func entry_count() -> int:
 
 func find(group: int, number: int) -> Dictionary:
 	return _by_key.get("%d,%d" % [group, number], {})
+
+func export_wav(group: int, number: int, path: String) -> bool:
+	var e := find(group, number)
+	if e.is_empty():
+		return false
+	var wav: PackedByteArray = e.get("wav", PackedByteArray())
+	if wav.is_empty():
+		return false
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_buffer(wav)
+	f.close()
+	return true
 
 func stream_for(group: int, number: int) -> AudioStreamWAV:
 	var e := find(group, number)
