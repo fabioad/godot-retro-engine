@@ -1115,7 +1115,8 @@ transition.
 ### On-screen pad (0.1.10)
 
 The Preview tab now has a compact pad beside the log, using the same height so
-the editor layout does not grow. It keeps the full SNES button count and swaps
+the editor layout does not grow. The command/frame log is 72 px high, about 30%
+shorter than before, and the pad sits to its right. It keeps the full SNES button count and swaps
 labels with the active platform:
 
 ```text

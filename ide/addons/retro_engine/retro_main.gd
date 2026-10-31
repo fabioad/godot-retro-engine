@@ -519,8 +519,15 @@ func _build_preview_tab() -> void:
 	_preview.log_changed.connect(_refresh_game_log)
 	_preview.build_requested.connect(_on_preview_build_requested)
 	preview_box.add_child(_preview)
+	var bottom_row := HBoxContainer.new()
+	bottom_row.add_theme_constant_override("separation", 5)
+	preview_box.add_child(bottom_row)
+	var log_col := VBoxContainer.new()
+	log_col.add_theme_constant_override("separation", 2)
+	log_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom_row.add_child(log_col)
 	var log_row := HBoxContainer.new()
-	preview_box.add_child(log_row)
+	log_col.add_child(log_row)
 	var log_title := Label.new()
 	log_title.text = I18n.t("preview.log")
 	log_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -533,15 +540,16 @@ func _build_preview_tab() -> void:
 			_preview.clear_log())
 	log_row.add_child(clear_log)
 	_game_log = RichTextLabel.new()
-	_game_log.custom_minimum_size.y = 104
+	_game_log.custom_minimum_size.y = 72
 	_game_log.scroll_following = true
 	_game_log.selection_enabled = true
 	_game_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	preview_box.add_child(_game_log)
+	_game_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	log_col.add_child(_game_log)
 	_pad = PadControls.new()
 	_pad.set_preview(_preview)
 	_pad.set_platform(platform)
-	preview_box.add_child(_pad)
+	bottom_row.add_child(_pad)
 	_refresh_game_log()
 	_tabs.tab_changed.connect(_on_tab_changed)
 
