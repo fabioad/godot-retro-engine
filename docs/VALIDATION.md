@@ -1376,3 +1376,30 @@ RES=138 SDK=SGDK 2.11
 ROM_PREVIEW megadrive first=61 frozen=true stepped=true command=true log=true
 ROM_PREVIEW PASS
 ```
+
+### Sonic 2 disassembly Mega Drive import (0.1.26)
+
+`https://github.com/sonicretro/s2disasm` was cloned to
+`/run/media/fabio/Dados/Fabio/sgdk-test-projects/s2disasm` and imported linked
+in place. This is a raw 68000 assembly disassembly, not an SGDK project, so it
+is registered with the generic Makefile build system.
+
+- The upstream `build.lua` drives ASL, p2bin, saxman and the music/PCM/DAC
+  conversion. The new root `Makefile` wraps it with the `release` and `clean`
+  targets used by the IDE.
+- Lua 5.3 is not installed system-wide; a project-local interpreter lives in
+  `.retro/tools/lua5.3`, and the Makefile also accepts a system
+  `lua5.3`/`lua5.4`/`lua`.
+- Project metadata: `platform=megadrive`, `mode=h40`, `build_system=generic`,
+  `build_file=Makefile`, `build_target=release`, 649 resources.
+- The build produces the 1 MiB `s2built.bin`; the IDE preview was exercised
+  against that ROM.
+
+```text
+FOUND name=Sonic 2 Disassembly platform=megadrive mode=h40
+BUILD system=generic file=Makefile target=release clean=clean
+ROM=.../s2disasm/s2built.bin exists=true size=1048576
+RES=649
+ROM_PREVIEW megadrive first=61 frozen=true stepped=true command=true log=true
+ROM_PREVIEW PASS
+```
