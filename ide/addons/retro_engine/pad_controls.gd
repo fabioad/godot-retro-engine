@@ -30,7 +30,7 @@ var _select_button: Button
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(190, 78)
-	size_flags_horizontal = Control.SIZE_SHRINK_END
+	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("#0c1117")
