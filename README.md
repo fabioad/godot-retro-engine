@@ -50,8 +50,8 @@ This is not an emulator and not a mock console. The editor imports existing SDK 
 
 ### Visual editors
 - **Sprite editor**: pixel painting with nearest-neighbour zoom, indexed palette strip, exact palette-index preservation, PNG palette (`PLTE/tRNS`) reading, indexed PNG writing, `.chr`/`.pic` decoding, 2/4/8 bpp, frames, origin, hit/hurt boxes, per-frame events, VRAM estimate, SNES and SGDK export.
-- **Stage editor**: real `.chr`/`.pic` + `.map` + `.pal` import, tile map painting, tile picker, layers, scrolling/parallax preview, collision rectangles, map resizing, geometry limits, SNES/SGDK export.
-- **Animation editor**: all fighting-game states (`IDLE`, `WALK`, `JUMP`, `CROUCH`, `ATTACK`, `HIT`, `BLOCK`, `SPECIAL`, `SUPER`, `THROW`), frame durations in console frames, 60 Hz playback, loops, transitions, per-frame hitboxes and events, `.inc` (65816) and `.h` (SGDK/C) export.
+- **Stage editor**: real `.chr`/`.pic` + `.map` + `.pal` import, tile map painting, tile picker, layers with editable parallax, animated scrolling preview with sprite animation, collision rectangles, map resizing, geometry limits, SNES/SGDK export.
+- **Animation editor**: all fighting-game states (`IDLE`, `WALK`, `JUMP`, `CROUCH`, `ATTACK`, `HIT`, `BLOCK`, `SPECIAL`, `SUPER`, `THROW`), frame durations in console frames, auto-playing 60 Hz preview with timeline follow, sprite-sheet fallback, **Frames from sprite**, loops, transitions, per-frame hitboxes and events, `.inc` (65816) and `.h` (SGDK/C) export.
 - **Palette editor**: CGRAM/CRAM limits, exact index order, `.pal` import/export, nearest-color remap.
 - **Hardware monitor**: VRAM, CGRAM/CRAM, ROM, OAM/VDP per-line sprite limits, BG layer/bpp/mode checks. Estimates are labeled as static estimates, not ROM measurements.
 - **Preview**: native resolution viewport, integer scaling, scrolling, parallax, collision overlay, sprite overlay, per-line limit hints, and a permanent warning that it is approximate.

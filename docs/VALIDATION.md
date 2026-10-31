@@ -1202,3 +1202,31 @@ callables keep working.
 TERMINAL_TAB_ORDER ["2D", "3D", "Script", "Terminal", "Game", "Asset Store", "Retro"]
 TERMINAL_TEST PASS
 ```
+
+
+### Anim and Cen animated previews (0.1.15)
+
+The **Anim** tab now shows a console-shaped sprite preview that auto-plays the
+selected animation state and follows the timeline playhead. When a state has
+no frames it cycles the sprite sheet and labels the fallback; **Frames from
+sprite** creates authored frames from the sprite document. The **Cen** tab
+plays the stage and every authored parallax layer, with the selected sprite
+animation overlaid; painting pauses playback.
+
+Headless regression `ide/tests/editor_preview_test.gd`:
+
+```text
+PREVIEW anim_frame_0 PASS
+PREVIEW anim_frame_advance PASS
+PREVIEW sheet_fallback_advance PASS
+PREVIEW stage_layer_texture PASS
+PREVIEW stage_parallax_scroll PASS (50.0, 0.0)
+PREVIEW stage_sprite_advance PASS
+PREVIEW editor_playback PASS (30.0, 0.0)
+PREVIEW editor_parallax_apply PASS
+PREVIEW_TEST PASS
+```
+
+Visual check: `AnimPreview` rendered frames 0 and 1 with the timeline label,
+and `StageCanvas` moved the base map and the 0.5-parallax cloud layer at
+different speeds while the sprite advanced.

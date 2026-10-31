@@ -11,6 +11,7 @@ const TilePicker = preload("res://addons/retro_engine/tile_picker.gd")
 
 var stage: RetroStage
 var sprite: RetroSprite
+var animation: RetroAnimation
 var project: RetroProject
 var platform: String = "snes"
 var mode: String = "mode1"
@@ -29,14 +30,23 @@ var _scroll_x: HSlider
 var _scroll_y: HSlider
 var _scroll_label: Label
 var _layers: ItemList
+var _parallax_spin: SpinBox
 var _collisions: ItemList
 var _map_w: SpinBox
 var _map_h: SpinBox
 var _tile_size: SpinBox
 var _tiles_x: SpinBox
 var _bpp: OptionButton
-var _use_camera: CheckBox
 var _column_check: CheckBox
+var _animate_check: CheckBox
+var _speed_spin: SpinBox
+var _sprite_check: CheckBox
+var _state_option: OptionButton
+var _timer: Timer
+var _playing: bool = false
+var _preview_time: float = 0.0
+var _scroll_origin: Vector2 = Vector2.ZERO
+var _preview_state: String = "IDLE"
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -48,7 +58,11 @@ func _ready() -> void:
 	toolbar.add_child(import_btn)
 	_paint_check = CheckBox.new()
 	_paint_check.text = "Paint"
-	_paint_check.toggled.connect(func(v): _canvas.paint_mode = v)
+	_paint_check.toggled.connect(func(v):
+		_canvas.paint_mode = v
+		if v and _playing:
+			_animate_check.set_pressed_no_signal(false)
+			_stop_preview())
 	toolbar.add_child(_paint_check)
 	var tlbl := Label.new()
 	tlbl.text = "Tile"
@@ -153,9 +167,23 @@ func _ready() -> void:
 	del_layer.pressed.connect(_remove_layer)
 	lbtn.add_child(del_layer)
 	side.add_child(lbtn)
+	var lrow2 := HBoxContainer.new()
+	_parallax_spin = _spin(0, 8, 1, "Parallax ")
+	_parallax_spin.step = 0.05
+	_layers.item_selected.connect(func(i):
+		var layers := stage.get_layers() if stage else []
+		if i >= 0 and i < layers.size():
+			_parallax_spin.set_value_no_signal(float(layers[i].get("parallax", 1.0))))
+	lrow2.add_child(_parallax_spin)
+	var apply_parallax := Button.new()
+	apply_parallax.text = "Apply"
+	apply_parallax.tooltip_text = "Set the selected layer parallax factor (0 = fixed, 0.5 = half speed, 1 = camera speed)"
+	apply_parallax.pressed.connect(_apply_parallax)
+	lrow2.add_child(apply_parallax)
+	side.add_child(lrow2)
 
 	var scroll_label_title := Label.new()
-	scroll_label_title.text = "Scrolling / parallax preview"
+	scroll_label_title.text = "Animated stage / parallax preview"
 	side.add_child(scroll_label_title)
 	_scroll_label = Label.new()
 	_scroll_label.text = "X 0  Y 0"
@@ -171,15 +199,32 @@ func _ready() -> void:
 	_scroll_y.max_value = 2048
 	_scroll_y.value_changed.connect(_on_scroll_changed)
 	side.add_child(_scroll_y)
-	var srow := HBoxContainer.new()
-	_use_camera = CheckBox.new()
-	_use_camera.text = "Animate scroll"
-	srow.add_child(_use_camera)
+	var srow := HFlowContainer.new()
+	_animate_check = CheckBox.new()
+	_animate_check.text = "Animate scroll"
+	_animate_check.button_pressed = true
+	_animate_check.toggled.connect(_on_animate_toggled)
+	srow.add_child(_animate_check)
+	_speed_spin = _spin(0, 240, 24, "Speed ")
+	_speed_spin.suffix = "px/s"
+	_speed_spin.tooltip_text = "Preview speed. Authored stage scroll speeds take priority (converted from pixels/frame)."
+	srow.add_child(_speed_spin)
 	var reset_scroll := Button.new()
 	reset_scroll.text = "Reset"
-	reset_scroll.pressed.connect(func(): _scroll_x.value = 0; _scroll_y.value = 0)
+	reset_scroll.pressed.connect(_reset_preview)
 	srow.add_child(reset_scroll)
 	side.add_child(srow)
+	var srow2 := HFlowContainer.new()
+	_sprite_check = CheckBox.new()
+	_sprite_check.text = "Sprite"
+	_sprite_check.button_pressed = true
+	_sprite_check.toggled.connect(func(v): _canvas.show_sprites = v; _canvas.queue_redraw())
+	srow2.add_child(_sprite_check)
+	_state_option = OptionButton.new()
+	_state_option.custom_minimum_size.x = 130
+	_state_option.item_selected.connect(_on_preview_state_selected)
+	srow2.add_child(_state_option)
+	side.add_child(srow2)
 
 	var col_label := Label.new()
 	col_label.text = "Collision areas (world pixels)"
@@ -209,6 +254,11 @@ func _ready() -> void:
 	erow.add_child(exp_md)
 	side.add_child(erow)
 
+	_timer = Timer.new()
+	_timer.wait_time = 1.0 / 60.0
+	_timer.timeout.connect(_tick_preview)
+	add_child(_timer)
+
 func _spin(minv: float, maxv: float, value: float, prefix: String) -> SpinBox:
 	var s := SpinBox.new()
 	s.min_value = minv
@@ -226,10 +276,12 @@ func set_platform(p: String, m: String) -> void:
 		_canvas.show_limits = true
 
 func set_stage(doc: RetroStage, p_project: RetroProject = null) -> void:
+	var changed := stage != doc
 	stage = doc
 	project = p_project
 	_canvas.set_stage(stage)
 	if stage == null:
+		_stop_preview()
 		return
 	_map_w.set_value_no_signal(stage.get_map_size().x)
 	_map_h.set_value_no_signal(stage.get_map_size().y)
@@ -244,11 +296,142 @@ func set_stage(doc: RetroStage, p_project: RetroProject = null) -> void:
 	_refresh_collisions()
 	_update_stats()
 	_canvas.refresh()
-	if stage.get_scroll().has("speed_x"):
+	if stage.get_scroll().has("speed_x") or stage.get_scroll().has("offset_x"):
 		_scroll_x.set_value_no_signal(int(stage.get_scroll().get("offset_x", 0)))
 		_scroll_y.set_value_no_signal(int(stage.get_scroll().get("offset_y", 0)))
-		_on_scroll_changed(0)
+	else:
+		_scroll_x.set_value_no_signal(0)
+		_scroll_y.set_value_no_signal(0)
+	var authored_speed := maxf(absf(float(stage.get_scroll().get("speed_x", 0.0))), absf(float(stage.get_scroll().get("speed_y", 0.0))))
+	if authored_speed > 0.0001:
+		_speed_spin.set_value_no_signal(authored_speed * 60.0)
+	_on_scroll_changed(0)
+	if changed:
+		_preview_time = 0.0
+		_scroll_origin = Vector2(_scroll_x.value, _scroll_y.value)
+		if _animate_check.button_pressed:
+			_start_preview()
+		else:
+			_stop_preview()
 	status.emit("Stage loaded: %s" % stage.get_name())
+
+func set_sprite(doc: RetroSprite, anim: RetroAnimation = null) -> void:
+	sprite = doc
+	if anim != null:
+		animation = anim
+	_canvas.set_sprite(sprite, animation)
+	_rebuild_preview_states()
+
+func set_animation(doc: RetroAnimation) -> void:
+	animation = doc
+	_canvas.set_animation(animation)
+	_rebuild_preview_states()
+
+func _rebuild_preview_states() -> void:
+	if _state_option == null:
+		return
+	_state_option.clear()
+	if animation == null:
+		_state_option.add_item("Sprite sheet")
+		_state_option.select(0)
+		_canvas.animation_state = ""
+		return
+	var preferred := _preview_state
+	var states: Dictionary = animation.get_states()
+	if not states.has(preferred):
+		preferred = ""
+		for k in states.keys():
+			if not Array(animation.get_state(String(k)).get("frames", [])).is_empty():
+				preferred = String(k)
+				break
+		if preferred.is_empty() and not states.is_empty():
+			preferred = String(states.keys()[0])
+	for k in states.keys():
+		_state_option.add_item(String(k))
+	if not preferred.is_empty():
+		_preview_state = preferred
+		for i in range(_state_option.item_count):
+			if _state_option.get_item_text(i) == _preview_state:
+				_state_option.select(i)
+				break
+		_canvas.animation_state = _preview_state
+	_canvas.queue_redraw()
+
+func _on_preview_state_selected(index: int) -> void:
+	if index < 0:
+		return
+	var text := _state_option.get_item_text(index)
+	_preview_state = "" if text == "Sprite sheet" else text
+	_canvas.animation_state = _preview_state
+	_preview_time = 0.0
+	_canvas.animation_time = 0.0
+	_canvas.queue_redraw()
+
+func _on_animate_toggled(v: bool) -> void:
+	if v:
+		_start_preview()
+	else:
+		_stop_preview()
+
+func _start_preview() -> void:
+	if stage == null:
+		return
+	_playing = true
+	_scroll_origin = _canvas.scroll_offset if _canvas != null else Vector2(_scroll_x.value, _scroll_y.value)
+	_preview_time = 0.0
+	_timer.start()
+
+func _stop_preview() -> void:
+	_playing = false
+	if _timer:
+		_timer.stop()
+
+func _tick_preview() -> void:
+	_advance_preview(1.0 / 60.0)
+
+## Advance the preview by `dt` seconds. Kept public so headless tests can drive
+## the same playback path as the 60 Hz timer.
+func _advance_preview(dt: float) -> void:
+	if stage == null or _canvas == null:
+		return
+	_preview_time += dt
+	var offset := _scroll_origin + _preview_speed() * _preview_time
+	var world: Vector2 = _canvas.world_size()
+	if world.x > 0.0:
+		offset.x = fposmod(offset.x, world.x)
+	if world.y > 0.0:
+		offset.y = fposmod(offset.y, world.y)
+	_apply_preview_scroll(offset)
+
+func _preview_speed() -> Vector2:
+	var sx := 0.0
+	var sy := 0.0
+	if stage != null:
+		var scroll: Dictionary = stage.get_scroll()
+		sx = float(scroll.get("speed_x", 0.0))
+		sy = float(scroll.get("speed_y", 0.0))
+	if absf(sx) < 0.0001 and absf(sy) < 0.0001:
+		sx = _speed_spin.value / 60.0
+	return Vector2(sx * 60.0, sy * 60.0)
+
+func _apply_preview_scroll(offset: Vector2) -> void:
+	_canvas.scroll_offset = offset
+	_canvas.animation_time = _preview_time
+	_canvas.queue_redraw()
+	_scroll_x.set_value_no_signal(int(offset.x))
+	_scroll_y.set_value_no_signal(int(offset.y))
+	if _scroll_label:
+		_scroll_label.text = "X %d  Y %d  |  %.1fs" % [int(offset.x), int(offset.y), _preview_time]
+
+func _reset_preview() -> void:
+	var base := Vector2.ZERO
+	if stage != null:
+		base = Vector2(float(stage.get_scroll().get("offset_x", 0)), float(stage.get_scroll().get("offset_y", 0)))
+	_scroll_x.set_value_no_signal(int(base.x))
+	_scroll_y.set_value_no_signal(int(base.y))
+	_scroll_origin = base
+	_preview_time = 0.0
+	_apply_preview_scroll(base)
 
 func _refresh_layers() -> void:
 	_layers.clear()
@@ -346,18 +529,39 @@ func _on_tile_hovered(mx: int, my: int) -> void:
 func _on_scroll_changed(_v: float) -> void:
 	if _canvas == null:
 		return
-	_canvas.scroll_offset = Vector2(_scroll_x.value, _scroll_y.value)
-	_canvas.queue_redraw()
-	if _scroll_label:
-		_scroll_label.text = "X %d  Y %d" % [int(_scroll_x.value), int(_scroll_y.value)]
+	_scroll_origin = Vector2(_scroll_x.value, _scroll_y.value)
+	_preview_time = 0.0
+	_apply_preview_scroll(_scroll_origin)
 	if stage:
-		stage.set_scroll({"h": true, "v": true, "offset_x": int(_scroll_x.value), "offset_y": int(_scroll_y.value), "speed_x": 1.0, "speed_y": 0.0})
+		var scroll: Dictionary = stage.get_scroll()
+		scroll["h"] = true
+		scroll["v"] = true
+		scroll["offset_x"] = int(_scroll_x.value)
+		scroll["offset_y"] = int(_scroll_y.value)
+		stage.set_scroll(scroll)
 
 func _add_layer() -> void:
 	if stage == null:
 		return
 	stage.add_layer("layer_%d" % stage.get_layers().size(), stage.get_map())
 	_refresh_layers()
+	_canvas.refresh()
+	modified.emit()
+
+func _apply_parallax() -> void:
+	if stage == null or _layers.get_selected_items().is_empty():
+		return
+	var layers := stage.get_layers()
+	var idx := _layers.get_selected_items()[0]
+	if idx < 0 or idx >= layers.size():
+		return
+	var layer: Dictionary = layers[idx]
+	layer["parallax"] = float(_parallax_spin.value)
+	layers[idx] = layer
+	stage.set_layers(layers)
+	_refresh_layers()
+	_layers.select(idx)
+	_canvas.refresh()
 	modified.emit()
 
 func _remove_layer() -> void:
@@ -369,6 +573,7 @@ func _remove_layer() -> void:
 		layers.remove_at(idx)
 		stage.set_layers(layers)
 		_refresh_layers()
+		_canvas.refresh()
 		modified.emit()
 
 func _add_collision() -> void:

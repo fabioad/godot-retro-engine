@@ -1174,6 +1174,8 @@ func _on_collision_modified() -> void:
 		_save_timer.start()
 	if animation_editor and anim_doc:
 		animation_editor.set_animation(anim_doc)
+	if stage_editor:
+		stage_editor.set_sprite(sprite_doc, anim_doc)
 	if state_simulator and anim_doc:
 		state_simulator.set_animation(anim_doc)
 	if state_graph and anim_doc:
@@ -1260,6 +1262,8 @@ func _on_code_modified() -> void:
 	status_message(I18n.t("top.code_edited"))
 
 func _refresh_preview() -> void:
+	if stage_editor:
+		stage_editor.set_sprite(sprite_doc, anim_doc)
 	if _preview == null:
 		return
 	_preview.set_platform(platform)

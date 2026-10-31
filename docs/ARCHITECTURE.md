@@ -61,6 +61,24 @@ directory
 
 No source file is rewritten by import.
 
+### Editor animation and stage previews
+
+The **Anim** tab renders a console-shaped preview driven by the real animation
+document: `RetroAnimation.sample(state, time)` selects the frame, while
+`RetroSprite.render_frame()` crops the exact sprite region. The preview
+auto-plays at 60 Hz, follows the timeline playhead, shows hitboxes/origin and
+falls back to cycling the sprite sheet when a state has no frames yet
+(clearly labelled). **Frames from sprite** turns the current sprite frames
+into animation frames without re-importing art.
+
+The **Cen** tab plays the same stage data used by export:
+`StageCanvas` renders the base map plus every visible authored layer with its
+own parallax factor (`layer_scroll(index)`), clamps scroll to the world size,
+and overlays the selected animation/sprite. **Animate scroll** drives the
+preview from the stage `scroll` speed (or the px/s control), looping at the
+world edge without mutating the document. Painting pauses playback so tile
+editing stays stable.
+
 ### Conversion
 ```
 PNG / .chr / .pic / .pal / .map

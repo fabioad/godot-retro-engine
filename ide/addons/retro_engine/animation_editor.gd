@@ -31,6 +31,9 @@ var _event_type: LineEdit
 var _event_value: LineEdit
 var _info: Label
 var _frame_info: Label
+var _timeline_buttons: Array = []
+var _zoom_spin: SpinBox
+var _auto_started: bool = false
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -58,6 +61,21 @@ func _ready() -> void:
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	split.add_child(center)
+	var preview_head := HBoxContainer.new()
+	center.add_child(preview_head)
+	var preview_title := Label.new()
+	preview_title.text = "Sprite preview"
+	preview_title.add_theme_font_size_override("font_size", 15)
+	preview_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preview_head.add_child(preview_title)
+	_zoom_spin = _spin(0, 16, 0)
+	_zoom_spin.prefix = "Zoom "
+	_zoom_spin.tooltip_text = "0 = fit the preview; 1-16 = fixed pixel zoom"
+	_zoom_spin.value_changed.connect(func(v):
+		_preview.zoom = int(v)
+		_preview.auto_fit = int(v) <= 0
+		_preview.queue_redraw())
+	preview_head.add_child(_zoom_spin)
 	_preview = AnimPreview.new()
 	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	center.add_child(_preview)
@@ -104,7 +122,7 @@ func _ready() -> void:
 	_timeline.add_theme_constant_override("separation", 2)
 	tl_scroll.add_child(_timeline)
 
-	var frame_controls := HBoxContainer.new()
+	var frame_controls := HFlowContainer.new()
 	center.add_child(frame_controls)
 	_mk(frame_controls, "Duration")
 	_duration = _spin(1, 999, 6)
@@ -114,6 +132,11 @@ func _ready() -> void:
 	add_frame.text = "Add frame"
 	add_frame.pressed.connect(_add_frame)
 	frame_controls.add_child(add_frame)
+	var from_sprite := Button.new()
+	from_sprite.text = "Frames from sprite"
+	from_sprite.tooltip_text = "Replace this state with one frame per sprite frame (use the Sprite tab to split a sheet first)"
+	from_sprite.pressed.connect(_add_frames_from_sprite)
+	frame_controls.add_child(from_sprite)
 	var del_frame := Button.new()
 	del_frame.text = "Remove frame"
 	del_frame.pressed.connect(_remove_frame)
@@ -207,23 +230,50 @@ func set_platform(p: String) -> void:
 func set_sprite(doc: RetroSprite) -> void:
 	sprite = doc
 	_preview.set_data(sprite, animation, current_state)
+	_preview.queue_redraw()
+	if not _auto_started:
+		_auto_started = true
+		_ensure_playing()
 
 func set_animation(doc: RetroAnimation, p_project: RetroProject = null) -> void:
+	var changed := animation != doc
 	animation = doc
 	project = p_project
 	if animation == null:
+		_preview.set_data(sprite, null, current_state)
 		return
 	_fps.set_value_no_signal(animation.get_fps())
-	_state_list.clear()
-	for k in animation.get_states().keys():
-		_state_list.add_item(String(k))
-	if _state_list.item_count > 0:
-		_state_list.select(0)
-		current_state = _state_list.get_item_text(0)
+	if changed or _state_list.item_count != animation.get_states().size():
+		_state_list.clear()
+		for k in animation.get_states().keys():
+			_state_list.add_item(String(k))
+		var preferred := current_state
+		if not animation.get_states().has(preferred):
+			preferred = ""
+		if preferred.is_empty():
+			for k in animation.get_states().keys():
+				if not Array(animation.get_state(String(k)).get("frames", [])).is_empty():
+					preferred = String(k)
+					break
+		if preferred.is_empty() and _state_list.item_count > 0:
+			preferred = _state_list.get_item_text(0)
+		if not preferred.is_empty():
+			current_state = preferred
+			for i in range(_state_list.item_count):
+				if _state_list.get_item_text(i) == current_state:
+					_state_list.select(i)
+					break
+		current_frame = 0
+		_time = 0.0
 	_rebuild_transitions()
 	_refresh_timeline()
 	_preview.set_data(sprite, animation, current_state)
+	_preview.queue_redraw()
 	_info.text = "Animation: %s  (%d states, %d fps)" % [animation.get_name(), animation.get_states().size(), animation.get_fps()]
+	_update_info()
+	if not _auto_started:
+		_auto_started = true
+		_ensure_playing()
 
 func _rebuild_transitions() -> void:
 	_transition.clear()
@@ -247,13 +297,15 @@ func _on_state_selected(index: int) -> void:
 	_time = 0.0
 	var st: Dictionary = animation.get_state(current_state)
 	_loop.set_pressed_no_signal(bool(st.get("loop", true)))
-	var d := int(_fps.value)
 	_preview.set_data(sprite, animation, current_state)
+	_preview.time = 0.0
 	_rebuild_transitions()
 	_refresh_timeline()
 	_update_info()
+	_ensure_playing()
 
 func _refresh_timeline() -> void:
+	_timeline_buttons.clear()
 	for c in _timeline.get_children():
 		c.queue_free()
 	if animation == null:
@@ -271,14 +323,36 @@ func _refresh_timeline() -> void:
 			btn.modulate = Color("#ffd45e")
 		btn.pressed.connect(func(): _select_frame(i))
 		_timeline.add_child(btn)
+		_timeline_buttons.append(btn)
 	if frames.is_empty():
 		var lbl := Label.new()
-		lbl.text = "No frames in this state. Add a frame."
+		lbl.text = "No frames in this state. Add a frame or use Frames from sprite."
 		_timeline.add_child(lbl)
+
+func _set_playhead(i: int) -> void:
+	if i == current_frame:
+		return
+	current_frame = i
+	for n in range(_timeline_buttons.size()):
+		var btn: Button = _timeline_buttons[n]
+		btn.set_pressed_no_signal(n == i)
+		btn.modulate = Color("#ffd45e") if n == i else Color.WHITE
+
+func _frame_start_time(index: int) -> float:
+	if animation == null:
+		return 0.0
+	var frames: Array = animation.get_state(current_state).get("frames", [])
+	var start := 0
+	for i in range(min(index, frames.size())):
+		start += maxi(1, int(frames[i].get("duration", 1)))
+	return (float(start) + 0.001) / maxf(1.0, float(animation.get_fps()))
 
 func _select_frame(i: int) -> void:
 	current_frame = i
-	_refresh_timeline()
+	_time = _frame_start_time(i)
+	_preview.time = _time
+	_preview.queue_redraw()
+	_set_playhead(i)
 	_update_info()
 	if animation and animation.get_state(current_state).has("frames"):
 		var frames: Array = animation.get_state(current_state)["frames"]
@@ -298,6 +372,8 @@ func _update_info() -> void:
 		_frame_info.text += "\nFrame %d: sprite frame %d, duration %d, hitboxes %d, events %d" % [
 			current_frame, int(f.get("sprite_frame", 0)), int(f.get("duration", 1)),
 			Array(f.get("hitboxes", [])).size(), Array(f.get("events", [])).size()]
+	elif _preview.resolve_frame().get("source", "") == "sprite_sheet":
+		_frame_info.text += "\nPreview is cycling the sprite sheet because this state has no frames."
 
 func _on_duration_changed(v: float) -> void:
 	if animation == null:
@@ -338,6 +414,7 @@ func _add_frame() -> void:
 	current_frame = animation.get_state(current_state)["frames"].size() - 1
 	_refresh_timeline()
 	_update_info()
+	_ensure_playing()
 	modified.emit()
 
 func _remove_frame() -> void:
@@ -354,7 +431,40 @@ func _remove_frame() -> void:
 		current_frame = clampi(current_frame, 0, max(0, frames.size() - 1))
 		_refresh_timeline()
 		_update_info()
+		_ensure_playing()
 		modified.emit()
+
+func _add_frames_from_sprite() -> void:
+	if animation == null:
+		status.emit("Select or create an animation first.")
+		return
+	if sprite == null or sprite.get_frames().size() < 2:
+		status.emit("Sprite has fewer than two frames. Split the sheet in the Sprite tab first.")
+		return
+	var sprite_frames: Array = sprite.get_frames()
+	var states := animation.get_states()
+	var st: Dictionary = states.get(current_state, {})
+	var out: Array = []
+	for i in range(sprite_frames.size()):
+		var f: Dictionary = sprite_frames[i]
+		out.append({
+			"sprite_frame": i,
+			"duration": maxi(1, int(f.get("duration", 6))),
+			"rect": f.get("rect", Rect2i()),
+			"hitboxes": [],
+			"events": [],
+		})
+	st["frames"] = out
+	states[current_state] = st
+	animation.set_states(states)
+	current_frame = 0
+	_time = 0.0
+	_preview.time = 0.0
+	_refresh_timeline()
+	_update_info()
+	_ensure_playing()
+	modified.emit()
+	status.emit("State %s now has %d frames from the sprite." % [current_state, out.size()])
 
 func _add_box() -> void:
 	if animation == null:
@@ -393,9 +503,20 @@ func _toggle_play() -> void:
 	_playing = not _playing
 	_play_button.text = "Pause" if _playing else "Play"
 	if _playing:
-		_timer.start()
+		if not _preview.resolve_frame().is_empty():
+			_timer.start()
+		else:
+			_playing = false
+			_play_button.text = "Play"
 	else:
 		_timer.stop()
+
+func _ensure_playing() -> void:
+	if _playing or _preview.resolve_frame().is_empty():
+		return
+	_playing = true
+	_play_button.text = "Pause"
+	_timer.start()
 
 func _stop() -> void:
 	_playing = false
@@ -406,12 +527,23 @@ func _stop() -> void:
 	_preview.queue_redraw()
 
 func _tick() -> void:
-	if not _playing or animation == null:
+	if not _playing:
 		return
 	_time += 1.0 / 60.0
-	var total := animation.total_duration(current_state)
-	if total > 0:
-		_time = fmod(_time, total / 60.0)
+	if animation != null:
+		var total := animation.total_duration(current_state)
+		if total > 0:
+			var duration := total / 60.0
+			if bool(animation.get_state(current_state).get("loop", true)):
+				_time = fmod(_time, duration)
+			elif _time >= duration:
+				_time = maxf(0.0, duration - 1.0 / 60.0)
+				_playing = false
+				_play_button.text = "Play"
+				_timer.stop()
+		var sample: Dictionary = animation.sample(current_state, _time)
+		if not sample.is_empty():
+			_set_playhead(int(sample.get("index", 0)))
 	_preview.time = _time
 	_preview.queue_redraw()
 
