@@ -1224,9 +1224,19 @@ PREVIEW stage_parallax_scroll PASS (50.0, 0.0)
 PREVIEW stage_sprite_advance PASS
 PREVIEW editor_playback PASS (30.0, 0.0)
 PREVIEW editor_parallax_apply PASS
+PREVIEW flat_stage_map PASS (4, 2)
+PREVIEW flat_stage_render PASS
+PREVIEW flat_stage_clip PASS
+PREVIEW stage_clip_pose_1 PASS
 PREVIEW_TEST PASS
 ```
 
 Visual check: `AnimPreview` rendered frames 0 and 1 with the timeline label,
 and `StageCanvas` moved the base map and the 0.5-parallax cloud layer at
 different speeds while the sprite advanced.
+
+The real KOF98 port's **Esaka** stage (`KOF98-JpnStreetStage`, stage 0) was
+loaded from its 512x224 PNG without a `.map`; the two authored crowd clips from
+`stage_animations.json` were detected automatically. Capturing pose 0 and pose
+1 showed the crowd region re-sampled one pixel higher at the expected ticks.
+The stage preview also scrolls the 512px world through the 256px SNES viewport.

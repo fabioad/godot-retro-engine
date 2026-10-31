@@ -42,6 +42,9 @@ var _animate_check: CheckBox
 var _speed_spin: SpinBox
 var _sprite_check: CheckBox
 var _state_option: OptionButton
+var _overlay_check: CheckBox
+var _animations_label: Label
+var _animations_file: String = ""
 var _timer: Timer
 var _playing: bool = false
 var _preview_time: float = 0.0
@@ -165,6 +168,23 @@ func _ready() -> void:
 	_state_option.item_selected.connect(_on_preview_state_selected)
 	srow2.add_child(_state_option)
 	side.add_child(srow2)
+	var srow3 := HFlowContainer.new()
+	_overlay_check = CheckBox.new()
+	_overlay_check.text = "Stage clips"
+	_overlay_check.button_pressed = true
+	_overlay_check.tooltip_text = "Animate authored stage clips (crowd, water, machines) read from stage_animations.json"
+	_overlay_check.toggled.connect(func(v): _canvas.show_stage_animations = v; _canvas.queue_redraw())
+	srow3.add_child(_overlay_check)
+	var load_anim := Button.new()
+	load_anim.text = "Clips JSON..."
+	load_anim.tooltip_text = "Load a stage_animations.json and enable the clips for the current stage"
+	load_anim.pressed.connect(_open_animations_json)
+	srow3.add_child(load_anim)
+	_animations_label = Label.new()
+	_animations_label.text = "clips: 0"
+	_animations_label.add_theme_color_override("font_color", Color("#9fb4d0"))
+	srow3.add_child(_animations_label)
+	side.add_child(srow3)
 
 	var mrow := HBoxContainer.new()
 	_map_w = _spin(1, 128, 32, "W")
@@ -310,6 +330,10 @@ func set_stage(doc: RetroStage, p_project: RetroProject = null) -> void:
 	if changed:
 		_preview_time = 0.0
 		_scroll_origin = Vector2(_scroll_x.value, _scroll_y.value)
+		_canvas.set_stage_animations([])
+		_animations_file = ""
+		if _animations_label:
+			_animations_label.text = "clips: 0"
 		if _animate_check.button_pressed:
 			_start_preview()
 		else:
@@ -366,6 +390,85 @@ func _on_preview_state_selected(index: int) -> void:
 	_canvas.animation_state = _preview_state
 	_preview_time = 0.0
 	_canvas.set_animation_time(0.0)
+
+## Load the project's `stage_animations.json` and keep only the clips for
+## `stage_name`. Each clip becomes a target region + pose timing; StageCanvas
+## re-samples that region from the rendered stage, exactly like the SNES BG1
+## sparse-patch runtime.
+func load_stage_animations(path: String, stage_name: String = "") -> bool:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		status.emit("Stage animations JSON not found: " + path)
+		return false
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		status.emit("Invalid stage animations JSON: " + path)
+		return false
+	var clips: Array = parsed.get("clips", [])
+	var wanted := stage_name.strip_edges()
+	var out: Array = []
+	for c in clips:
+		var clip: Dictionary = c
+		if not wanted.is_empty() and String(clip.get("stage", "")) != wanted:
+			continue
+		var target: Dictionary = clip.get("target", {})
+		var region: Array = target.get("target_region_xywh", [])
+		if region.size() != 4:
+			continue
+		var ticks: Array = []
+		for step in target.get("sequence", []):
+			ticks.append(maxi(1, int(Dictionary(step).get("ticks60", 1))))
+		if ticks.is_empty():
+			continue
+		var cycle := int(target.get("cycle_ticks60", 0))
+		if cycle <= 0:
+			for t in ticks:
+				cycle += int(t)
+		out.append({
+			"id": String(clip.get("id", "clip")),
+			"rect": Rect2i(int(region[0]), int(region[1]), int(region[2]), int(region[3])),
+			"ticks": ticks,
+			"phase": int(target.get("start_phase_ticks60", 0)),
+			"cycle": cycle,
+		})
+	_animations_file = path
+	_canvas.set_stage_animations(out)
+	if _overlay_check:
+		_overlay_check.set_pressed_no_signal(true)
+		_canvas.show_stage_animations = true
+	if _animations_label:
+		_animations_label.text = "clips: %d" % out.size()
+	status.emit("Stage animations: %d clip(s) for %s" % [out.size(), wanted if not wanted.is_empty() else "stage"])
+	return not out.is_empty()
+
+func _open_animations_json() -> void:
+	var dlg := FileDialog.new()
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.add_filter("*.json", "Stage animations")
+	if project != null and not _animations_file.is_empty():
+		dlg.current_dir = _animations_file.get_base_dir()
+	else:
+		dlg.current_dir = _default_export_dir()
+	dlg.file_selected.connect(func(path):
+		load_stage_animations(path, stage.get_name() if stage else "")
+		dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered_ratio(0.7)
+
+func _find_animations_json(path: String, stage_name: String) -> String:
+	var candidates: Array = [
+		path.get_base_dir().path_join("animations/stage_animations.json"),
+		path.get_base_dir().path_join("stage_animations.json"),
+	]
+	if project != null:
+		for r in project.get_resources():
+			var p := String(r.get("path", ""))
+			if p.get_file() == "stage_animations.json":
+				candidates.append(p)
+	for c in candidates:
+		if FileAccess.file_exists(String(c)):
+			return String(c)
+	return ""
 
 func _on_animate_toggled(v: bool) -> void:
 	if v:
@@ -633,7 +736,7 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 		if map.is_empty():
 			map = path.get_basename() + ".map"
 		if not FileAccess.file_exists(map):
-			status.emit("PNG tileset has no companion .map; import a .chr/.map pair instead.")
+			_load_flat_image_stage(path, p_project)
 			return
 		var doc := RetroStage.new()
 		doc.set_platform(platform)
@@ -648,6 +751,7 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 		doc.set_column_major(bool(res.get("column_major", false)))
 		doc.set_name(path.get_file().get_basename())
 		set_stage(doc, p_project)
+		_auto_load_animations(path, doc.get_name())
 		modified.emit()
 		return
 	if ext == "chr" or ext == "pic":
@@ -661,8 +765,73 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 			status.emit("No companion .map for " + path)
 			return
 		_open_snes(path, map, pal, int(res.get("map_w", 0)), int(res.get("map_h", 0)), bool(res.get("column_major", false)))
+		_auto_load_animations(path, path.get_file().get_basename())
 		return
 	status.emit("Unsupported stage source: " + ext)
+
+## Load a plain stage PNG (e.g. a 512x224 KOF98/Esaka background) without a
+## companion .map. The image is deduplicated into 8x8 tiles and a normal
+## RetroStage map is built, so scrolling, exports and the real stage renderer
+## all keep working.
+func _load_flat_image_stage(path: String, p_project: RetroProject) -> void:
+	var image := Image.load_from_file(path)
+	if image == null:
+		status.emit("Could not load stage image: " + path)
+		return
+	if image.get_width() % 8 != 0 or image.get_height() % 8 != 0:
+		status.emit("Stage image must be a multiple of 8 pixels: " + path)
+		return
+	image.convert(Image.FORMAT_RGBA8)
+	var tiles_x := image.get_width() / 8
+	var tiles_y := image.get_height() / 8
+	var unique: Dictionary = {}
+	var order: Array = []
+	var indices := PackedInt32Array()
+	indices.resize(tiles_x * tiles_y)
+	for y in range(tiles_y):
+		for x in range(tiles_x):
+			var tile := image.get_region(Rect2i(x * 8, y * 8, 8, 8))
+			var key := tile.get_data().hex_encode()
+			var idx := int(unique.get(key, -1))
+			if idx < 0:
+				idx = order.size()
+				unique[key] = idx
+				order.append(tile)
+			indices[y * tiles_x + x] = idx
+	if order.is_empty():
+		status.emit("Stage image has no tiles: " + path)
+		return
+	var out_x := mini(16, order.size())
+	var out_y := int(ceil(float(order.size()) / float(out_x)))
+	var tileset := Image.create_empty(out_x * 8, out_y * 8, false, Image.FORMAT_RGBA8)
+	tileset.fill(Color(0, 0, 0, 0))
+	for i in range(order.size()):
+		tileset.blit_rect(order[i], Rect2i(0, 0, 8, 8), Vector2i((i % out_x) * 8, (i / out_x) * 8))
+	var doc := RetroStage.new()
+	doc.set_platform(platform)
+	doc.set_name(path.get_file().get_basename())
+	doc.set_tile_size(8)
+	doc.set_tiles_x(out_x)
+	doc.set_bpp(4)
+	doc.set_map_size(Vector2i(tiles_x, tiles_y))
+	doc.set_tileset(tileset)
+	doc.set_palette(RetroGraphics.extract_palette(image, 16, true))
+	var map_bytes := PackedByteArray()
+	map_bytes.resize(tiles_x * tiles_y * 2)
+	map_bytes.fill(0)
+	doc.set_map(map_bytes)
+	for y in range(tiles_y):
+		for x in range(tiles_x):
+			doc.set_tile(x, y, indices[y * tiles_x + x], 0)
+	set_stage(doc, p_project)
+	_auto_load_animations(path, doc.get_name())
+	modified.emit()
+	status.emit("Flat stage loaded: %s (%dx%d tiles, %d unique)" % [doc.get_name(), tiles_x, tiles_y, order.size()])
+
+func _auto_load_animations(path: String, stage_name: String) -> void:
+	var json := _find_animations_json(path, stage_name)
+	if not json.is_empty():
+		load_stage_animations(json, stage_name)
 
 func _export_snes() -> void:
 	if stage == null:

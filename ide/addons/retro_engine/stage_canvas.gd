@@ -11,6 +11,8 @@ var sprite: RetroSprite
 var animation: RetroAnimation
 var animation_state: String = "IDLE"
 var animation_time: float = 0.0
+var stage_animations: Array = []
+var show_stage_animations: bool = true
 
 var scroll_offset: Vector2 = Vector2.ZERO
 var sprite_pos: Vector2 = Vector2(128, 160)
@@ -30,6 +32,7 @@ var _layer_textures: Array = []
 var _layer_images: Array = []
 var _sprite_image: Image
 var _sprite_texture: ImageTexture
+var _stage_animation_textures: Array = []
 var _dirty: bool = true
 
 func _ready() -> void:
@@ -56,6 +59,12 @@ func set_animation(p_animation: RetroAnimation) -> void:
 func set_animation_time(value: float) -> void:
 	animation_time = value
 	_prepare_sprite_texture()
+	queue_redraw()
+
+func set_stage_animations(list: Array) -> void:
+	stage_animations = list
+	_stage_animation_textures.clear()
+	_dirty = true
 	queue_redraw()
 
 func _current_sprite_image() -> Image:
@@ -125,6 +134,7 @@ func _ensure_render() -> void:
 		_texture = ImageTexture.create_from_image(_render) if _render != null else null
 		_layer_textures.clear()
 		_layer_images.clear()
+		_stage_animation_textures.clear()
 		var base_map := stage.get_map()
 		var layers := stage.get_layers()
 		for i in range(layers.size()):
@@ -140,6 +150,17 @@ func _ensure_render() -> void:
 					stage.set_map(base_map)
 			_layer_images.append(image)
 			_layer_textures.append(ImageTexture.create_from_image(image) if image != null else null)
+		for a in stage_animations:
+			var entry: Dictionary = a
+			var rect: Rect2i = entry.get("rect", Rect2i())
+			var image: Image = null
+			if rect.size.x > 0 and rect.size.y > 0 and _render != null:
+				var clipped := Rect2i(rect.position,
+					Vector2i(mini(rect.size.x, _render.get_width() - rect.position.x),
+						mini(rect.size.y, _render.get_height() - rect.position.y)))
+				if clipped.size.x > 0 and clipped.size.y > 0:
+					image = _render.get_region(clipped)
+			_stage_animation_textures.append(ImageTexture.create_from_image(image) if image != null else null)
 		_dirty = false
 
 func _draw() -> void:
@@ -191,6 +212,27 @@ func _draw() -> void:
 			var r: Rect2i = c if c is Rect2i else c.get("rect", Rect2i())
 			var p := origin + (Vector2(r.position) - base_scroll) * scale
 			draw_rect(Rect2(p, Vector2(r.size) * scale), Color(1.0, 0.35, 0.35, 0.75), false, 2.0)
+	# Authored stage clips (e.g. Esaka crowd): shift the target region by the
+	# current pose, clipped to the authored region. This mirrors the SNES
+	# BG1 sparse-patch runtime without modifying the stage document.
+	if show_stage_animations and not stage_animations.is_empty():
+		var view_rect := Rect2(origin, view_size)
+		for i in range(stage_animations.size()):
+			if i >= _stage_animation_textures.size():
+				break
+			var tex: ImageTexture = _stage_animation_textures[i]
+			if tex == null:
+				continue
+			var entry: Dictionary = stage_animations[i]
+			var r: Rect2i = entry.get("rect", Rect2i())
+			var pose := _stage_animation_pose(entry)
+			var draw_pos := Vector2(r.position) + Vector2(0, -pose)
+			var draw_rect := Rect2(origin + (draw_pos - base_scroll) * scale, Vector2(r.size) * scale)
+			var clip_rect := Rect2(origin + (Vector2(r.position) - base_scroll) * scale, Vector2(r.size) * scale)
+			var visible := draw_rect.intersection(clip_rect).intersection(view_rect)
+			if visible.size.x > 0 and visible.size.y > 0:
+				var src := Rect2((visible.position - draw_rect.position) / scale, visible.size / scale)
+				draw_texture_rect_region(tex, visible, src)
 	# Sprite preview.
 	if show_sprites and sprite != null:
 		var image := _current_sprite_image()
@@ -230,6 +272,23 @@ func _draw_layer(tex: ImageTexture, offset: Vector2, origin: Vector2, scale: flo
 		clampf(offset.x, 0, maxf(0, tex_size.x - native.x)),
 		clampf(offset.y, 0, maxf(0, tex_size.y - native.y)))
 	draw_texture_rect_region(tex, Rect2(origin, native * scale), Rect2(src, native))
+
+func _stage_animation_pose(entry: Dictionary) -> int:
+	var ticks: Array = entry.get("ticks", [])
+	if ticks.is_empty():
+		return 0
+	var cycle := int(entry.get("cycle", 0))
+	if cycle <= 0:
+		for t in ticks:
+			cycle += maxi(1, int(t))
+	var tick := int(animation_time * 60.0 + float(entry.get("phase", 0)))
+	tick = posmod(tick, maxi(1, cycle))
+	var acc := 0
+	for i in range(ticks.size()):
+		acc += maxi(1, int(ticks[i]))
+		if tick < acc:
+			return i
+	return 0
 
 ## Frame index to draw for the current animation/sheet time.
 func sprite_frame_index() -> int:

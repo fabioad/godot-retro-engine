@@ -79,6 +79,14 @@ preview from the stage `scroll` speed (or the px/s control), looping at the
 world edge without mutating the document. Painting pauses playback so tile
 editing stays stable.
 
+A plain stage PNG (for example a 512x224 KOF98/Esaka background) can be opened
+without a companion `.map`: the editor deduplicates its 8x8 tiles, builds a
+normal `RetroStage` map and keeps the real renderer/export path. When
+`animations/stage_animations.json` sits next to that PNG, the clips for the
+stage are loaded automatically. **Stage clips** then re-samples each authored
+target region per pose/ticks sequence, matching the SNES BG1 sparse-patch
+runtime used by the project; **Clips JSON...** loads the same file manually.
+
 ### Conversion
 ```
 PNG / .chr / .pic / .pal / .map

@@ -14,6 +14,7 @@ func _initialize() -> void:
 	var animation := _make_animation()
 	_test_animation(sprite, animation)
 	await _test_stage(sprite, animation)
+	await _test_flat_stage()
 	print("PREVIEW_TEST ", "PASS" if ok else "FAIL")
 	quit(0 if ok else 1)
 
@@ -162,3 +163,47 @@ func _test_stage(sprite: RetroSprite, animation: RetroAnimation) -> void:
 	editor._canvas.queue_free()
 	editor.queue_free()
 	canvas.queue_free()
+
+
+func _test_flat_stage() -> void:
+	var root := "/tmp/opencode/editor_preview_test"
+	DirAccess.make_dir_recursive_absolute(root)
+	var png_path := root.path_join("flat_test.png")
+	var json_path := root.path_join("stage_animations.json")
+	var image := Image.create_empty(32, 16, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.1, 0.2, 0.4, 1.0))
+	image.fill_rect(Rect2i(8, 0, 8, 8), Color(0.9, 0.4, 0.2, 1.0))
+	image.fill_rect(Rect2i(24, 8, 8, 8), Color(0.2, 0.9, 0.3, 1.0))
+	image.save_png(png_path)
+	var data := {"clips": [{
+		"id": "bob",
+		"stage": "flat_test",
+		"target": {
+			"target_region_xywh": [8, 0, 8, 8],
+			"sequence": [{"pose": 0, "ticks60": 2}, {"pose": 1, "ticks60": 2}],
+			"cycle_ticks60": 4,
+			"start_phase_ticks60": 0,
+		},
+	}]}
+	var f := FileAccess.open(json_path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data))
+	f.close()
+	var editor = StageEditor.new()
+	get_root().add_child(editor)
+	await process_frame
+	editor._load_flat_image_stage(png_path, null)
+	editor.load_stage_animations(json_path, "flat_test")
+	var canvas = editor._canvas
+	canvas._ensure_render()
+	_check("flat_stage_map", editor.stage != null and editor.stage.get_map_size() == Vector2i(4, 2), str(editor.stage.get_map_size()) if editor.stage else "null")
+	_check("flat_stage_render", canvas._render != null and canvas._render.get_size() == Vector2i(32, 16))
+	_check("flat_stage_clip", canvas.stage_animations.size() == 1)
+	_check("flat_stage_overlay_texture", canvas._stage_animation_textures.size() == 1 and canvas._stage_animation_textures[0] != null)
+	var entry: Dictionary = canvas.stage_animations[0] if not canvas.stage_animations.is_empty() else {}
+	canvas.animation_time = 0.0
+	_check("stage_clip_pose_0", canvas._stage_animation_pose(entry) == 0)
+	canvas.animation_time = 0.04
+	_check("stage_clip_pose_1", canvas._stage_animation_pose(entry) == 1)
+	canvas.animation_time = 0.07
+	_check("stage_clip_pose_loop", canvas._stage_animation_pose(entry) == 0)
+	editor.queue_free()
