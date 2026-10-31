@@ -1190,3 +1190,15 @@ NEW_PROJECT_TEST PASS
 
 Captured from the real ROMs: Godot splash first, then the complete
 `HELLO WORLD` screen on both SNES and Mega Drive.
+
+
+### Terminal tab position (0.1.14)
+
+The Terminal plugin now moves its main-screen button directly after **Script**.
+It uses a deferred, retry-safe HBox reorder so the existing tab selection
+callables keep working.
+
+```text
+TERMINAL_TAB_ORDER ["2D", "3D", "Script", "Terminal", "Game", "Asset Store", "Retro"]
+TERMINAL_TEST PASS
+```

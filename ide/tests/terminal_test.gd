@@ -18,6 +18,17 @@ func _initialize() -> void:
 	if FileAccess.file_exists(MARKER):
 		DirAccess.remove_absolute(MARKER)
 
+	var tab_order: Array = []
+	for _i in range(40):
+		tab_order = _main_screen_tab_names()
+		if tab_order.has("Script") and tab_order.has("Terminal"):
+			break
+		await process_frame
+	var script_index := tab_order.find("Script")
+	var terminal_index := tab_order.find("Terminal")
+	print("TERMINAL_TAB_ORDER ", tab_order)
+	ok = ok and script_index >= 0 and terminal_index == script_index + 1
+
 	var err := GDExtensionManager.load_extension(EXTENSION)
 	print("TERMINAL_EXTENSION error=", err, " class=", ClassDB.class_exists("GDTerm"))
 	# The editor plugin may have loaded it already (status 2 = already loaded).
@@ -162,6 +173,25 @@ func _initialize() -> void:
 	screen.queue_free()
 	await process_frame
 	quit(0 if ok else 1)
+
+func _main_screen_tab_names() -> Array:
+	for node in get_root().find_children("*", "HBoxContainer", true, false):
+		if not (node is HBoxContainer):
+			continue
+		var names: Array = []
+		var has_script := false
+		var has_terminal := false
+		for child in node.get_children():
+			if child is Button:
+				var button := child as Button
+				names.append(String(button.name))
+				if button.name == "Script" or button.text == "Script":
+					has_script = true
+				elif button.name == "Terminal" or button.text == "Terminal":
+					has_terminal = true
+		if has_script and has_terminal:
+			return names
+	return []
 
 func _wait_for_terminal(screen: Control, index: int, frames: int) -> void:
 	for i in range(frames):
