@@ -1548,6 +1548,8 @@ func _restore_session_docs() -> void:
 	if FileAccess.file_exists(dir.path_join("sprite.json")):
 		var sp := RetroSprite.new()
 		if sp.load(dir.path_join("sprite.json")) == OK:
+			# Session frames are authored data, even when there is only one.
+			sp.set_meta("retro_explicit_frames", true)
 			sprite_doc = sp
 			sprite_editor.set_sprite(sp, project)
 	if FileAccess.file_exists(dir.path_join("animation.json")):

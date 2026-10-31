@@ -344,7 +344,7 @@ func _rebuild_frames() -> void:
 	if sprite == null:
 		return
 	var frames := sprite.get_frames()
-	if frames.size() <= 1 and sprite.get_image():
+	if frames.size() <= 1 and sprite.get_image() and not sprite.has_meta("retro_explicit_frames"):
 		# Imported sheets arrive as one full-image frame. Split by alpha gaps
 		# so the frame list and stats count the real scenes immediately.
 		var detected := SpriteSheet.ensure_sprite_frames(sprite)
@@ -609,6 +609,9 @@ func open_resource(res: Dictionary, p_project: RetroProject) -> void:
 			})
 		if not frames.is_empty():
 			doc.set_frames(frames)
+			# Explicit frames must not be re-sliced by the generic full-sheet
+			# heuristic: a one-frame 240x48 SGDK title is not five 48x48 cells.
+			doc.set_meta("retro_explicit_frames", true)
 	if doc.get_image() != null:
 		SpriteSheet.apply_chroma_key(doc.get_image(), doc.get_palette())
 	_tiles_x.set_value_no_signal(16)
