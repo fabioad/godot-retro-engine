@@ -18,6 +18,9 @@ func _initialize() -> void:
 		var make_path := dir.path_join("Makefile")
 		var readme_path := dir.path_join("README.md")
 		var art_dir := dir.path_join("art")
+		var main_code := FileAccess.get_file_as_string(main_path) if FileAccess.file_exists(main_path) else ""
+		var assets_path := dir.path_join("src/assets.h")
+		var assets_code := FileAccess.get_file_as_string(assets_path) if FileAccess.file_exists(assets_path) else ""
 		var checks := {
 			"ok": bool(result.get("ok", false)),
 			"project": project != null,
@@ -25,6 +28,10 @@ func _initialize() -> void:
 			"make": FileAccess.file_exists(make_path) or FileAccess.file_exists(dir.path_join("makefile")),
 			"readme": FileAccess.file_exists(readme_path),
 			"animated": bool(result.get("animated", false)),
+			"splash": bool(result.get("splash", false)),
+			"workflow_comments": main_code.contains("Godot Retro Engine - Hello World") and main_code.contains("Workflow:"),
+			"main_splash": main_code.contains("showSplash()"),
+			"assets_splash": assets_code.contains("RETRO_SPLASH 1"),
 			"build_system": project != null and project.get_build_system() in ["pvsneslib", "sgdk"],
 			"resources": project != null and project.get_resources().size() > 0,
 			"art": DirAccess.dir_exists_absolute(art_dir),

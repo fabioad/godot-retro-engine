@@ -26,6 +26,15 @@ const FONT := {
 	"D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
 	"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
 	"V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+	"H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+	"L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+	"W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+	"P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+	"B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+	"K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+	"U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+	"C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+	"/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
 	" ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
 }
 
@@ -85,15 +94,22 @@ static func create(target: String, base_dir: String, project_name: String, anima
 
 	var generation: Dictionary = GameBuild.generate(
 		"native_snes" if target == TARGET_SNES else "native_megadrive",
-		source, base_dir, name, false, "")
+		source, base_dir, name, true, "")
 	if not bool(generation.get("ok", false)):
 		_remove_tree(temp)
 		if DirAccess.dir_exists_absolute(dir):
 			_remove_tree(dir)
 		return {"ok": false, "error": I18n.t("templates.generation_failed", {"error": String(generation.get("error", "project generation failed"))})}
 	var gen_dir := String(generation.get("directory", dir))
+	var generated_project: RetroProject = generation.get("project")
+	if generated_project != null:
+		var short_sdk := _short_sdk_path(target, generated_project.get_sdk_path())
+		if short_sdk != generated_project.get_sdk_path():
+			generated_project.set_sdk_path(short_sdk)
+			generated_project.save()
 	_copy_artifacts(stage_result, gen_dir.path_join("art"))
 	var animated := _animate_main(gen_dir.path_join("src/main.c"), target) if animate else false
+	_annotate_template(gen_dir, target, name)
 	_write_readme(gen_dir, target, name)
 	_remove_tree(temp)
 
@@ -101,6 +117,10 @@ static func create(target: String, base_dir: String, project_name: String, anima
 	var project: RetroProject = importer.import_project(gen_dir, target, base_dir, false, name)
 	if project == null:
 		return {"ok": false, "error": I18n.t("templates.import_failed"), "directory": gen_dir}
+	var imported_sdk := _short_sdk_path(target, project.get_sdk_path())
+	if imported_sdk != project.get_sdk_path():
+		project.set_sdk_path(imported_sdk)
+		project.save()
 	return {
 		"ok": true,
 		"project": project,
@@ -108,6 +128,7 @@ static func create(target: String, base_dir: String, project_name: String, anima
 		"target": target,
 		"name": name,
 		"animated": animated,
+		"splash": bool(generation.get("splash", false)),
 		"stage": stage_result,
 		"generation": generation,
 	}
@@ -133,15 +154,17 @@ static func _template_image(target: String) -> Image:
 	_rect(image, Rect2i(8, height - 10, width - 16, 2), colors[6])
 
 	var visible_width := 256 if target == TARGET_SNES else 320
-	var title_w := _text_width("RETRO", 8)
-	_draw_text(image, "RETRO", (visible_width - title_w) / 2, 24, 8, colors[13], colors[0])
-	var subtitle := "SNES" if target == TARGET_SNES else "MEGA DRIVE"
-	var subtitle_w := _text_width(subtitle, 3)
-	_draw_text(image, subtitle, (visible_width - subtitle_w) / 2, 82, 3, colors[7], colors[0])
+	var hello_w := _text_width("HELLO", 8)
+	_draw_text(image, "HELLO", (visible_width - hello_w) / 2, 18, 8, colors[13], colors[0])
+	var world_w := _text_width("WORLD", 8)
+	_draw_text(image, "WORLD", (visible_width - world_w) / 2, 80, 8, colors[13], colors[0])
+	var subtitle := "SNES / PVSNESLIB" if target == TARGET_SNES else "MEGA DRIVE / SGDK"
+	var subtitle_w := _text_width(subtitle, 2)
+	_draw_text(image, subtitle, (visible_width - subtitle_w) / 2, 142, 2, colors[7], colors[0])
 
 	var cx := visible_width / 2
-	var cy := 140
-	var radius := 34
+	var cy := 174
+	var radius := 12
 	for dy in range(-radius, radius + 1):
 		var half: int = radius - absi(dy)
 		for dx in range(-half, half + 1):
@@ -158,8 +181,6 @@ static func _template_image(target: String) -> Image:
 			else:
 				color = colors[10]
 			image.set_pixel(px, py, color)
-	_rect(image, Rect2i(cx - 70, cy + radius + 10, 140, 5), colors[11])
-	_rect(image, Rect2i(cx - 70, cy + radius + 18, 140, 3), colors[5])
 	_draw_text(image, "GODOT RETRO ENGINE", (visible_width - _text_width("GODOT RETRO ENGINE", 2)) / 2,
 		height - 26, 2, colors[12], colors[0])
 	return image
@@ -222,21 +243,84 @@ static func _animate_main(path: String, target: String) -> bool:
 		return false
 	var replacement := ""
 	if target == TARGET_SNES:
-		replacement = "    /* Template demo: scroll the background. */\n"
-		replacement += "    { u16 demo_scroll = 0;\n"
-		replacement += "      while (1) { bgSetScroll(0, demo_scroll++, 0); WaitForVBlank(); }\n"
-		replacement += "    }\n"
+		replacement = "    /* Hello World screen is static so the title stays readable.\n"
+		replacement += "     * Replace this loop with your own game logic. The complete engine\n"
+		replacement += "     * workflow is documented in the comment at the top of this file. */\n"
+		replacement += "    while (1) WaitForVBlank();\n"
 	else:
-		replacement = "    /* Template demo: scroll the background. */\n"
-		replacement += "    { s16 demo_scroll = 0;\n"
-		replacement += "      while (TRUE) { VDP_setHorizontalScroll(BG_A, demo_scroll++); SYS_doVBlankProcess(); }\n"
-		replacement += "    }\n"
+		replacement = "    /* Hello World screen is static so the title stays readable.\n"
+		replacement += "     * Replace this loop with your own game logic. The complete engine\n"
+		replacement += "     * workflow is documented in the comment at the top of this file. */\n"
+		replacement += "    while (TRUE) SYS_doVBlankProcess();\n"
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_string(code.replace(old, replacement))
 	f.close()
 	return true
+
+static func _short_sdk_path(target: String, actual: String) -> String:
+	if actual.is_empty() or not actual.contains(" "):
+		return actual
+	var home := OS.get_environment("HOME")
+	if home.is_empty():
+		return actual
+	var link := home.path_join(".local/share/godot-retro-engine/sdks").path_join(
+		"snes" if target == TARGET_SNES else "megadrive")
+	if not DirAccess.dir_exists_absolute(link):
+		DirAccess.make_dir_recursive_absolute(link.get_base_dir())
+		if OS.get_name() == "Windows":
+			OS.execute("cmd", ["/c", "mklink", "/J", link, actual])
+		else:
+			OS.execute("ln", ["-sfn", actual, link])
+	if DirAccess.dir_exists_absolute(link):
+		return link
+	return actual
+
+static func _annotate_template(dir: String, target: String, name: String) -> void:
+	var main_path := dir.path_join("src/main.c")
+	if FileAccess.file_exists(main_path):
+		var code := FileAccess.get_file_as_string(main_path)
+		var platform := "SNES / PVSnesLib" if target == TARGET_SNES else "Mega Drive / SGDK"
+		var build := "PVSNESLIB_HOME=/path/to/pvsneslib make" if target == TARGET_SNES else "GDK=/path/to/sgdk make"
+		var header := "/*\n"
+		header += " * Godot Retro Engine - Hello World (%s)\n" % platform
+		header += " * ====================================================\n"
+		header += " *\n"
+		header += " * This is a real console project, not a mock. The first screen is the\n"
+		header += " * Godot Engine splash (the same one used by Game Build); it fades into\n"
+		header += " * the static Hello World screen.\n"
+		header += " *\n"
+		header += " * Workflow:\n"
+		header += " *   1. Open the project with New Project / Import Project.\n"
+		header += " *   2. Edit art/ in the Stage, Sprite and Palette tabs.\n"
+		header += " *   3. Edit this file (src/main.c) for game logic.\n"
+		header += " *   4. Build with the IDE Build button, or:\n"
+		header += " *        %s\n" % build
+		header += " *   5. Use Preview to run the real ROM. Pause/Step/Rewind inspect frames.\n"
+		header += " *   6. src/assets.c/.h are generated from art/ by the engine; keep art/\n"
+		header += " *      as the editable source of truth.\n"
+		header += " *\n"
+		header += " * Splash: set RETRO_SPLASH to 0 in src/assets.h (or remove showSplash())\n"
+		header += " * to skip the Godot screen. The Hello World demo loop is at the end of\n"
+		header += " * main(). Replace it with your own loop.\n"
+		header += " */\n"
+		code = header + code
+		code = code.replace("#if RETRO_SPLASH\n    showSplash();",
+			"    /* First screen: Godot Engine splash. See the header comment above. */\n#if RETRO_SPLASH\n    showSplash();")
+		var f := FileAccess.open(main_path, FileAccess.WRITE)
+		if f:
+			f.store_string(code)
+			f.close()
+	var assets_path := dir.path_join("src/assets.h")
+	if FileAccess.file_exists(assets_path):
+		var assets := FileAccess.get_file_as_string(assets_path)
+		assets = assets.replace("#define RETRO_SPLASH 1",
+			"/* 1 = show the Godot Engine splash first; 0 = skip it. */\n#define RETRO_SPLASH 1")
+		var af := FileAccess.open(assets_path, FileAccess.WRITE)
+		if af:
+			af.store_string(assets)
+			af.close()
 
 static func _write_readme(dir: String, target: String, name: String) -> void:
 	var text := "# %s\n\n" % name
@@ -248,8 +332,17 @@ static func _write_readme(dir: String, target: String, name: String) -> void:
 	else:
 		text += "```sh\nGDK=/path/to/sgdk make\n```\n"
 	text += "\nOr open this folder with **Retro → Import Project...** / the New Project dialog and use **Build + Run**.\n\n"
+	text += "## First screen\n\n"
+	text += "The ROM boots with the **Godot Engine splash**, then fades into the Hello World screen.\n"
+	text += "Set `RETRO_SPLASH` to `0` in `src/assets.h` to skip the splash.\n\n"
+	text += "## Workflow\n\n"
+	text += "1. Edit the source art in `art/` with the Stage/Sprite/Palette tabs.\n"
+	text += "2. Edit `src/main.c` for the game loop.\n"
+	text += "3. Press **Build** in the IDE, or run the command above.\n"
+	text += "4. Open **Preview** to run the real ROM; use Pause/Step/Rewind to inspect frames.\n"
+	text += "5. Keep `art/` as the editable source of truth; `src/assets.c/.h` are generated.\n\n"
 	text += "## Files\n\n"
-	text += "- `src/main.c` — starter program (scrolls the background);\n"
+	text += "- `src/main.c` — static Hello World starter and workflow comments;\n"
 	text += "- `src/assets.c/.h` — 16-colour starter screen tiles;\n"
 	text += "- `art/` — editable source assets for the Stage/Sprite editors;\n"
 	text += "- `PORTING.md` — native UI/node/script manifest when available.\n\n"

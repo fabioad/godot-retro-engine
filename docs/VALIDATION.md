@@ -1171,3 +1171,22 @@ PAD_CONTROLS PASS
 
 The Mega Drive core is also initialized as a 6-button pad instead of the
 default 3-button mode.
+
+
+### New-project splash and Hello World (0.1.13)
+
+New SNES and Mega Drive projects now boot with the existing Godot Engine
+splash and then show a static Hello World screen. `src/main.c` starts with a
+commented workflow block, and `src/assets.h` comments the `RETRO_SPLASH`
+switch.
+
+```text
+NEW_PROJECT snes checks={ "splash": true, "workflow_comments": true,
+  "main_splash": true, "assets_splash": true, ... } build_ok=true
+NEW_PROJECT md   checks={ "splash": true, "workflow_comments": true,
+  "main_splash": true, "assets_splash": true, ... } build_ok=true
+NEW_PROJECT_TEST PASS
+```
+
+Captured from the real ROMs: Godot splash first, then the complete
+`HELLO WORLD` screen on both SNES and Mega Drive.
