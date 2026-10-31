@@ -10,6 +10,7 @@ var platform_selector: OptionButton
 var _titlebar_controls: Control
 var _titlebar_node: Control
 var _applied_title: String = ""
+var _title_timer: Timer
 
 func _enter_tree() -> void:
 	main_screen = RetroMainScreen.new()
@@ -21,9 +22,12 @@ func _enter_tree() -> void:
 	# Land directly in the Retro workspace on startup.
 	call_deferred("_select_retro_screen")
 	call_deferred("_apply_window_title")
-	var win := get_window()
-	if win != null and not win.title_changed.is_connected(_on_window_title_changed):
-		win.title_changed.connect(_on_window_title_changed)
+	call_deferred("_install_title_watch")
+	_title_timer = Timer.new()
+	_title_timer.wait_time = 2.0
+	_title_timer.autostart = true
+	_title_timer.timeout.connect(_apply_window_title)
+	add_child(_title_timer)
 
 func _select_retro_screen() -> void:
 	await get_tree().create_timer(1.5).timeout
@@ -89,6 +93,10 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_TOOLBAR, toolbar)
 		toolbar.queue_free()
 		toolbar = null
+	if _title_timer:
+		_title_timer.stop()
+		_title_timer.queue_free()
+		_title_timer = null
 	if main_screen:
 		main_screen.queue_free()
 		main_screen = null
@@ -102,6 +110,12 @@ func _make_visible(visible: bool) -> void:
 		if visible:
 			main_screen.refresh_all()
 			call_deferred("_apply_window_title")
+
+func _install_title_watch() -> void:
+	var win := get_window()
+	if win != null and not win.title_changed.is_connected(_on_window_title_changed):
+		win.title_changed.connect(_on_window_title_changed)
+	_apply_window_title()
 
 func _apply_window_title() -> void:
 	if DisplayServer.get_name() == "headless":
