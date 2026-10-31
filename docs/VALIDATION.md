@@ -1065,3 +1065,16 @@ SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
 
 Localization coverage now reports 501 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
+
+
+### Resource categories (0.1.6)
+
+Game sprites (`editor == "sprite"`) remain under **Sprites**. Generic
+PNG/JPG/BMP/WebP images and unknown image files now appear under a separate
+**Images** category. Double-clicking an image opens a read-only zoomed-to-fit
+preview instead of treating it as a game sprite; **Open as Sprite** still
+forces the sprite editor when needed.
+
+```text
+RESOURCE_CATEGORY PASS
+```

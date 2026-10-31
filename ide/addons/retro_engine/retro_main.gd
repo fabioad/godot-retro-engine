@@ -26,6 +26,7 @@ const AudioEditor = preload("res://addons/retro_engine/audio_editor.gd")
 const SDKDownloader = preload("res://addons/retro_engine/sdk_downloader.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
 const StageCanvas = preload("res://addons/retro_engine/stage_canvas.gd")
+const IMAGE_EXTS := ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif"]
 
 const CONFIG_PATH := "user://retro_engine.cfg"
 
@@ -731,15 +732,41 @@ func _auto_open_first() -> void:
 		if best_sprite >= 0:
 			_open_resource(best_sprite)
 
+static func resource_category(r: Dictionary) -> String:
+	var editor := String(r.get("editor", "none"))
+	var ext := String(r.get("ext", "")).to_lower()
+	if ext.is_empty():
+		ext = String(r.get("rel_path", "")).get_extension().to_lower()
+	if editor == "sprite":
+		return "Sprites"
+	if editor == "image" or (editor == "none" and ext in IMAGE_EXTS):
+		return "Images"
+	if editor == "stage":
+		return "Stages"
+	if editor == "palette":
+		return "Palettes"
+	if editor == "animation":
+		return "Animations"
+	if editor == "code":
+		return "Code"
+	if editor == "resources":
+		return "Resources"
+	if editor == "audio":
+		return "Audio"
+	if not bool(r.get("editable", false)):
+		return "Read-only"
+	return "Other"
+
 func _refresh_resource_tree() -> void:
 	_resource_tree.clear()
 	var root := _resource_tree.create_item()
 	var categories := {
-		"Sprites": [], "Stages": [], "Palettes": [], "Animations": [],
+		"Sprites": [], "Images": [], "Stages": [], "Palettes": [], "Animations": [],
 		"Code": [], "Resources": [], "Audio": [], "Read-only": [], "Other": [],
 	}
 	var category_labels := {
 		"Sprites": I18n.t("resources.sprites"),
+		"Images": I18n.t("resources.images"),
 		"Stages": I18n.t("resources.stages"),
 		"Palettes": I18n.t("resources.palettes"),
 		"Animations": I18n.t("resources.animations"),
@@ -755,26 +782,9 @@ func _refresh_resource_tree() -> void:
 		var name := String(r.get("rel_path", ""))
 		if filter != "" and not name.to_lower().contains(filter):
 			continue
-		var editor := String(r.get("editor", "none"))
-		var key := "Other"
-		if editor == "sprite" or editor == "image":
-			key = "Sprites"
-		elif editor == "stage":
-			key = "Stages"
-		elif editor == "palette":
-			key = "Palettes"
-		elif editor == "animation":
-			key = "Animations"
-		elif editor == "code":
-			key = "Code"
-		elif editor == "resources":
-			key = "Resources"
-		elif editor == "audio":
-			key = "Audio"
-		elif not bool(r.get("editable", false)):
-			key = "Read-only"
+		var key := resource_category(r)
 		categories[key].append(i)
-	for key in ["Sprites", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
+	for key in ["Sprites", "Images", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
 		var list: Array = categories[key]
 		if list.is_empty():
 			continue
@@ -884,13 +894,15 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 	if ext == "pal" and (editor == "palette" or force_kind == "palette"):
 		_open_palette_file(String(r.get("path", "")))
 		return
-	if ext in ["png", "bmp", "webp", "chr", "pic"]:
+	if ext in ["png", "bmp", "webp", "jpg", "jpeg", "tga", "gif", "chr", "pic"]:
 		if editor == "stage":
 			stage_editor.open_resource(r, project)
 			stage_doc = stage_editor.stage
 			_tabs.current_tab = 2
 			_refresh_preview()
 			hardware_monitor.refresh(stage_doc, sprite_doc, anim_doc, _last_rom_size)
+		elif editor == "image" or (editor == "none" and ext in IMAGE_EXTS):
+			_show_image_preview(r)
 		else:
 			sprite_editor.open_resource(r, project)
 			sprite_doc = sprite_editor.sprite
@@ -911,6 +923,46 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 		status_message("Audio asset opened in the BGM/SFX editor.")
 		return
 	status_message("Recognized resource, but no visual editor is available for ." + ext)
+
+func _show_image_preview(r: Dictionary) -> void:
+	var path := String(r.get("path", ""))
+	if path.is_empty() or not FileAccess.file_exists(path):
+		status_message("Image not found: " + path)
+		return
+	var img := Image.load_from_file(path)
+	if img == null:
+		status_message("Could not load image: " + path)
+		return
+	var dlg := Window.new()
+	dlg.title = String(r.get("name", path.get_file()))
+	dlg.min_size = Vector2i(560, 420)
+	dlg.size = Vector2i(720, 560)
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 8
+	box.offset_top = 8
+	box.offset_right = -8
+	box.offset_bottom = -8
+	box.add_theme_constant_override("separation", 6)
+	dlg.add_child(box)
+	var info := Label.new()
+	info.text = "%dx%d px | %s" % [img.get_width(), img.get_height(), path.get_file()]
+	box.add_child(info)
+	var tex := TextureRect.new()
+	tex.texture = ImageTexture.create_from_image(img)
+	tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(tex)
+	var close := Button.new()
+	close.text = I18n.t("common.close")
+	close.pressed.connect(func(): dlg.queue_free())
+	box.add_child(close)
+	dlg.close_requested.connect(func(): dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered_ratio(0.65)
+	status_message("Image preview: " + path.get_file())
 
 func _show_readonly_dialog(name: String, note: String) -> void:
 	var dlg := AcceptDialog.new()

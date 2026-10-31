@@ -43,3 +43,4 @@ cp "$ROOT/ide/validation/headless_report.json" "$WS/headless_report.json" 2>/dev
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/project_checks_test.gd 2>&1 | tee "$WS/project_checks.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/i18n_test.gd 2>&1 | tee "$WS/i18n.log"
 "$BIN" --headless --path "$ROOT/ide" --script res://tests/i18n_coverage_test.gd 2>&1 | tee "$WS/i18n_coverage.log"
+"$BIN" --headless --path "$ROOT/ide" --script res://tests/resources_category_test.gd 2>&1 | tee "$WS/resources_category.log"
