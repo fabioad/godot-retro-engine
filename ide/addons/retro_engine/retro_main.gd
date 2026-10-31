@@ -21,6 +21,8 @@ const StateSimulator = preload("res://addons/retro_engine/state_simulator.gd")
 const StateGraphEditor = preload("res://addons/retro_engine/state_graph_editor.gd")
 const CollisionEditor = preload("res://addons/retro_engine/collision_editor.gd")
 const MugenEditor = preload("res://addons/retro_engine/mugen_editor.gd")
+const MugenTools = preload("res://addons/retro_engine/mugen_tools.gd")
+const MugenDef = preload("res://addons/retro_engine/mugen_def.gd")
 const NativeBridgeEditor = preload("res://addons/retro_engine/native_bridge.gd")
 const AudioEditor = preload("res://addons/retro_engine/audio_editor.gd")
 const SDKDownloader = preload("res://addons/retro_engine/sdk_downloader.gd")
@@ -45,6 +47,8 @@ var md_info: Dictionary = {}
 var emulators: Array = []
 var _last_rom: String = ""
 var _last_rom_size: int = 0
+var _mugen_defs: Array = []
+var _mugen_scan_root: String = ""
 
 var config := ConfigFile.new()
 
@@ -76,6 +80,7 @@ var state_simulator
 var state_graph
 var collision_editor
 var mugen_editor
+var mugen_tools
 var native_editor
 var audio_editor
 var hardware_monitor
@@ -336,27 +341,41 @@ func _build_ui() -> void:
 	build_panel.open_error_requested.connect(_open_error)
 	build_panel.platform_fix_requested.connect(set_platform)
 	_tabs.add_child(build_panel)
+	mugen_tools = MugenTools.new()
+	mugen_tools.name = "MUGEN Tools"
+	mugen_tools.status.connect(status_message)
+	mugen_tools.modified.connect(_on_document_modified)
+	mugen_tools.assets_imported.connect(_on_mugen_assets_imported)
+	_tabs.add_child(mugen_tools)
 	input_editor = InputEditor.new()
 	input_editor.name = "Inputs"
 	input_editor.modified.connect(_on_document_modified)
 	input_editor.input_changed.connect(_on_input_changed)
 	input_editor.status.connect(status_message)
-	_tabs.add_child(input_editor)
+	mugen_tools.add_tool_page("inputs", "Inputs", input_editor)
 	state_simulator = StateSimulator.new()
 	state_simulator.name = "Simulator"
 	state_simulator.status.connect(status_message)
 	state_simulator.state_changed.connect(_on_sim_state_changed)
-	_tabs.add_child(state_simulator)
+	mugen_tools.add_tool_page("simulator", "Simulator", state_simulator)
 	state_graph = StateGraphEditor.new()
 	state_graph.name = "StateGraph"
 	state_graph.modified.connect(_on_graph_modified)
 	state_graph.status.connect(status_message)
-	_tabs.add_child(state_graph)
+	mugen_tools.add_tool_page("graph", "State Graph", state_graph)
 	collision_editor = CollisionEditor.new()
 	collision_editor.name = "Hitboxes"
 	collision_editor.modified.connect(_on_collision_modified)
 	collision_editor.status.connect(status_message)
-	_tabs.add_child(collision_editor)
+	mugen_tools.add_tool_page("hitboxes", "Hitboxes", collision_editor)
+	mugen_editor = MugenEditor.new()
+	mugen_editor.name = "MUGEN Import"
+	mugen_editor.status.connect(status_message)
+	mugen_editor.modified.connect(_on_mugen_modified)
+	mugen_editor.graph_built.connect(_on_mugen_graph_built)
+	mugen_editor.state_imported.connect(_on_mugen_state_imported)
+	mugen_editor.states_imported.connect(_on_mugen_states_imported)
+	mugen_tools.add_tool_page("import", "Import / States", mugen_editor)
 	audio_editor = AudioEditor.new()
 	audio_editor.name = "Audio"
 	audio_editor.status.connect(status_message)
@@ -367,14 +386,6 @@ func _build_ui() -> void:
 	native_editor.status.connect(status_message)
 	native_editor.modified.connect(_on_native_modified)
 	_tabs.add_child(native_editor)
-	mugen_editor = MugenEditor.new()
-	mugen_editor.name = "MUGEN"
-	mugen_editor.status.connect(status_message)
-	mugen_editor.modified.connect(_on_mugen_modified)
-	mugen_editor.graph_built.connect(_on_mugen_graph_built)
-	mugen_editor.state_imported.connect(_on_mugen_state_imported)
-	mugen_editor.states_imported.connect(_on_mugen_states_imported)
-	_tabs.add_child(mugen_editor)
 	# Short literal titles keep the workspace usable on 1024px-wide windows;
 	# the editor's automatic translation of node names can otherwise expand
 	# the tab strip enough to push the hardware dock off-screen.
@@ -385,13 +396,9 @@ func _build_ui() -> void:
 	_tabs.set_tab_title(4, I18n.t("tabs.palette"))
 	_tabs.set_tab_title(5, I18n.t("tabs.code"))
 	_tabs.set_tab_title(6, I18n.t("tabs.build"))
-	_tabs.set_tab_title(7, I18n.t("tabs.input"))
-	_tabs.set_tab_title(8, I18n.t("tabs.simulator"))
-	_tabs.set_tab_title(9, I18n.t("tabs.graph"))
-	_tabs.set_tab_title(10, I18n.t("tabs.hitboxes"))
-	_tabs.set_tab_title(11, I18n.t("tabs.audio"))
-	_tabs.set_tab_title(12, I18n.t("tabs.native"))
-	_tabs.set_tab_title(13, I18n.t("tabs.mugen"))
+	_tabs.set_tab_title(7, "MUGEN Tools")
+	_tabs.set_tab_title(8, I18n.t("tabs.audio"))
+	_tabs.set_tab_title(9, I18n.t("tabs.native"))
 
 	# Right inspector.
 	var right_scroll := ScrollContainer.new()
@@ -928,6 +935,7 @@ func _refresh_resource_tree() -> void:
 			continue
 		var key := resource_category(r)
 		categories[key].append(i)
+	_build_mugen_tree(root, filter)
 	for key in ["Sprites", "Tiles", "Images", "Stages", "Palettes", "Animations", "Code", "Resources", "Audio", "Read-only", "Other"]:
 		var list: Array = categories[key]
 		if list.is_empty():
@@ -948,12 +956,118 @@ func _refresh_resource_tree() -> void:
 			if not bool(r.get("editable", false)):
 				item.set_custom_color(0, Color("#8b98ad"))
 
+func _scan_mugen_defs() -> void:
+	if project == null:
+		_mugen_defs.clear()
+		_mugen_scan_root = ""
+		return
+	var root := project.get_path()
+	if root == _mugen_scan_root:
+		return
+	_mugen_scan_root = root
+	_mugen_defs.clear()
+	var seen: Dictionary = {}
+	for d in ["assets/characters", "assets/stages", "chars", "stages", "data", "assets"]:
+		_scan_def_dir(root.path_join(d), 0, seen)
+	_scan_def_dir(root, 0, seen)
+
+func _scan_def_dir(dir: String, depth: int, seen: Dictionary) -> void:
+	if depth > 7 or dir.is_empty():
+		return
+	var da := DirAccess.open(dir)
+	if da == null:
+		return
+	da.list_dir_begin()
+	while true:
+		var name := da.get_next()
+		if name.is_empty():
+			break
+		if name.begins_with("."):
+			continue
+		var path := dir.path_join(name)
+		if da.current_is_dir():
+			if name in ["build", "workspaces", "node_modules", "backup", ".godot"]:
+				continue
+			_scan_def_dir(path, depth + 1, seen)
+		elif name.get_extension().to_lower() == "def":
+			var key := path.simplify_path()
+			if seen.has(key):
+				continue
+			seen[key] = true
+			var def = MugenDef.new()
+			if not def.load_file(path):
+				continue
+			if def.is_character():
+				var files := def.character_files()
+				_mugen_defs.append({
+					"kind": "char", "path": path, "name": def.display_name(),
+					"sff": String(files.get("sprite", "")), "anim": String(files.get("anim", "")),
+					"snd": String(files.get("sound", "")),
+				})
+			elif def.is_stage():
+				_mugen_defs.append({
+					"kind": "stage", "path": path, "name": def.display_name(),
+					"sff": def.stage_sprite_file(), "anim": "", "snd": "",
+				})
+	da.list_dir_end()
+
+func _build_mugen_tree(root: TreeItem, filter: String) -> void:
+	_scan_mugen_defs()
+	if _mugen_defs.is_empty():
+		return
+	var chars: Array = []
+	var stages: Array = []
+	for d in _mugen_defs:
+		if filter != "" and not String(d.get("path", "")).to_lower().contains(filter) and not String(d.get("name", "")).to_lower().contains(filter):
+			continue
+		if String(d.get("kind", "")) == "char":
+			chars.append(d)
+		else:
+			stages.append(d)
+	if not chars.is_empty():
+		var cat := _resource_tree.create_item(root)
+		cat.set_text(0, "MUGEN Chars (%d)" % chars.size())
+		cat.set_selectable(0, false)
+		for d in chars:
+			var item := _resource_tree.create_item(cat)
+			item.set_text(0, String(d.get("name", d.get("path", "").get_file())))
+			item.set_tooltip_text(0, String(d.get("path", "")))
+			item.set_metadata(0, {"mugen": "char", "path": d.get("path", ""), "action": -1})
+			var anim := _resource_tree.create_item(item)
+			anim.set_text(0, "Animations / Preview")
+			anim.set_metadata(0, {"mugen": "char", "path": d.get("path", ""), "action": -1})
+			var sff := _resource_tree.create_item(item)
+			sff.set_text(0, "SFF Sprites")
+			sff.set_metadata(0, {"mugen": "sff", "path": d.get("sff", "")})
+			if not String(d.get("snd", "")).is_empty():
+				var snd := _resource_tree.create_item(item)
+				snd.set_text(0, "Sounds")
+				snd.set_metadata(0, {"mugen": "snd", "path": d.get("snd", "")})
+	if not stages.is_empty():
+		var cat := _resource_tree.create_item(root)
+		cat.set_text(0, "MUGEN Stages (%d)" % stages.size())
+		cat.set_selectable(0, false)
+		for d in stages:
+			var item := _resource_tree.create_item(cat)
+			item.set_text(0, String(d.get("name", d.get("path", "").get_file())))
+			item.set_tooltip_text(0, String(d.get("path", "")))
+			item.set_metadata(0, {"mugen": "stage", "path": d.get("path", "")})
+			var layers := _resource_tree.create_item(item)
+			layers.set_text(0, "Layers / Preview")
+			layers.set_metadata(0, {"mugen": "stage", "path": d.get("path", "")})
+			var sff := _resource_tree.create_item(item)
+			sff.set_text(0, "SFF Sprites")
+			sff.set_metadata(0, {"mugen": "sff", "path": d.get("sff", "")})
+
 func _on_resource_selected() -> void:
 	var item := _resource_tree.get_selected()
 	if item == null:
 		return
 	var idx = item.get_metadata(0)
 	if idx == null:
+		return
+	if idx is Dictionary and idx.has("mugen"):
+		_show_mugen_info(idx)
 		return
 	var i := int(idx)
 	if i < 0 or i >= resources.size():
@@ -985,7 +1099,9 @@ func _on_resource_activated() -> void:
 	if item == null:
 		return
 	var idx = item.get_metadata(0)
-	if idx != null:
+	if idx is Dictionary and idx.has("mugen"):
+		_open_mugen_meta(idx)
+	elif idx != null:
 		_open_resource(int(idx))
 
 func _open_selected_as(kind: String) -> void:
@@ -993,9 +1109,39 @@ func _open_selected_as(kind: String) -> void:
 	if item == null:
 		return
 	var idx = item.get_metadata(0)
+	if idx is Dictionary and idx.has("mugen"):
+		if kind == "stage" or String(idx.get("mugen", "")) == "stage":
+			_open_mugen_meta({"mugen": "stage", "path": idx.get("path", "")})
+		else:
+			_open_mugen_meta({"mugen": "char", "path": idx.get("path", ""), "action": -1})
+		return
 	if idx == null:
 		return
 	_open_resource(int(idx), kind)
+
+func _show_mugen_info(meta: Dictionary) -> void:
+	var path := String(meta.get("path", ""))
+	_info_title.text = path.get_file()
+	var kind := String(meta.get("mugen", ""))
+	_inspector.text = "[b]%s[/b]\nMUGEN %s\n%s" % [path.get_file(), kind, path]
+
+func _open_mugen_meta(meta: Dictionary) -> void:
+	if mugen_tools == null:
+		return
+	var kind := String(meta.get("mugen", ""))
+	var path := String(meta.get("path", ""))
+	if path.is_empty():
+		return
+	_tabs.current_tab = 7
+	match kind:
+		"char":
+			mugen_tools.open_char(path, int(meta.get("action", -1)))
+		"stage":
+			mugen_tools.open_stage(path)
+		"sff":
+			mugen_tools.open_sff(path)
+		"snd":
+			mugen_tools.open_snd(path)
 
 func _on_audio_menu(id: int) -> void:
 	match id:
@@ -1019,7 +1165,7 @@ func _open_audio_browser(kind: String) -> void:
 	if audio_editor != null:
 		audio_editor.set_project(project)
 		audio_editor.set_kind_filter(kind)
-		_tabs.current_tab = 11
+		_tabs.current_tab = 8
 		audio_editor.focus_search()
 	status_message(I18n.t("top.audio_browser_status"))
 
@@ -1080,7 +1226,7 @@ func _open_resource(index: int, force_kind: String = "") -> void:
 		if audio_editor:
 			audio_editor.set_project(project)
 			audio_editor.select_asset(String(r.get("path", "")), true)
-			_tabs.current_tab = 11
+			_tabs.current_tab = 8
 		status_message("Audio asset opened in the BGM/SFX editor.")
 		return
 	status_message("Recognized resource, but no visual editor is available for ." + ext)
@@ -1221,6 +1367,18 @@ func _on_input_changed() -> void:
 	if _preview and input_editor:
 		_preview.set_input_map(input_editor.get_input_map())
 
+func _on_mugen_assets_imported(result: Dictionary) -> void:
+	if project == null:
+		return
+	resources = project.get_resources()
+	_refresh_resource_tree()
+	_restore_session_docs()
+	if result.has("sprite"):
+		_tabs.current_tab = 1
+	elif result.has("stage_json"):
+		_tabs.current_tab = 2
+	status_message("MUGEN assets imported into the project.")
+
 func _on_mugen_modified() -> void:
 	if _save_timer:
 		_save_timer.start()
@@ -1282,6 +1440,9 @@ func _on_code_modified() -> void:
 	status_message(I18n.t("top.code_edited"))
 
 func _refresh_preview() -> void:
+	if mugen_tools:
+		mugen_tools.set_context(project, platform, anim_doc, sprite_doc,
+			input_editor.get_input_map() if input_editor else null)
 	if stage_editor:
 		stage_editor.set_sprite(sprite_doc, anim_doc)
 	if _preview == null:

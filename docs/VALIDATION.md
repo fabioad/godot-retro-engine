@@ -1278,3 +1278,30 @@ loaded from its 512x224 PNG without a `.map`; the two authored crowd clips from
 `stage_animations.json` were detected automatically. Capturing pose 0 and pose
 1 showed the crowd region re-sampled one pixel higher at the expected ticks.
 The stage preview also scrolls the 512px world through the 256px SNES viewport.
+
+
+### MUGEN Tools and native SFF import (0.1.22)
+
+Native parsers validated against the real KOF98 port:
+
+```text
+MUGEN sff_v1_load PASS (Kyo.sff, 2644 sprites)
+MUGEN sff_v1_render PASS
+MUGEN sff_v2_load PASS (stage0.sff, PNG payload)
+MUGEN sff_v2_render PASS
+MUGEN air_load PASS (Kyo.air, 1033 actions)
+MUGEN air_action_0 PASS (10 frames + Clsn2)
+MUGEN snd_load PASS (Kyo.snd, 156 entries)
+MUGEN snd_stream PASS (24 kHz PCM)
+MUGEN def_char PASS
+MUGEN def_stage PASS (JpnStreet, 10 BG layers)
+MUGEN import_char PASS (14 actions, 51 sprites, 16-colour atlas)
+MUGEN import_stage PASS (256x224 native stage)
+MUGEN import_resources PASS (10 registered resources)
+MUGEN_TOOLS_TEST PASS
+```
+
+The MUGEN Tools tab exposes Char/Anim, Stage Layers, SFF Sprites, Sounds and
+the existing Inputs/Simulator/State Graph/Hitboxes/Import pages. The resource
+tree scans the project for `*.def`, groups characters and stages under MUGEN
+submenus, and opens the selected char/stage/SFF/SND in that tab.

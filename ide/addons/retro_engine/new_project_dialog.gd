@@ -10,6 +10,7 @@ signal sdk_configure_requested
 
 const Templates = preload("res://addons/retro_engine/project_templates.gd")
 const GameBuild = preload("res://addons/retro_engine/game_build.gd")
+const MugenImport = preload("res://addons/retro_engine/mugen_import.gd")
 const WindowControls = preload("res://addons/retro_engine/window_controls.gd")
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 
@@ -23,6 +24,8 @@ var _build_button: Button
 var _project: RetroProject
 var _builder: RetroBuilder
 var _building := false
+var _mugen_char: LineEdit
+var _mugen_stage: LineEdit
 
 func _ready() -> void:
 	title = I18n.t("new_project.title")
@@ -65,6 +68,28 @@ func _ready() -> void:
 	browse.text = I18n.t("common.browse")
 	browse.pressed.connect(_browse)
 	location_row.add_child(browse)
+	form.add_child(_label("MUGEN char DEF (optional)"))
+	var char_row := HBoxContainer.new()
+	form.add_child(char_row)
+	_mugen_char = LineEdit.new()
+	_mugen_char.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mugen_char.placeholder_text = "chars/Kyo/Kyo.def"
+	char_row.add_child(_mugen_char)
+	var char_browse := Button.new()
+	char_browse.text = I18n.t("common.browse")
+	char_browse.pressed.connect(func(): _browse_mugen(_mugen_char, "*.def", "MUGEN character DEF"))
+	char_row.add_child(char_browse)
+	form.add_child(_label("MUGEN stage DEF (optional)"))
+	var stage_row := HBoxContainer.new()
+	form.add_child(stage_row)
+	_mugen_stage = LineEdit.new()
+	_mugen_stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mugen_stage.placeholder_text = "stages/Esaka.def"
+	stage_row.add_child(_mugen_stage)
+	var stage_browse := Button.new()
+	stage_browse.text = I18n.t("common.browse")
+	stage_browse.pressed.connect(func(): _browse_mugen(_mugen_stage, "*.def", "MUGEN stage DEF"))
+	stage_row.add_child(stage_browse)
 
 	var note := Label.new()
 	note.text = I18n.t("new_project.note")
@@ -167,6 +192,18 @@ func _refresh_sdk() -> void:
 		_sdk_label.text = I18n.t("new_project.sdk_not_ready", {"sdk": "PVSnesLib" if target == "snes" else "SGDK"})
 		_sdk_label.add_theme_color_override("font_color", Color("#ffd45e"))
 
+func _browse_mugen(target: LineEdit, filter: String, title: String) -> void:
+	var dlg := FileDialog.new()
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.title = title
+	dlg.add_filter(filter, title)
+	if target != null and not target.text.strip_edges().is_empty():
+		dlg.current_dir = target.text.strip_edges().get_base_dir()
+	dlg.file_selected.connect(func(path): target.text = path; dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered_ratio(0.7)
+
 func _browse() -> void:
 	var dlg := FileDialog.new()
 	dlg.file_mode = FileDialog.FILE_MODE_OPEN_DIR
@@ -205,6 +242,21 @@ func _create(build_after: bool) -> void:
 	_project = result.get("project")
 	var dir := String(result.get("directory", ""))
 	_log.append_text("[color=#6ee7a8]%s[/color]\n" % I18n.t("new_project.created", {"path": dir}))
+	if _project != null:
+		var char_def := _mugen_char.text.strip_edges()
+		if not char_def.is_empty():
+			var char_result: Dictionary = MugenImport.import_character(_project, char_def, target, 24)
+			if bool(char_result.get("ok", false)):
+				_log.append_text("[color=#6ee7a8]MUGEN char: %s (%d actions, %d sprites)[/color]\n" % [String(char_result.get("slug", "")), int(char_result.get("actions", 0)), int(char_result.get("sprites", 0))])
+			else:
+				_log.append_text("[color=#ffd45e]MUGEN char: %s[/color]\n" % String(char_result.get("error", "failed")))
+		var stage_def := _mugen_stage.text.strip_edges()
+		if not stage_def.is_empty():
+			var stage_result: Dictionary = MugenImport.import_stage(_project, stage_def, target)
+			if bool(stage_result.get("ok", false)):
+				_log.append_text("[color=#6ee7a8]MUGEN stage: %s (%d layers)[/color]\n" % [String(stage_result.get("slug", "")), int(stage_result.get("layers", 0))])
+			else:
+				_log.append_text("[color=#ffd45e]MUGEN stage: %s[/color]\n" % String(stage_result.get("error", "failed")))
 	_log.append_text("%s\n" % I18n.t("new_project.target_animated", {
 		"target": I18n.platform_label(target),
 		"animated": I18n.t("common.yes") if bool(result.get("animated", false)) else I18n.t("common.no"),

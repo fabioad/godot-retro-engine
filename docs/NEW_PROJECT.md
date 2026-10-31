@@ -85,3 +85,20 @@ gameplay. It is a buildable base for a real port, not a full game.
 The regression creates both platforms, imports them, checks the Godot splash
 flags and workflow comments, verifies the editable sources/art assets, builds
 both ROMs and checks the output files.
+
+
+## Optional MUGEN assets
+
+The New Project dialog has optional **MUGEN char DEF** and **MUGEN stage DEF**
+fields. When supplied, the generated project also receives:
+
+- `art/mugen/<slug>/<slug>_sprite.png` and `.json` — a 16-colour character
+  atlas with `RetroSprite` frames;
+- `art/mugen/<slug>/<slug>_anim.json` — a `RetroAnimation` with the common AIR
+  actions mapped to IDLE/WALK/JUMP/ATTACK/SPECIAL;
+- `art/mugen/<slug>/<slug>_stage.retro_stage.json` plus the native stage
+  exports — a `RetroStage` rendered from the MUGEN stage layers.
+
+These files are registered in `.retro/project.json`, opened as the current
+editor documents, and remain available for later editing/export. The SFF, AIR,
+SND and DEF files are read natively; no external MUGEN converter is required.

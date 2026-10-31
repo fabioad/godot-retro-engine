@@ -11,11 +11,11 @@ Open either scene in the Godot editor, then use the **Native** tab:
 For automated demos:
 
 ```bash
-RETRO_TAB=12 RETRO_NATIVE_AUTO=capture \
+RETRO_TAB=9 RETRO_NATIVE_AUTO=capture \
   ./dist/linux/GodotRetroEngine --editor --path dist/linux/ide \
   res://demo/native_showcase.tscn
 
-RETRO_TAB=12 RETRO_NATIVE_AUTO=bake \
+RETRO_TAB=9 RETRO_NATIVE_AUTO=bake \
   ./dist/linux/GodotRetroEngine --editor --path dist/linux/ide \
   res://demo/native3d.tscn
 ```
