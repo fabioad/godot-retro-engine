@@ -1403,3 +1403,14 @@ RES=649
 ROM_PREVIEW megadrive first=61 frozen=true stepped=true command=true log=true
 ROM_PREVIEW PASS
 ```
+
+### Platform toolbar sync (0.1.27)
+
+The duplicate platform selector in the window title bar started on SNES and
+did not follow the project loaded by the main Retro toolbar. It now mirrors the
+active project platform, so a Mega Drive project shows **Mega Drive** in both
+selectors. The window title also reports the new build:
+
+```text
+Godot Retro Engine 0.1.27 (build a92899a537) - Godot Engine
+```
