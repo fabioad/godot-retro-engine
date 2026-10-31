@@ -1460,3 +1460,44 @@ S2 S2 Common - Sonic sheet=855x975 frames=214 frame1=32x48 bg_alpha=0.0 pal=16
 The IDE was reopened on `Sonic 2 Disassembly` with the Sonic sheet selected;
 the frame list shows `Map_Sonic_01AC`, `Map_Sonic_01AE`, `Map_Sonic_01D0`, and
 so on, and the hardware panel reports no static limit violations.
+
+### Animation states split from project data (0.1.31)
+
+The Anim tab no longer cycles the whole sprite sheet when the selected state is
+empty. Previously every empty state (WALK, JUMP, ...) fell back to the sheet
+preview, which made all states look like one continuous sequence.
+
+State frame ranges are now detected automatically from project data:
+
+- **Frame constants**: constants such as `PL_PLAYER_IDLE0`,
+  `PL_PLAYER_WALK0`, `PL_PLAYER_RUN`, `PL_PLAYER_JUMP`, `PL_PLAYER_FALL`,
+  `PL_PLAYER_CROUCH`, `PL_PLAYER_HURT`, `PL_PLAYER_DEAD` and
+  `PL_PLAYER_WIN` are grouped by their common prefix. The prefix with the most
+  distinct animation tokens wins, so unrelated constants containing words like
+  HIT or WIN do not pollute the result.
+- **Sonic 2 animation scripts**: `SonAni_*` and `TailsAni_*` blocks in `s2.asm`
+  are parsed, including multi-line `dc.b` runs and the `$FD/$FE/$FF`
+  terminators. Frame IDs become the corresponding sprite-sheet frames.
+
+The editor also gained **Detect states** (re-run detection) and
+**Distribute equally** (manual fallback for projects without state metadata).
+
+Verified results:
+
+```text
+DANIEL states=IDLE,WALK,RUN,JUMP,FALL,CROUCH,HIT,DEAD,WIN
+DANIEL IDLE=2 WALK=2 RUN=1 JUMP=1 FALL=1 CROUCH=1 HIT=1 DEAD=1 WIN=1
+
+SONIC states=IDLE,WALK,RUN,CROUCH,ROLL,PUSH,SPINDASH,SLIDE,BALANCE,
+             LOOK_UP,BLINK,GET_UP,STOP,SPRING,FLOAT,HANG,DASH,BUBBLE,
+             DEAD,DROWN,HIT,LYING,LIE_DOWN,BLANK
+SONIC IDLE=9 WALK=8 RUN=4 ROLL=5 PUSH=4 SPINDASH=6 ...
+
+DANIEL IDLE frame=0 source=animation WALK frame=2 source=animation differ=true
+SONIC  IDLE frame=1 source=animation WALK frame=13 source=animation differ=true
+DANIEL EMPTY keys=[] is_empty=true
+SONIC  EMPTY keys=[] is_empty=true
+```
+
+Clicking IDLE, WALK, RUN, JUMP, etc. now plays only that state. An empty state
+stays empty instead of replaying the entire sheet.
