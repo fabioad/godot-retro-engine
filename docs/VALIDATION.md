@@ -1512,3 +1512,65 @@ Prev | Spr | Cen | Anim | Pal | Cód | Comp | Áudio | MUGEN Tools | Native
 
 The numeric tab targets used when opening audio assets and MUGEN resources
 were swapped accordingly, so both still select the correct tab.
+
+### Native UI, actors and from-scratch builds (0.1.33)
+
+The Native tab already imported sprites, animated sprites, 3D bakes, stages,
+widgets, other nodes and scripts. Two gaps were fixed and the build path was
+validated end to end.
+
+**UI export**
+
+- Godot `Control` nodes are now rasterized when a headless capture bakes the
+  scene background: `Label` text, `Button` rectangles/borders/text,
+  `OptionButton` selected text, `ItemList` rows and `ColorRect`/`Panel`
+  backgrounds.
+- The baked UI is part of the stage background used by Game Build, so buttons
+  and labels appear in the generated SNES/Mega Drive ROM without needing a
+  console font renderer.
+- The port bundle still records the original widget rects/text/scripts and the
+  other-node table (markers, bodies, collisions, audio, animations, lights,
+  paths, cameras, tilemaps) as JSON/C headers.
+
+**Native build fixes**
+
+- Game Build now prefers the captured `.retro_stage.json` over the stage
+  tileset PNG and reads the stage recorded in `native_links.json`. Previously
+  it could build the tileset image as a tiny 16x4 “stage”.
+- Generated projects use the short `~/.local/share/godot-retro-engine/sdks/`
+  SDK symlink when the configured SDK path contains spaces (the PVSnesLib/SGDK
+  makefiles cannot include paths with spaces).
+- SNES `ROMTITLE` is truncated to 21 characters, matching the SNES header NAME
+  limit. Long project names no longer fail the PVSnesLib build.
+- The Mega Drive native starter now creates a player sprite from the first
+  native sprite asset and moves it with the D-pad. Its palette uses PAL1 so the
+  background palette stays intact. SNES OAM/tilemap allocation for the same
+  starter is still pending, so SNES native games remain static.
+
+**From-scratch build validation**
+
+```text
+SNES starter:  test_snes_from_scratch.sfc  262144 bytes  build ok
+Mega Drive:    test_md_from_scratch/out/rom.bin 131072 bytes  build ok
+Native UI SNES: final_ui_snes.sfc 262144 bytes  build ok
+Native UI MD:   final_ui_md/out/rom.bin 131072 bytes  build ok
+
+ROM_PREVIEW snes ... PASS
+ROM_PREVIEW megadrive ... PASS
+```
+
+The native UI test scene contained a background, `Label("SCORE 000")`,
+`Button("START")`, a `Sprite2D` and a `Marker2D`. The generated ROMs displayed
+the baked UI; the Mega Drive ROM also displayed and moved the red player
+sprite. The native port bundle reported 3 widgets, 6 nodes and the imported
+sprite asset.
+
+**Limitations**
+
+- UI widgets are baked as graphics. Buttons are visible but not interactive;
+  console input/selection logic still has to be written in `src/main.c`.
+- GDScript is copied as reference, not transpiled to C/68000.
+- Actors are imported as sprite/animation assets and manifest entries; only the
+  Mega Drive starter currently spawns one automatically.
+- A full game from scratch is possible with the existing PVSnesLib/SGDK
+  projects and the Build button; gameplay logic remains project C code.
