@@ -1910,3 +1910,28 @@ per-game source adapter; it no longer silently emits a stage viewer as a
 
 Remaining Sonic 2 adapter work (slopes/ground snap, walls, full-level
 streaming, rings, objects, HUD, audio) is tracked in `docs/SONIC2_SNES_PORT.md`.
+
+### Sonic 2 full-level BG page streaming (0.1.40)
+
+The Sonic 2 adapter now exports the **full EHZ Act 1** heightmap window instead
+of a 512x512 slice:
+
+```text
+level bounds:  10,656 x 1,024 px (LevelSize x 0..$29A0, y 0..$320 + view)
+BG window:     64x64 tiles, 42x4 source pages, 8 pages per 16 KiB ROM group
+ROM:           524,288 bytes, LoROM FastROM, checksum OK (77 KiB free)
+BG tiles:      634 used tiles
+collision:     full layout + 32 KiB chunk map + 16x16 blocks + heightmaps
+```
+
+The generated build and the Game Build `Mega Drive -> SNES` path both produce
+the same 512 KiB ROM. The demo traverses the start, a pit, and the fall reset:
+
+![Full-level start](screenshots/sonic2_snes_port_full_start.png)
+![Pit](screenshots/sonic2_snes_port_full_pit.png)
+![Fall reset](screenshots/sonic2_snes_port_full_reset.png)
+
+Also enabled in this pass: terrain Y snap with the original heightmap/step
+logic and `FindWall`/`FindWall2` walls on the start terrain. Still pending:
+slope velocity rotation/loops, rings/objects/HUD, death animation, audio,
+Tails and special stages.

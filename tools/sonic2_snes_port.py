@@ -21,10 +21,10 @@ DEMO = "--demo" in sys.argv
 
 # Playable slice: 64x64 tiles = 512x512 px, starting at world (0, 512).
 SLICE_X = 0
-SLICE_Y = 512
-SLICE_W = 64
-SLICE_H = 64
-CHUNKS_X = 4
+SLICE_Y = 0
+SLICE_W = 1332
+SLICE_H = 128
+CHUNKS_X = 8
 CHUNKS_Y = 4
 
 
@@ -197,14 +197,22 @@ for ty in range(SLICE_H):
         word = (remapped & 0x3FF) | ((pal & 7) << 10) | ((pri & 1) << 13) | ((hf & 1) << 14) | ((vf & 1) << 15)
         map_words.append(word)
 
-# SNES 64x64 BG map order: four 32x32 screens.
-bg_map = [0] * (64 * 64)
-for ty in range(SLICE_H):
-    for tx in range(SLICE_W):
-        screen = (ty // 32) * 2 + (tx // 32)
-        idx = screen * 1024 + (ty % 32) * 32 + (tx % 32)
-        bg_map[idx] = map_words[ty * SLICE_W + tx]
-bg_map_bytes = b"".join(struct.pack("<H", w) for w in bg_map)
+# BG page grid: 4x2 pages of 32x32 tiles (one 64x64 window = 2x2 pages).
+PAGE_W = 32
+PAGE_H = 32
+PAGES_X = (SLICE_W + PAGE_W - 1) // PAGE_W
+PAGES_Y = (SLICE_H + PAGE_H - 1) // PAGE_H
+bg_pages = bytearray()
+for py in range(PAGES_Y):
+    for px in range(PAGES_X):
+        for row in range(PAGE_H):
+            for col in range(PAGE_W):
+                tx = px * PAGE_W + col
+                ty = py * PAGE_H + row
+                word = map_words[ty * SLICE_W + tx] if tx < SLICE_W and ty < SLICE_H else 0
+                bg_pages += struct.pack("<H", word)
+bg_pages_bytes = bytes(bg_pages)
+page_groups = [bg_pages_bytes[i * 16384:(i + 1) * 16384] for i in range((len(bg_pages_bytes) + 16383) // 16384)]
 
 
 # SNES 4bpp tiles, packed MD nibbles -> SNES planes.
@@ -225,15 +233,10 @@ def md_tile_to_snes(data, tile):
 bg_tiles = b"".join(md_tile_to_snes(tiles, t) for t in used_tiles)
 
 
-# Collision chunk words for the 4x4 chunk slice.
-chunk_words = []
-for cy in range(CHUNKS_Y):
-    for cx in range(CHUNKS_X):
-        chunk = layout[(SLICE_Y // 128 + cy) * 0x100 + (SLICE_X // 128 + cx)]
-        start = chunk * 128
-        for i in range(64):
-            o = start + i * 2
-            chunk_words.append((chunks[o] << 8) | chunks[o + 1])
+# Full chunk map (256 chunks x 64 words) split into two 16 KiB halves so the
+# C code can select 16-bit arrays without a 32 KiB section.
+chunk_lo = chunks[:16384]
+chunk_hi = chunks[16384:32768]
 
 # Sine table (big-endian words in the source file).
 sine = [struct.unpack(">h", sine_raw[i * 2:i * 2 + 2])[0] for i in range(256)]
@@ -353,8 +356,8 @@ def blob(label, filename, data):
 blobs = [
     blob("bg_tiles", "bg_tiles.bin", bg_tiles),
     blob("bg_pal", "bg_pal.bin", snes_pal_bytes(palette)),
-    blob("bg_map", "bg_map.bin", bg_map_bytes),
-    blob("chunk_words", "chunk_words.bin", b"".join(struct.pack("<H", w & 0xFFFF) for w in chunk_words)),
+    blob("chunk_lo", "chunk_lo.bin", chunk_lo),
+    blob("chunk_hi", "chunk_hi.bin", chunk_hi),
     blob("col_index_p", "col_index_p.bin", colp),
     blob("col_index_s", "col_index_s.bin", cols),
     blob("col_vertical", "col_vertical.bin", colv),
@@ -364,6 +367,8 @@ blobs = [
     blob("sonic_tiles", "sonic_tiles.bin", obj_tiles),
     blob("sonic_pal", "sonic_pal.bin", snes_pal_bytes(sprite_colors)),
 ]
+for i, group in enumerate(page_groups):
+    blobs.append(blob("page%d" % i, "page%d.bin" % i, group))
 asm = """.MEMORYMAP
   SLOTSIZE $8000
   DEFAULTSLOT 0
@@ -397,6 +402,8 @@ for w, h, entries in frame_defs:
 data_c += "};\n"
 for name, ids in anim_indices.items():
     data_c += "const unsigned char anim_%s[] = {%s};\n" % (name, ",".join(str(i) for i in ids))
+data_c += carray("layout", layout)
+data_c += carray("blocks", blocks)
 
 with open(f"{OUT}/src/assets.c", "w") as f:
     f.write(data_c)
@@ -404,26 +411,27 @@ with open(f"{OUT}/src/assets.c", "w") as f:
 # ---------------------------------------------------------------- C code ---
 assets_h = """#ifndef ASSETS_H
 #define ASSETS_H
-#define SLICE_W 64
-#define SLICE_H 64
+#define SLICE_W 1332
+#define SLICE_H 128
 #define SLICE_X 0
-#define SLICE_Y 512
-#define CHUNKS_X 4
-#define CHUNKS_Y 4
+#define SLICE_Y 0
+#define PAGES_X 42
+#define PAGES_Y 4
 #define TILE_COUNT %d
 #define PIECE_COUNT %d
 #define FRAME_COUNT %d
 #define MAX_PIECES %d
+#define PAGE_GROUP_COUNT %d
 extern const unsigned char bg_tiles[];
 extern const unsigned char bg_pal[];
-extern const unsigned char bg_map[];
-extern const unsigned short chunk_words[];
+extern const unsigned char chunk_lo[];
+extern const unsigned char chunk_hi[];
+extern const unsigned char layout[4096];
+extern const unsigned char blocks[%d];
 #define BG_TILES_SIZE %d
 #define BG_PAL_SIZE %d
-#define BG_MAP_SIZE %d
 #define SONIC_TILES_SIZE %d
 #define SONIC_PAL_SIZE 32
-#define CHUNK_WORDS_COUNT %d
 
 extern const unsigned char col_index_p[];
 extern const unsigned char col_index_s[];
@@ -437,7 +445,10 @@ extern const unsigned char frame_w[];
 extern const unsigned char frame_h[];
 extern const unsigned char frame_count[];
 extern const short frame_pieces[][3];
-""" % (len(used_tiles), len(pieces), len(frame_defs), MAX_PIECES, len(bg_tiles), len(snes_pal_bytes(palette)), len(bg_map_bytes), len(obj_tiles), len(chunk_words))
+""" % (len(used_tiles), len(pieces), len(frame_defs), MAX_PIECES, len(page_groups), len(blocks), len(bg_tiles), len(snes_pal_bytes(palette)), len(obj_tiles))
+for i in range(len(page_groups)):
+    assets_h += "extern const unsigned char page%d[];\n" % i
+
 for name, ids in anim_indices.items():
     assets_h += "extern const unsigned char anim_%s[];\n" % name
     assets_h += "#define ANIM_%s_COUNT %d\n" % (name.upper(), len(ids))
@@ -496,16 +507,38 @@ static void move_y(short v)
 static short s_sin(unsigned char a) { return sine_table[a]; }
 static short s_cos(unsigned char a) { return sine_table[(unsigned char)(a + 64)]; }
 
+/* 8.8 signed multiply without the 816-tcc libgcc multiply path, which froze
+ * on negative slope values in testing. */
+static short mul88(short a, short b)
+{
+    unsigned short ua, ub;
+    long long res = 0;
+    unsigned char neg = 0;
+    if (a < 0) { a = (short)-a; neg ^= 1; }
+    if (b < 0) { b = (short)-b; neg ^= 1; }
+    ua = (unsigned short)a;
+    ub = (unsigned short)b;
+    while (ub) {
+        if (ub & 1) res += ua;
+        ua = (unsigned short)(ua << 1);
+        ub = (unsigned short)(ub >> 1);
+    }
+    res >>= 8;
+    if (res > 0x7FFF) res = 0x7FFF;
+    return neg ? (short)-res : (short)res;
+}
+
 static unsigned int find_tile(short x, short y)
 {
-    int lx = x - SLICE_X;
-    int ly = y - SLICE_Y;
-    int cx = lx >> 7;
-    int cy = ly >> 7;
+    int cx = (x >> 7) & 0x7F;
+    int cy = (y >> 7) & 0x0F;
+    unsigned char chunk = layout[cy * 0x100 + cx];
     int idx;
-    if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return 0;
-    idx = ((cy * CHUNKS_X) + cx) * 64 + ((y & 0x70) >> 1) + ((x >> 4) & 7);
-    return chunk_words[idx];
+    const unsigned char *map;
+    if (x < 0 || y < 0 || x >= WORLD_W || y >= WORLD_H) return 0;
+    idx = (chunk & 127) * 128 + ((y & 0x70) + ((x >> 3) & 0xE));
+    map = (chunk < 128) ? chunk_lo : chunk_hi;
+    return ((unsigned int)map[idx] << 8) | map[idx + 1];
 }
 
 static unsigned char collision_id(unsigned int w)
@@ -654,7 +687,7 @@ static void do_collision(void)
     unsigned char a = 0;
     if (vy >= 0) {
         d = check_floor(&a);
-        if (d < 0 && d >= -14) {
+        if (d <= 0 && d >= -14) {
             ypos += d;
             angle = a;
             vy = 0;
@@ -724,9 +757,15 @@ static void ground_move(unsigned short pad)
     vx = inertia;
     vy = 0;
     move_x(vx);
-    (void)a; (void)d;
-    angle = 0;
-    grounded = 1;
+    d = check_floor(&a);
+    {
+        short sp = (vx < 0 ? -vx : vx) >> 8;
+        short step = (short)(sp + 4);
+        if (step > 14) step = 14;
+        if (d <= 0 && d >= -14) { ypos += d; angle = a; grounded = 1; }
+        else if (d > 0 && d <= step) { ypos += d; angle = a; grounded = 1; }
+        else grounded = 0;
+    }
 }
 
 static void air_move(unsigned short pad)
@@ -757,12 +796,40 @@ static void jump_if_needed(unsigned short pressed)
     if ((pressed & (KEY_A | KEY_B | KEY_Y)) && grounded) {
         short sn = s_sin((unsigned char)(angle - 0x40));
         short cs = s_cos((unsigned char)(angle - 0x40));
-        vx += (short)((JUMP_FORCE * cs) >> 8);
-        vy += (short)((JUMP_FORCE * sn) >> 8);
+        vx += mul88(JUMP_FORCE, cs);
+        vy += mul88(JUMP_FORCE, sn);
         grounded = 0;
         jumping = 1;
         angle = 0;
     }
+}
+
+static const unsigned char *page_arrays[PAGE_GROUP_COUNT] = {
+    page0, page1, page2, page3, page4, page5, page6, page7,
+    page8, page9, page10, page11, page12, page13, page14, page15,
+    page16, page17, page18, page19, page20
+};
+static unsigned char page_x = 0xFF;
+static unsigned char page_y = 0xFF;
+
+static void load_page(unsigned char page, unsigned short dest)
+{
+    dmaCopyVram((u8 *)(page_arrays[page >> 3] + (unsigned int)(page & 7) * 2048), dest, 2048);
+}
+
+static void update_pages(void)
+{
+    unsigned char px = (unsigned char)(cam_x >> 8);
+    unsigned char py = (unsigned char)((cam_y - SLICE_Y) >> 8);
+    if (px > PAGES_X - 2) px = PAGES_X - 2;
+    if (py > PAGES_Y - 2) py = PAGES_Y - 2;
+    if (px == page_x && py == page_y) return;
+    page_x = px;
+    page_y = py;
+    load_page((unsigned char)((py * PAGES_X) + px), 0x0000);
+    load_page((unsigned char)((py * PAGES_X) + px + 1), 0x0800);
+    load_page((unsigned char)(((py + 1) * PAGES_X) + px), 0x1000);
+    load_page((unsigned char)(((py + 1) * PAGES_X) + px + 1), 0x1800);
 }
 
 static void update_camera(void)
@@ -831,7 +898,6 @@ int main(void)
     bgInitTileSet(0, (u8 *)bg_tiles, (u8 *)bg_pal, 0, BG_TILES_SIZE, BG_PAL_SIZE, BG_16COLORS, 0x2000);
     bgSetMapPtr(0, 0x0000, SC_64x64);
     bgSetGfxPtr(0, 0x2000);
-    dmaCopyVram((u8 *)bg_map, 0x0000, BG_MAP_SIZE);
     WaitForVBlank();
     bgSetEnable(0);
     REG_TM = 0x01;
@@ -851,6 +917,7 @@ int main(void)
     anim_frame = 0;
     anim_timer = 0;
     update_camera();
+    update_pages();
     setScreenOn();
 
     while (1) {
@@ -863,12 +930,15 @@ int main(void)
         }
         if (grounded) ground_move(pad);
         else air_move(pad);
+        if (xpos < 16) { xpos = 16; if (vx < 0) vx = 0; if (inertia < 0) inertia = 0; }
+        if (xpos > SLICE_W * 8 - 24) { xpos = SLICE_W * 8 - 24; if (vx > 0) vx = 0; if (inertia > 0) inertia = 0; }
         if (ypos > SLICE_Y + WORLD_H - 16) {
             xpos = 96; ypos = 655; xsub = 0; ysub = 0;
             vx = vy = inertia = 0; grounded = 0; jumping = 0;
         }
         update_camera();
-        bgSetScroll(0, (u16)cam_x, (u16)(cam_y - SLICE_Y));
+        update_pages();
+        bgSetScroll(0, (u16)(cam_x - page_x * 256), (u16)((cam_y - SLICE_Y) - page_y * 256));
         draw_sonic();
         WaitForVBlank();
     }
@@ -909,4 +979,4 @@ with open(f"{OUT}/Makefile", "w") as f:
 
 print("generated", OUT)
 print("used tiles", len(used_tiles), "pieces", len(pieces), "frames", len(frame_defs), "max pieces", MAX_PIECES)
-print("bg tiles bytes", len(bg_tiles), "map bytes", len(bg_map_bytes), "obj bytes", len(obj_tiles))
+print("bg tiles", len(bg_tiles), "pages", len(bg_pages_bytes), "groups", len(page_groups), "obj", len(obj_tiles))
