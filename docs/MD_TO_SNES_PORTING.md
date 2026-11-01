@@ -61,11 +61,13 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
   collision;
 - 226 rings from the original ring list, with collection and score;
 - SCORE/TIME/RINGS HUD;
-- springs, monitors, star posts and the goal signpost on a BG2 object layer,
-  using the original Nemesis art and sprite mappings.
+- springs, monitors, star posts, the goal signpost, spikes and the EHZ
+  badniks (Buzz Bomber, Masher, Coconuts) on a BG2 object layer, using the
+  original Nemesis art and sprite mappings;
+- hurt/death poses, ring scatter, lives, checkpoint respawn and pit deaths.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
-systems (slopes/loops, badniks/spikes, hurt/death/lives, audio,
+systems (slopes/loops, badnik projectiles, game-over/lives HUD, audio,
 Tails/specials/openings/ending). Those are per-game adapter work, not a missing
 generic translation step.
 

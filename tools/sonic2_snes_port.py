@@ -353,6 +353,8 @@ ANIMS = {
     "walk": [0x0F, 0x10, 0x11, 0x12, 0x13, 0x14],
     "run": [0x2D, 0x2E, 0x2F, 0x30],
     "roll": [0x3D, 0x3E, 0x3F, 0x40, 0x41],
+    "hurt": [0x4E],
+    "death": [0x5C],
 }
 # Collect unique frames and build 16x16 pieces with global dedup.
 frame_ids = []
@@ -543,6 +545,10 @@ OBJECT_ART = {
     "spring_v": "/art/nemesis/Vertical spring.nem",
     "spring_h": "/art/nemesis/Horizontal spring.nem",
     "spring_d": "/art/nemesis/Diagonal spring.nem",
+    "buzzer": "/art/nemesis/Buzzer enemy.nem",
+    "masher": "/art/nemesis/EHZ Pirahna badnik.nem",
+    "coconuts": "/art/nemesis/Coconuts badnik from EHZ.nem",
+    "spikes": "/art/nemesis/Spikes.nem",
 }
 object_art = {}
 for _name, _path in OBJECT_ART.items():
@@ -603,6 +609,10 @@ object_mappings = {
     "signpost": (["/mappings/sprite/obj0D_a.asm"], "Map_obj0D_a"),
     "spring_y": (["/s2.asm"], "Obj41_MapUnc_1901C"),
     "spring_r": (["/s2.asm"], "Obj41_MapUnc_19032"),
+    "buzzer": (["/mappings/sprite/obj4B.asm"], "Map_obj4B"),
+    "masher": (["/mappings/sprite/obj5C.asm"], "Map_obj5C"),
+    "coconuts": (["/mappings/sprite/obj9D.asm"], "Map_obj9D"),
+    "spikes": (["/mappings/sprite/obj36.asm"], "Map_obj36"),
 }
 object_mapping_frames = {}
 for _name, (_paths, _label) in object_mappings.items():
@@ -619,7 +629,11 @@ OBJECT_FRAME_DEFS = (
     [("spring_y", i, "spring_h") for i in (3, 4, 5)] +
     [("spring_y", 6, "spring_v")] +
     [("spring_y", i, "spring_d") for i in (7, 8, 9, 10)] +
-    [("spring_r", i, "spring_d") for i in (7, 8, 9, 10)]
+    [("spring_r", i, "spring_d") for i in (7, 8, 9, 10)] +
+    [("buzzer", 0, "buzzer"), ("buzzer", 1, "buzzer")] +
+    [("masher", 0, "masher"), ("masher", 1, "masher")] +
+    [("coconuts", 0, "coconuts"), ("coconuts", 1, "coconuts")] +
+    [("spikes", 0, "spikes"), ("spikes", 1, "spikes")]
 )
 
 object_atlas = []
@@ -662,7 +676,16 @@ for _setname, _frame_id, _artname in OBJECT_FRAME_DEFS:
 object_chr = b"\x00" * 32 + b"".join(snes_tile_8x8(t) for t in object_atlas)
 
 # Level object list: x (word), y+flags (word), id, subtype.
-OBJECT_KINDS = {13: 4, 38: 1, 65: 2, 121: 3}  # signpost, monitor, spring, star post
+OBJECT_KINDS = {
+    13: 4,   # goal signpost
+    38: 1,   # monitor
+    54: 5,   # spikes
+    65: 2,   # spring
+    75: 6,   # Buzzer
+    92: 7,   # Masher
+    121: 3,  # star post
+    157: 8,  # Coconuts
+}
 object_inst_x = []
 object_inst_y = []
 object_inst_kind = []
@@ -693,6 +716,10 @@ OBJ_FRAME = {
     "SPR_DOWN": 26,
     "SPR_DU": 27, "SPR_DU1": 28, "SPR_DU2": 29, "SPR_DD": 30,
     "SPR_RDU": 31, "SPR_RDU1": 32, "SPR_RDU2": 33, "SPR_RDD": 34,
+    "BUZ_0": 35, "BUZ_1": 36,
+    "MASH_0": 37, "MASH_1": 38,
+    "COCO_0": 39, "COCO_1": 40,
+    "SPIKE_0": 41, "SPIKE_1": 42,
 }
 
 
@@ -895,6 +922,9 @@ static unsigned char time_timer;
 
 static unsigned short obj_state[OBJ_COUNT];
 static unsigned char obj_timer[OBJ_COUNT];
+static unsigned char obj_phase[OBJ_COUNT];
+static short obj_rx[OBJ_COUNT];
+static short obj_ry[OBJ_COUNT];
 static unsigned short obj_map[32 * 32];
 static short checkpoint_x = 96, checkpoint_y = 655;
 static unsigned char last_starpost;
@@ -905,6 +935,12 @@ static unsigned char lives = 3;
 static unsigned char goal_flag;
 static unsigned short goal_timer;
 static unsigned char sign_spin;
+static unsigned char dead;
+static unsigned short death_timer;
+static unsigned char hurt_timer;
+static unsigned char lost_count;
+static short lost_x[20], lost_y[20], lost_vx[20], lost_vy[20];
+static unsigned char lost_timer[20];
 
 static short cam_x, cam_y;
 
@@ -1306,6 +1342,22 @@ static void draw_rings(void)
     for (; slot < 40; slot++) oamSetEx((u16)((12 + slot) * 4), OBJ_LARGE, OBJ_HIDE);
 }
 
+static void draw_lost_rings(void)
+{
+    unsigned char i;
+    for (i = 0; i < 20; i++) {
+        if (i < lost_count && lost_timer[i]) {
+            short sx = (short)(lost_x[i] - cam_x - 8);
+            short sy = (short)(lost_y[i] - cam_y - 8);
+            oamSet((u16)((108 + i) * 4), (u16)sx, (u16)sy, 3, 0, 0,
+                (u16)(RING_BASE_TILE + ring_anim * 2), 1);
+            oamSetEx((u16)((108 + i) * 4), OBJ_LARGE, OBJ_SHOW);
+        } else {
+            oamSetEx((u16)((108 + i) * 4), OBJ_LARGE, OBJ_HIDE);
+        }
+    }
+}
+
 static unsigned char hud_index(char c)
 {
     if (c >= '0' && c <= '9') return (unsigned char)(c - '0');
@@ -1425,10 +1477,11 @@ static void draw_objects(void)
 {
     unsigned short i;
     for (i = 0; i < OBJ_COUNT; i++) {
-        short ox = (short)obj_x[i];
-        short oy = (short)obj_y[i];
+        short ox = obj_rx[i];
+        short oy = obj_ry[i];
         short sx, sy;
         unsigned char frame;
+        if (obj_kind[i] >= 5 && (obj_state[i] & 2)) continue;
         if (ox < cam_x - 64 || ox > cam_x + 320) continue;
         if (oy < cam_y - 96 || oy > cam_y + 320) continue;
         sx = (short)(ox - cam_x);
@@ -1440,6 +1493,14 @@ static void draw_objects(void)
             frame = spring_frame(i);
         } else if (obj_kind[i] == 3) {
             frame = (obj_state[i] & 1) ? OF_STAR_ACTIVE : OF_STAR_IDLE;
+        } else if (obj_kind[i] == 5) {
+            frame = (obj_sub[i] & 0xF0) ? OF_SPIKE_1 : OF_SPIKE_0;
+        } else if (obj_kind[i] == 6) {
+            frame = (obj_phase[i] & 4) ? OF_BUZ_0 : OF_BUZ_1;
+        } else if (obj_kind[i] == 7) {
+            frame = (obj_phase[i] & 8) ? OF_MASH_0 : OF_MASH_1;
+        } else if (obj_kind[i] == 8) {
+            frame = (obj_phase[i] & 16) ? OF_COCO_0 : OF_COCO_1;
         } else {
             frame = goal_flag ? sign_frame() : OF_SIGN_2;
         }
@@ -1464,16 +1525,108 @@ static void monitor_grant(unsigned char sub)
     }
 }
 
+static void lose_rings(void)
+{
+    unsigned short n = rings_collected > 20 ? 20 : rings_collected;
+    unsigned short i;
+    lost_count = (unsigned char)n;
+    rings_collected = (unsigned short)(rings_collected - n);
+    for (i = 0; i < n; i++) {
+        lost_x[i] = xpos;
+        lost_y[i] = ypos;
+        lost_vx[i] = (short)((i & 1) ? 0x180 : -0x180);
+        lost_vx[i] = (short)(lost_vx[i] + (short)((i & 3) * 0x40));
+        lost_vy[i] = (short)(-0x300 - (short)((i & 7) * 0x50));
+        lost_timer[i] = 180;
+    }
+}
+
+static void update_lost_rings(void)
+{
+    unsigned char i;
+    for (i = 0; i < lost_count; i++) {
+        unsigned char a = 0;
+        short d;
+        if (!lost_timer[i]) continue;
+        if (lost_timer[i] > 1) lost_timer[i]--;
+        else { lost_timer[i] = 0; continue; }
+        lost_x[i] = (short)(lost_x[i] + (lost_vx[i] >> 8));
+        lost_y[i] = (short)(lost_y[i] + (lost_vy[i] >> 8));
+        lost_vy[i] = (short)(lost_vy[i] + GRAVITY);
+        if (lost_vy[i] > 0x600) lost_vy[i] = 0x600;
+        d = find_floor((short)(lost_x[i] + 8), (short)(lost_y[i] + 8), 0x0E, &a);
+        if (d <= 0 && d >= -12) {
+            lost_y[i] = (short)(lost_y[i] + d);
+            lost_vy[i] = -0x300;
+        }
+        if (lost_timer[i] < 150) {
+            short dx = (short)(xpos - lost_x[i]);
+            short dy = (short)(ypos - lost_y[i]);
+            if (dx < 0) dx = (short)-dx;
+            if (dy < 0) dy = (short)-dy;
+            if (dx < 14 && dy < 24) {
+                lost_timer[i] = 0;
+                if (rings_collected < 999) rings_collected++;
+                score += 10;
+            }
+        }
+        if (lost_y[i] > SLICE_Y + WORLD_H - 8) lost_timer[i] = 0;
+    }
+}
+
+static void hurt_sonic(void)
+{
+    if (dead || hurt_timer || invincible_timer) return;
+    if (shield_flag) {
+        shield_flag = 0;
+        hurt_timer = 60;
+        invincible_timer = 90;
+        return;
+    }
+    if (rings_collected) {
+        lose_rings();
+        hurt_timer = 60;
+        invincible_timer = 90;
+        vy = -0x300;
+        vx = (short)(facing ? 0xA00 : -0xA00);
+        inertia = vx;
+        grounded = 0;
+        jumping = 0;
+    } else {
+        dead = 1;
+        death_timer = 0;
+        vy = -0x500;
+        vx = 0;
+        inertia = 0;
+        grounded = 0;
+        jumping = 0;
+    }
+}
+
 static void update_objects(void)
 {
     unsigned short i;
     short feet = (short)(ypos + YRADIUS);
     for (i = 0; i < OBJ_COUNT; i++) {
-        short ox = (short)obj_x[i];
-        short oy = (short)obj_y[i];
-        short dx = (short)(xpos - ox);
-        short dy = (short)(ypos - oy);
+        short base_x = (short)obj_x[i];
+        short base_y = (short)obj_y[i];
+        short ox, oy, dx, dy;
         unsigned char kind = obj_kind[i];
+        feet = (short)(ypos + YRADIUS);
+        if (kind == 6) {
+            obj_phase[i]++;
+            obj_rx[i] = (short)(base_x + mul88(s_sin(obj_phase[i]), 48));
+            obj_ry[i] = (short)(base_y + mul88(s_sin((unsigned char)(obj_phase[i] + 64)), 12));
+        } else if (kind == 7) {
+            obj_phase[i]++;
+            obj_ry[i] = (short)(base_y + mul88(s_sin(obj_phase[i]), 36));
+        } else if (kind == 8) {
+            obj_phase[i]++;
+        }
+        ox = obj_rx[i];
+        oy = obj_ry[i];
+        dx = (short)(xpos - ox);
+        dy = (short)(ypos - oy);
         if (obj_timer[i]) obj_timer[i]--;
         if (dx < 0) dx = (short)-dx;
         if (dy < 0) dy = (short)-dy;
@@ -1546,12 +1699,40 @@ static void update_objects(void)
                 checkpoint_x = ox;
                 checkpoint_y = (short)(oy - YRADIUS);
             }
-        } else {
+        } else if (kind == 4) {
             short rel = (short)(xpos - ox);
             if (!goal_flag && rel >= 0 && rel < 0x20 && ypos >= oy - 80 && ypos <= oy + 40) {
                 goal_flag = 1;
                 goal_timer = 0;
                 sign_spin = 0;
+            }
+        }
+        if (kind >= 5 && !(obj_state[i] & 2)) {
+            short hw, hh;
+            unsigned char stomp;
+            if (kind == 5) {
+                hw = (obj_sub[i] & 0xF0) ? 30 : 14;
+                hh = 22;
+            } else if (kind == 6) {
+                hw = 20;
+                hh = 14;
+            } else if (kind == 7) {
+                hw = 14;
+                hh = 18;
+            } else {
+                hw = 16;
+                hh = 22;
+            }
+            stomp = (unsigned char)(kind != 5 && vy > 0 && dx < hw + 8 &&
+                    feet >= oy - hh && feet <= oy + 8);
+            if (stomp) {
+                obj_state[i] |= 2;
+                score += 100;
+                vy = -0x380;
+                grounded = 0;
+                jumping = 1;
+            } else if (dx < hw + 6 && dy < hh + 18) {
+                hurt_sonic();
             }
         }
     }
@@ -1561,12 +1742,44 @@ static void update_objects(void)
     }
 }
 
+static void respawn_sonic(void)
+{
+    unsigned short i;
+    xpos = checkpoint_x;
+    ypos = checkpoint_y;
+    xsub = 0;
+    ysub = 0;
+    vx = 0; vy = 0; inertia = 0;
+    grounded = 0; jumping = 0;
+    dead = 0;
+    hurt_timer = 0;
+    invincible_timer = 120;
+    shield_flag = 0;
+    speed_timer = 0;
+    rings_collected = 0;
+    game_time = 0;
+    time_timer = 0;
+    lost_count = 0;
+    for (i = 0; i < 20; i++) lost_timer[i] = 0;
+    for (i = 0; i < OBJ_COUNT; i++) {
+        if (obj_kind[i] >= 5) obj_state[i] &= (unsigned short)~2;
+    }
+}
+
 static void draw_sonic(void)
 {
     unsigned char idx, i;
     short sx, sy, fw, fh;
     const short *pieces;
-    if (grounded) {
+    if (!dead && invincible_timer && (frame_counter & 2)) {
+        for (i = 0; i < MAX_PIECES; i++) oamSetEx((u16)(i * 4), OBJ_LARGE, OBJ_HIDE);
+        return;
+    }
+    if (dead) {
+        idx = 4;
+    } else if (hurt_timer) {
+        idx = 5;
+    } else if (grounded) {
         if ((inertia < 0 ? -inertia : inertia) < 0x40) idx = 0;
         else if ((inertia < 0 ? -inertia : inertia) > 0x400) idx = 2;
         else idx = 1;
@@ -1580,7 +1793,9 @@ static void draw_sonic(void)
             case 0: list = anim_idle; count = ANIM_IDLE_COUNT; break;
             case 1: list = anim_walk; count = ANIM_WALK_COUNT; break;
             case 2: list = anim_run; count = ANIM_RUN_COUNT; break;
-            default: list = anim_roll; count = ANIM_ROLL_COUNT; break;
+            case 3: list = anim_roll; count = ANIM_ROLL_COUNT; break;
+            case 4: list = anim_death; count = ANIM_DEATH_COUNT; break;
+            default: list = anim_hurt; count = ANIM_HURT_COUNT; break;
         }
         if (anim_id != idx) { anim_id = idx; anim_frame = 0; anim_timer = 0; }
         if (++anim_timer >= 6) { anim_timer = 0; anim_frame++; if (anim_frame >= count) anim_frame = 0; }
@@ -1664,8 +1879,19 @@ int main(void)
         for (oi = 0; oi < OBJ_COUNT; oi++) {
             obj_state[oi] = 0;
             obj_timer[oi] = 0;
+            obj_phase[oi] = 0;
+            obj_rx[oi] = (short)obj_x[oi];
+            obj_ry[oi] = (short)obj_y[oi];
         }
     }
+    {
+        int li;
+        for (li = 0; li < 20; li++) lost_timer[li] = 0;
+    }
+    dead = 0;
+    death_timer = 0;
+    hurt_timer = 0;
+    lost_count = 0;
     checkpoint_x = 96; checkpoint_y = 655;
     last_starpost = 0;
     shield_flag = 0;
@@ -1681,30 +1907,51 @@ int main(void)
 
     while (1) {
         pad = padsCurrent(0);
-        if (goal_flag) pad = 0;
-        pressed = pad & ~oldpad;
-        oldpad = pad;
-        if (grounded) {
-            jump_if_needed(pressed);
-            if (jumping && !(pad & (KEY_A | KEY_B | KEY_Y)) && vy < -0x400) vy = -0x400;
+        if (dead) {
+            death_timer++;
+            move_y(vy);
+            vy += GRAVITY;
+            if (vy > 0xFC0) vy = 0xFC0;
+            if (death_timer > 120) {
+                if (lives > 0) lives--;
+                if (lives == 0) {
+                    lives = 3;
+                    checkpoint_x = 96;
+                    checkpoint_y = 655;
+                }
+                respawn_sonic();
+            }
+        } else {
+            if (goal_flag) pad = 0;
+            pressed = pad & ~oldpad;
+            oldpad = pad;
+            if (grounded) {
+                jump_if_needed(pressed);
+                if (jumping && !(pad & (KEY_A | KEY_B | KEY_Y)) && vy < -0x400) vy = -0x400;
+            }
+            if (grounded) ground_move(pad);
+            else air_move(pad);
+            if (xpos < 16) { xpos = 16; if (vx < 0) vx = 0; if (inertia < 0) inertia = 0; }
+            if (xpos > SLICE_W * 8 - 24) { xpos = SLICE_W * 8 - 24; if (vx > 0) vx = 0; if (inertia > 0) inertia = 0; }
+            if (ypos > SLICE_Y + WORLD_H - 16) {
+                dead = 1;
+                death_timer = 0;
+                vx = 0; vy = 0; inertia = 0;
+                grounded = 0; jumping = 0;
+            }
+            update_objects();
         }
-        if (grounded) ground_move(pad);
-        else air_move(pad);
-        if (xpos < 16) { xpos = 16; if (vx < 0) vx = 0; if (inertia < 0) inertia = 0; }
-        if (xpos > SLICE_W * 8 - 24) { xpos = SLICE_W * 8 - 24; if (vx > 0) vx = 0; if (inertia > 0) inertia = 0; }
-        if (ypos > SLICE_Y + WORLD_H - 16) {
-            xpos = checkpoint_x; ypos = checkpoint_y; xsub = 0; ysub = 0;
-            vx = vy = inertia = 0; grounded = 0; jumping = 0;
-        }
-        update_objects();
         if (speed_timer) speed_timer--;
         if (invincible_timer) invincible_timer--;
+        if (hurt_timer) hurt_timer--;
+        update_lost_rings();
         update_camera();
         update_pages();
         bgSetScroll(0, (u16)(cam_x - page_x * 256), (u16)((cam_y - SLICE_Y) - page_y * 256));
         frame_counter++;
         collect_rings();
         draw_rings();
+        draw_lost_rings();
         if ((frame_counter & 7) == 0) draw_hud();
         if (!goal_flag && ++time_timer >= 60) { time_timer = 0; game_time++; }
         clear_obj_map();

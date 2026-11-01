@@ -1998,3 +1998,41 @@ Interactions verified from controlled start positions:
 ![Goal signpost](screenshots/sonic2_snes_port_signpost.png)
 
 Badniks, spikes, bridges/platforms, hurt/death/lives and audio remain.
+
+### Sonic 2 badniks, spikes and hurt/death (0.1.43)
+
+The adapter now imports the remaining EHZ Act 1 gameplay objects and adds the
+damage/death loop. The object list has 75 supported entries:
+
+```text
+13 monitors, 14 springs, 3 star posts, 1 goal signpost,
+12 spike sets, 11 Buzz Bombers, 13 Mashers, 8 Coconuts
+
+art/nemesis/{Buzzer enemy,EHZ Pirahna badnik,Coconuts badnik from EHZ,Spikes}.nem
+mappings obj36/obj4B/obj5C/obj9D -> original spike/badnik frames
+Sonic frames 0x4E (hurt) and 0x5C (death) -> 18 total frames, 384 OBJ tiles
+rings 32 + HUD 39 tiles -> 455 / 512 OBJ tiles
+BG2 object atlas -> 272 of 512 CHR tiles
+ROM -> 524,288 bytes, LoROM FastROM, checksum OK, 41,423 bytes free
+```
+
+Verified from controlled start positions:
+
+- Buzz Bomber hovering/bobbing with the original two body frames;
+- ceiling and floor spikes with the original y-flip orientation;
+- spike contact triggering hurt with ring scatter (lost rings drawn and
+  collectible after a delay);
+- spike contact with zero rings triggering the death pose and fall;
+- checkpoint respawn at the start after death, with the act timer and rings
+  reset;
+- stomping a Coconuts: badnik removed, score +100 and Sonic bounces.
+
+![Buzz Bomber](screenshots/sonic2_snes_port_buzzer.png)
+![Spikes](screenshots/sonic2_snes_port_spikes.png)
+![Stomp](screenshots/sonic2_snes_port_stomp.png)
+![Ring loss](screenshots/sonic2_snes_port_ring_loss.png)
+![Death](screenshots/sonic2_snes_port_death.png)
+![Checkpoint respawn](screenshots/sonic2_snes_port_respawn.png)
+
+Badnik projectiles, the game-over screen, lives HUD, explosions and audio
+remain.

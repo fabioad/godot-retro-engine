@@ -27,8 +27,12 @@ misc/sinewave.bin             -> 256-entry sin/cos table
 .retro/generated/sprites/common_ring.png
                               -> 4 ring animation frames, 16x16 OBJ pieces
 level/rings/EHZ_1.bin         -> 226 ring positions expanded from the row/col list
-level/objects/EHZ_1.bin       -> springs, monitors, star posts and the goal signpost
+level/objects/EHZ_1.bin       -> 75 interactive objects:
+                                 13 monitors, 14 springs, 3 star posts,
+                                 1 goal signpost, 12 spike sets,
+                                 11 Buzzers, 13 Mashers, 8 Coconuts
 art/nemesis/*.nem + mappings  -> original object art (Nemesis) and sprite mappings
+art/nemesis + obj36/4B/5C/9D  -> spikes and badnik art/mappings
 ```
 
 The runtime is C on the SNES side:
@@ -59,7 +63,16 @@ The runtime is C on the SNES side:
 - star posts: activation by proximity, checkpoint stored for pit respawns and
   the star ball removed when active;
 - goal signpost: idle Eggman face, proximity trigger, spin to the Sonic face
-  and HUD timer stop at the end of the act.
+  and HUD timer stop at the end of the act;
+- spikes: upright ceiling/floor spike sets, original y-flip orientation and
+  hurt on contact;
+- badniks: Buzz Bomber (hover/bob animation), Masher (vertical swim cycle) and
+  Coconuts (tree idle), with stomp destruction (+100), contact damage and the
+  original sprite frames;
+- hurt/death: hurt pose and knockback, ring scatter (up to 20 lost rings,
+  collectible after a short delay), death pose and fall, lives counter,
+  respawn at the last star post and reset of the act timer/rings;
+- pit falls now count as deaths instead of teleporting back immediately.
 
 ## Build and run
 
@@ -81,9 +94,10 @@ reads the real controller with `padsCurrent(0)`.
 ROM:      524,288 bytes (512 KiB), LoROM FastROM, checksum OK
 build:    exit 0; Game Build integration builds the same ROM
 preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
-          fall reset to the checkpoint at 700; ring collected: SCORE 000010,
-          RINGS 001; monitor break, spring launch, star post activation and
-          goal signpost spin verified from controlled start positions
+          ring collected: SCORE 000010, RINGS 001; monitor break, spring
+          launch, star post activation and goal signpost spin verified from
+          controlled start positions; spikes hurt/death, ring scatter,
+          badnik stomp (+100), death pose and checkpoint respawn verified
 ```
 
 ![Full-level start](screenshots/sonic2_snes_port_full_start.png)
@@ -96,6 +110,12 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Spring launch](screenshots/sonic2_snes_port_spring.png)
 ![Star post checkpoint](screenshots/sonic2_snes_port_starpost.png)
 ![Goal signpost](screenshots/sonic2_snes_port_signpost.png)
+![Buzz Bomber](screenshots/sonic2_snes_port_buzzer.png)
+![Spikes](screenshots/sonic2_snes_port_spikes.png)
+![Stomp](screenshots/sonic2_snes_port_stomp.png)
+![Ring loss](screenshots/sonic2_snes_port_ring_loss.png)
+![Death](screenshots/sonic2_snes_port_death.png)
+![Checkpoint respawn](screenshots/sonic2_snes_port_respawn.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -106,15 +126,17 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 1. **Slope velocity/loops.** Terrain Y snap is active, but horizontal speed is
    still plain inertia; `AnglePos` velocity rotation and `Sonic_SlopeResist`
    acceleration need the signed 16x16 path validated for every angle.
-2. **Remaining objects.** Badniks (Buzzer, Masher, Coconuts), spikes, bridges,
-   moving platforms, waterfalls and scenery still need their own importers and
-   behaviors; object respawn state (broken monitors, used star posts) is not
-   persisted across deaths yet.
+2. **Remaining objects.** Bridges, moving platforms, waterfalls and scenery
+   still need their own importers and behaviors. Badnik projectiles (Buzzer
+   fireball, Coconuts) and the exact Masher jump-out-of-water cycle are still
+   approximations. Badniks respawn on death; broken monitors and used star
+   posts intentionally remain in their state.
 3. **HUD art/lives/title card.** The layout is faithful, but the font is a
-   compact 5x7 OBJ font; lives and the title/act card are missing.
-4. **Hurt/death/lives.** Spikes, badniks and the Robotnik monitor have no damage
-   path yet. Pit falls respawn at the last star post, but there is no hurt or
-   death animation and no ring loss.
+   compact 5x7 OBJ font; the lives display, title card and act card are
+   missing. The lives counter is tracked but not shown.
+4. **Death/game over.** Hurt, ring loss, death and checkpoint respawn are in;
+   the game-over screen, invincibility/shield visuals and badnik explosions
+   are still missing.
 5. **Audio.** The SMPS music, ring sound and DAC driver are not translated; the
    current ROM is silent.
 6. **Tails, spin dash, special stages, water, two-player mode, openings and
@@ -131,12 +153,14 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
   shifts/adds for the jump and slope math. The ground snap itself is inlined
   (no separate `AnglePos` call) to avoid the same ABI/stack symptom.
 - BG page groups are 16 KiB assembly sections (8 pages each); 172 pages fit
-  in 22 groups and 512 KiB with ~50 KiB free.
+  in 22 groups and 512 KiB with ~41 KiB free.
 - The object layer uses BG2 with a 32x32 screen-space map at VRAM 0x3800 and
   512 tiles of CHR at 0x4000; OBJ tiles moved to 0x6000. The map is copied to
   VRAM after `WaitForVBlank()` (RAM-to-VRAM DMA during active display is lost).
 - The goal signpost is at x=10,816, so the level must stay at least 1,360 tiles
   wide; the port uses 1,376 tiles (43 pages).
+- Sonic now uses 18 frames (idle/walk/run/roll/hurt/death), 384 OBJ tiles;
+  rings use 32 and the HUD 39, for 455 of the 512 available OBJ tiles.
 - The preview's injected controller events were not reliable in headless mode;
   the `--demo` build uses assignment (`pad = padsCurrent(0) | KEY_RIGHT`)
   because `pad |= KEY_RIGHT` did not reach the physics in that build.
