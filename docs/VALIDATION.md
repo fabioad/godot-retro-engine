@@ -1761,3 +1761,80 @@ and an explicit warning when bank switching remains application code.
 `-sizealign`, so the ROM is padded to 4/8/16/32 MiB instead of SGDK's default
 128 KiB. The mapper headers expose SSF2 segment selection and bank reads;
 placing assets in banks above 4 MiB and switching them is still project code.
+
+### Final cross-platform stage tests: Gothicvania → MD and Sonic 2 → SNES (0.1.38)
+
+Two complete exports were generated from the real source projects, built, and
+run in the ROM preview.
+
+**Gothicvania (SNES project) → Mega Drive**
+
+```text
+source:  snes-test-projects/snes-homebrew/gothicvania
+mode:    snes_megadrive
+ROM:     131,072 bytes (128 KiB), SEGA header OK
+build:   exit 0, 0 errors
+preview: frame 90, 256x224
+```
+
+![Gothicvania background stage](screenshots/final_gothicvania_source_stage.png)
+![Gothicvania Mega Drive export](screenshots/final_gothicvania_md.png)
+
+The Mega Drive ROM reproduces the project's `bg` stage (moon, clouds and
+mountains) tile-for-tile. The only visible differences are the 9-bit Mega
+Drive colours and the missing layers/sprites that the project renders in
+custom code.
+
+**Sonic 2 disassembly (Mega Drive) → SNES**
+
+```text
+source:  sgdk-test-projects/s2disasm
+mode:    megadrive_snes
+import:  level/layout/EHZ_1.kos, mappings/128x128/EHZ_HTZ.kos,
+         mappings/16x16/EHZ.kos, art/kosinski/EHZ_HTZ.kos,
+         art/palettes/EHZ.bin (Kosinski decompression in GDScript)
+stage:   Emerald Hill Zone Act 1, crop 32x28 tiles at (0,69)
+ROM:     524,288 bytes (512 KiB), LoROM FastROM, checksum OK
+build:   exit 0, 0 errors
+validate_rom: sd2snes_ready=true
+preview: frame 120, 256x224
+```
+
+![Sonic 2 original Emerald Hill Act 1](screenshots/final_sonic2_original.png)
+![Sonic 2 Emerald Hill Act 1 exported to SNES](screenshots/final_sonic2_snes.png)
+
+The exported SNES stage uses the original 914 Emerald Hill tiles, the original
+chunk/block layout and palette lines 1-3 (palette line 0 is the backdrop). The
+geometry, palm trees, grass and checkerboard dirt match the original; the
+sprite layer (Sonic/Tails/HUD), parallax background, rings, objects and
+gameplay are not part of the stage export.
+
+**Bugs fixed while running these tests**
+
+- SGDK `res/audio.rs` collision: a BGM and an SFX both named `baroque` emitted
+  the same symbol. The audio pipeline now converts only the first BGM and
+  assigns unique `bgm_`/`sfx_` names.
+- PVSnesLib `816-tcc` emitted a single `.db` line larger than 100 KiB for the
+  914-tile tileset and the BRR samples; WLA rejected the truncated fragment.
+  Large SNES assets are now written as binary files and included by
+  `src/assets_data.asm` / `src/sfx_data.asm` (`.incbin`), with only the sizes
+  declared in C. This also applies to the splash, map and palette.
+- Sonic 2 projects had no `RetroStage`, so the MD→SNES mode failed with
+  `no stage/image asset available for conversion`. A Sonic 2 disassembly stage
+  importer (Kosinski + chunk/block/tile/palette decoding) was added.
+
+**Fidelity boundary**
+
+The cross-platform modes export a stage (tile set, palette, map and, when
+available, a player sprite). They do not translate game logic, physics,
+scripts, HUD, parallax layers, enemies, object lists or music sequencing.
+"Nothing different except colours and BGM" is therefore not achievable for a
+complete game with this pipeline; it is achieved for the exported stage data:
+
+- colours: Mega Drive 9-bit → SNES 15-bit, palette indices preserved;
+- BGM: the generated project uses one converted BGM/SFX set, not the original
+  sound driver.
+- Gothicvania's real level is a custom two-layer 600x28-tile page streamer; only
+  its `bg` stage is exposed as a `RetroStage`, so that is what gets exported.
+- Sonic 2's foreground level is imported from the original Kosinski data; the
+  parallax background, sprites, HUD and SMPS music remain project-specific.

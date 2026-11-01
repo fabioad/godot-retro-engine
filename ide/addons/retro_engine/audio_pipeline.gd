@@ -108,6 +108,7 @@ static func prepare_for_build(assets: Array, target: String, out_dir: String) ->
 	var sfx: Array = []
 	var previews: Array = []
 	var converted: Array = []
+	var used_names := {}
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	if target == "snes":
 		var snes_root := String(RetroSDK.get_sdk("snes").get("path", ""))
@@ -125,7 +126,21 @@ static func prepare_for_build(assets: Array, target: String, out_dir: String) ->
 		var params: Dictionary = a.get("params", {})
 		if source.is_empty() and params.is_empty():
 			continue
-		var result := convert_asset(source, out_dir, name, kind, target, params)
+		# The generated game uses one BGM. Converting every BGM resource wastes
+		# time and can collide with SFX names in the SGDK resource script.
+		if kind == "bgm" and not bgm.is_empty():
+			continue
+		var safe := _safe_name(name)
+		var unique := safe
+		if used_names.has(unique):
+			var prefix := "sfx_" if kind == "sfx" else "bgm_"
+			unique = prefix + safe
+			var suffix := 2
+			while used_names.has(unique):
+				unique = "%s%s_%d" % [prefix, safe, suffix]
+				suffix += 1
+		used_names[unique] = true
+		var result := convert_asset(source, out_dir, unique, kind, target, params)
 		if not bool(result.get("ok", false)):
 			return {"ok": false, "error": "audio conversion failed for %s: %s" % [name, String(result.get("output", ""))]}
 		converted.append(result)

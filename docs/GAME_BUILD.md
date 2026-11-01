@@ -287,3 +287,39 @@ needs a Mega-CD image builder.
 
 Sizes above 8 MiB are not universal Mega Drive formats: they depend on the
 mapper and the cartridge/flashcart hardware.
+
+## Cross-platform stage export and Sonic 2 import (0.1.38)
+
+`megadrive_snes` can now export a Sonic 2 disassembly project even though it
+contains no `RetroStage` resource. `sonic_stage_import.gd` decodes the original
+Kosinski streams:
+
+```text
+level/layout/EHZ_1.kos       128x16 chunk layout (FG rows at +$100)
+mappings/128x128/EHZ_HTZ.kos chunk -> 8x8 block map
+mappings/16x16/EHZ.kos       block -> 2x2 tiles
+art/kosinski/EHZ_HTZ.kos     914 packed 4bpp tiles
+art/palettes/EHZ.bin         3 level palette lines
+```
+
+The Mega Drive block/tile words are preserved (tile index, palette line, H/V
+flip, priority) and the stage is cropped to the screen shown at the act's start
+position. The importer supports EHZ, MTZ, ARZ, CNZ, CPZ, OOZ, MCZ, WFZ, SCZ and
+DEZ when the corresponding files are present.
+
+Because `816-tcc` emits one `.db` line per array, large SNES assets are now
+emitted as binary blobs plus a WLA module:
+
+```text
+src/assets_tiles.bin, src/assets_pal.bin, src/assets_map.bin
+src/assets_data.asm   (.incbin + .export, one section per blob)
+src/sfx_data.asm      (converted BRR samples)
+```
+
+`assets.c` only declares the sizes. This avoids the 100 KiB tcc line split and
+WLA parse errors on large tilesets.
+
+The exporter remains a stage exporter: game logic, physics, sprites, HUD,
+parallax layers, objects and the original sound driver are not translated.
+Mega Drive colours are widened from 9-bit to SNES 15-bit while keeping the
+palette indices unchanged.

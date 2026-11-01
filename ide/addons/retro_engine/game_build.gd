@@ -7,6 +7,7 @@ const LOGO_PATH := "res://addons/retro_engine/assets/godot_splash.png"
 const ExportProfiles = preload("res://addons/retro_engine/export_profiles.gd")
 const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
 const RomProfiles = preload("res://addons/retro_engine/rom_profiles.gd")
+const SonicStageImport = preload("res://addons/retro_engine/sonic_stage_import.gd")
 
 static func target_for_mode(mode: String) -> String:
 	if mode in ["native_snes", "megadrive_snes"]:
@@ -703,6 +704,11 @@ static func _find_stage(source: RetroProject, target: String, explicit: String) 
 				var s := _stage_from_image(path, target, bridge)
 				if s != null:
 					return s
+		# Sonic 2 disassembly projects have no RetroStage resource: build one
+		# from the original Kosinski layout/tile data instead.
+		var sonic_stage := SonicStageImport.build(source)
+		if sonic_stage != null:
+			return sonic_stage
 	return null
 
 static func _load_stage(path: String, target: String, bridge: RetroNativeBridge, resource: Dictionary = {},
@@ -819,22 +825,83 @@ static func _write_assets(header_path: String, source_path: String, stage: Retro
 		h += "extern const %s splash_map[];\nextern const unsigned int splash_map_size;\n" % word
 	h += "\n#endif\n"
 	var c := "#include \"assets.h\"\n\n"
-	c += _array_decl("game_tiles", game["tiles"], decl) + "\n"
-	c += "const unsigned int game_tiles_size = sizeof(game_tiles);\n"
-	c += _array_decl("game_pal", game["pal"], word) + "\n"
-	c += "const unsigned int game_pal_size = sizeof(game_pal);\n"
-	c += _array_decl("game_map", game["map"], word) + "\n"
-	c += "const unsigned int game_map_size = sizeof(game_map);\n"
-	if include_splash and not splash_data.is_empty():
-		c += _array_decl("splash_tiles", splash_data["tiles"], decl) + "\n"
-		c += "const unsigned int splash_tiles_size = sizeof(splash_tiles);\n"
-		c += _array_decl("splash_pal", splash_data["pal"], word) + "\n"
-		c += "const unsigned int splash_pal_size = sizeof(splash_pal);\n"
-		c += _array_decl("splash_map", splash_data["map"], word) + "\n"
-		c += "const unsigned int splash_map_size = sizeof(splash_map);\n"
+	var asm_ok := true
+	if target == "snes":
+		# The PVSnesLib C compiler emits one huge .db line per array; WLA
+		# truncates lines above ~1 KB and then fails on the fragment. Keep the
+		# big ROM assets in binary files included by a small assembly module.
+		asm_ok = _write_snes_blob_assets(source_path.get_base_dir(), game, splash_data, include_splash, rom)
+		c += "const unsigned int game_tiles_size = %d;\n" % int(game["tiles"].size())
+		c += "const unsigned int game_pal_size = %d;\n" % int(game["pal"].size())
+		c += "const unsigned int game_map_size = %d;\n" % int(game["map"].size())
+		if include_splash and not splash_data.is_empty():
+			c += "const unsigned int splash_tiles_size = %d;\n" % int(splash_data["tiles"].size())
+			c += "const unsigned int splash_pal_size = %d;\n" % int(splash_data["pal"].size())
+			c += "const unsigned int splash_map_size = %d;\n" % int(splash_data["map"].size())
+	else:
+		c += _array_decl("game_tiles", game["tiles"], decl) + "\n"
+		c += "const unsigned int game_tiles_size = sizeof(game_tiles);\n"
+		c += _array_decl("game_pal", game["pal"], word) + "\n"
+		c += "const unsigned int game_pal_size = sizeof(game_pal);\n"
+		c += _array_decl("game_map", game["map"], word) + "\n"
+		c += "const unsigned int game_map_size = sizeof(game_map);\n"
+		if include_splash and not splash_data.is_empty():
+			c += _array_decl("splash_tiles", splash_data["tiles"], decl) + "\n"
+			c += "const unsigned int splash_tiles_size = sizeof(splash_tiles);\n"
+			c += _array_decl("splash_pal", splash_data["pal"], word) + "\n"
+			c += "const unsigned int splash_pal_size = sizeof(splash_pal);\n"
+			c += _array_decl("splash_map", splash_data["map"], word) + "\n"
+			c += "const unsigned int splash_map_size = sizeof(splash_map);\n"
 	var e1 := _write_text(header_path, h)
 	var e2 := _write_text(source_path, c)
-	return {"ok": e1 == OK and e2 == OK, "header": header_path, "source": source_path}
+	return {"ok": e1 == OK and e2 == OK and asm_ok, "header": header_path, "source": source_path}
+
+static func _write_snes_blob_assets(dir: String, game: Dictionary, splash_data: Dictionary, include_splash: bool,
+		rom: Dictionary = {}) -> bool:
+	var entries: Array = [
+		{"name": "game_tiles", "file": "assets_tiles.bin", "data": _array_to_bytes(game["tiles"])},
+		{"name": "game_pal", "file": "assets_pal.bin", "data": _array_to_bytes(game["pal"])},
+		{"name": "game_map", "file": "assets_map.bin", "data": _array_to_bytes(game["map"])},
+	]
+	if include_splash and not splash_data.is_empty():
+		entries.append({"name": "splash_tiles", "file": "assets_splash_tiles.bin", "data": _array_to_bytes(splash_data["tiles"])})
+		entries.append({"name": "splash_pal", "file": "assets_splash_pal.bin", "data": _array_to_bytes(splash_data["pal"])})
+		entries.append({"name": "splash_map", "file": "assets_splash_map.bin", "data": _array_to_bytes(splash_data["map"])})
+	return _write_snes_asm_blobs(dir, entries, rom, "assets_data.asm")
+
+## Writes binary assets plus a small WLA module that .incbin's them. The
+## PVSnesLib C compiler puts a whole array on one .db line and truncates it at
+## 100 KiB (and WLA rejects the fragment), so large assets must not go through
+## a C initializer.
+static func _write_snes_asm_blobs(dir: String, entries: Array, rom: Dictionary, asm_name: String) -> bool:
+	var mapping := String(rom.get("mapping", "lorom"))
+	var hi := mapping in ["hirom", "exhirom"]
+	var bank_size := 0x10000 if hi else 0x8000
+	var slot0 := 0x0000 if hi else 0x8000
+	var banks := maxi(1, int(rom.get("banks", 8)))
+	var asm := ".MEMORYMAP\n  SLOTSIZE $%X\n  DEFAULTSLOT 0\n  SLOT 0 $%X\n" % [bank_size, slot0]
+	asm += "  SLOT 1 $0 $2000\n  SLOT 2 $2000 $E000\n  SLOT 3 $0 $10000\n"
+	if hi:
+		asm += "  SLOT 4 $6000\n"
+	asm += ".ENDME\n.ROMBANKMAP\n  BANKSTOTAL %d\n  BANKSIZE $%X\n  BANKS %d\n.ENDRO\n\n" % [banks, bank_size, banks]
+	var ok := true
+	for entry in entries:
+		var name := String(entry["name"])
+		var file := String(entry["file"])
+		var bytes: PackedByteArray = entry["data"]
+		ok = _write_bytes(dir.path_join(file), bytes) == OK and ok
+		asm += ".section \".rodata_%s\" superfree\n" % name
+		asm += "%s:\n.incbin \"src/%s\"\n" % [name, file]
+		asm += ".export %s\n.ends\n\n" % name
+	ok = _write_text(dir.path_join(asm_name), asm) == OK and ok
+	return ok
+
+static func _array_to_bytes(values: Array) -> PackedByteArray:
+	var out := PackedByteArray()
+	out.resize(values.size())
+	for i in range(values.size()):
+		out[i] = int(values[i]) & 0xFF
+	return out
 
 static func _stage_data(stage: RetroStage, target: String) -> Dictionary:
 	var tileset: Image = stage.get_tileset()
@@ -842,7 +909,12 @@ static func _stage_data(stage: RetroStage, target: String) -> Dictionary:
 	if tileset == null or palette.is_empty():
 		return {}
 	var md := target == "megadrive"
-	var tiles := RetroGraphics.encode_tiles(tileset, stage.get_bpp(), palette, stage.get_tile_size(), md)
+	# Indexed stages (for example imported Mega Drive levels) must keep their
+	# original 4bpp indices: the palette has several 16-colour lines and a
+	# nearest-colour remap would lose the per-tile palette line.
+	var indices: Image = stage.get_tile_indices()
+	var tiles := RetroGraphics.encode_tiles_indexed(indices, stage.get_bpp(), stage.get_tile_size(), md) if indices != null \
+		else RetroGraphics.encode_tiles(tileset, stage.get_bpp(), palette, stage.get_tile_size(), md)
 	var pal := RetroGraphics.encode_palette(palette, md)
 	var map := stage.get_map()
 	var map_w := stage.get_map_size().x
@@ -1676,6 +1748,8 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 	code += "    setScreenOff();\n}\n"
 	code += "#endif\n\n"
 	var sfx_brr_arrays: Array = []
+	var sfx_sizes := {}
+	var sfx_entries: Array = []
 	var region := 1
 	for i in range(sfx_list.size()):
 		var sfx: Dictionary = sfx_list[i]
@@ -1687,8 +1761,13 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		var data := f.get_buffer(f.get_length())
 		f.close()
 		sfx_brr_arrays.append(safe)
-		code += _array_decl("sfx_" + safe + "_brr", _byte_values(data), "unsigned char")
+		sfx_sizes[safe] = data.size()
+		sfx_entries.append({"name": "sfx_" + safe + "_brr", "file": "sfx_" + safe + "_brr.bin", "data": data})
+		code += "extern const unsigned char sfx_%s_brr[];\n" % safe
 		region = maxi(region, int((data.size() + 255) / 256) + 2)
+	if not sfx_entries.is_empty():
+		_write_snes_asm_blobs(path.get_base_dir(), sfx_entries, rom, "sfx_data.asm")
+		code += "\n"
 	if not sfx_brr_arrays.is_empty():
 		code += "static brrsamples sfx_table[%d];\n\n" % sfx_brr_arrays.size()
 	if not player.is_empty():
@@ -1753,7 +1832,9 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 			code += "    spcSetBank((u8 *)&%s);\n" % bank_symbol
 			code += "    spcLoad(%s);\n" % module_name
 		for i in range(sfx_brr_arrays.size()):
-			code += "    spcSetSoundEntry(15, 8, 6, sizeof(sfx_%s_brr), (u8 *)sfx_%s_brr, &sfx_table[%d]);\n" % [sfx_brr_arrays[i], sfx_brr_arrays[i], i]
+			var sfx_safe := String(sfx_brr_arrays[i])
+			code += "    spcSetSoundEntry(15, 8, 6, %d, (u8 *)sfx_%s_brr, &sfx_table[%d]);\n" % [
+				int(sfx_sizes.get(sfx_safe, 0)), sfx_safe, i]
 		if not sfx_brr_arrays.is_empty():
 			code += "    spcSetSoundTableEntry(&sfx_table[0]);\n"
 			code += "    spcAllocateSoundRegion(%d);\n" % region
@@ -2306,5 +2387,14 @@ static func _write_text(path: String, text: String) -> Error:
 	if f == null:
 		return ERR_CANT_CREATE
 	f.store_string(text)
+	f.close()
+	return OK
+
+static func _write_bytes(path: String, data: PackedByteArray) -> Error:
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return ERR_CANT_CREATE
+	f.store_buffer(data)
 	f.close()
 	return OK
