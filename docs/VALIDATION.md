@@ -2165,3 +2165,28 @@ free:    523,773 bytes
 Still pending: SMPS music, full vertical loops/plane switching, full Tails/2P,
 special stages, water, title/act cards, openings/ending, and the remaining
 tumble poses.
+
+### Sonic 2 SMPS music and VRAM cleanup (0.1.49)
+
+The EHZ SMPS note data is now transcribed into an IT module and a SNESMOD
+soundbank. Six source channels (FM1-5 + PSG1) become square/saw/sine
+instruments; tempo is derived from the SMPS 158-tick clock and the module loops
+at the original section boundary. The FM timbre is approximate, but the music
+is no longer silent.
+
+```text
+IT module:       ~7 KiB
+soundbank:       4,710 bytes, placed at bank 15 (bank-aligned for spcLoad)
+preview:         600 audio packets / 320k frames over 600 emulator frames
+music channels:  6
+ROM:             1,048,576 bytes, LoROM FastROM, checksum OK
+free ROM:        519,780 bytes
+BG2 CHR:         493 / 512 tiles (8 freed by skipping unused frames)
+OBJ/HUD:         441 / 512 tiles (HUD font 25 glyphs, 14 freed)
+```
+
+![Music and HUD](screenshots/sonic2_snes_port_music.png)
+
+Remaining audio work: exact FM/PSG timbres and DAC/drum channel. Still pending:
+full vertical loops/plane switching, full Tails/2P, special stages, water,
+title/act cards, openings/ending.

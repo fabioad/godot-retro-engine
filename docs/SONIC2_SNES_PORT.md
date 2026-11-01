@@ -89,8 +89,11 @@ The runtime is C on the SNES side:
 - corkscrew tumble poses: three rotated Sonic frames replace the ball on the
   spiral, with BG2 priority switching behind the loop art;
 - SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
-  PVSnesLib sound engine (synthesized placeholders; original SMPS music is
-  still pending);
+  PVSnesLib sound engine;
+- EHZ music: the original SMPS note data is parsed into a 6-channel IT module
+  and a 4.7 KiB SNESMOD soundbank (bank 15), using square/saw/sine/noise
+  instruments. The arrangement/tempo/loop come from SMPS; the FM timbre is
+  approximated;
 - ROM expanded to 1 MiB to leave room for audio and future modes.
 
 ## Build and run
@@ -149,6 +152,7 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Spiral behind the loop](screenshots/sonic2_snes_port_spiral_behind.png)
 ![Tails follower](screenshots/sonic2_snes_port_tails.png)
 ![Corkscrew tumble](screenshots/sonic2_snes_port_tumble.png)
+![Music and VRAM cleanup](screenshots/sonic2_snes_port_music.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -170,8 +174,9 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 4. **Death/game-over details.** The game-over state is a simple text screen;
    the original art/animation and the invincibility-kills-badniks behavior are
    still missing.
-5. **Audio music.** SFX are in through the SNES sound engine, but the original
-   SMPS music/DAC driver is not translated yet; the music is still silent.
+5. **Exact FM audio.** EHZ music is now in via SMPS→IT→SNESMOD; the remaining
+   audio work is matching the original FM/PSG timbres, the DAC/drum channel and
+   the rest of the soundtrack.
 6. **Full Tails AI/two-player, special stages, water, title/act cards,
    openings and ending.** The current Tails is a delayed follower with
    idle/walk/fly frames, not the complete sidekick/2P logic.
@@ -197,7 +202,8 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
   rings use 32 and the HUD 39, for 455 of the 512 available OBJ tiles.
 - The BG2 object atlas now includes monitor icons, spikes, badniks, shield,
   invincibility stars, explosion, bridge, platform, Tails and tumble frames
-  (501 of 512 CHR tiles).
+  (493 of 512 CHR tiles; unused monitor/bridge frames are skipped). The HUD
+  font was reduced to the 25 glyphs actually used, freeing 14 OBJ tiles.
 - The preview's injected controller events were not reliable in headless mode;
   the `--demo` build uses assignment (`pad = padsCurrent(0) | KEY_RIGHT`)
   because `pad |= KEY_RIGHT` did not reach the physics in that build.

@@ -17,6 +17,11 @@ import subprocess
 import sys
 from PIL import Image
 
+try:
+    from sonic2_smps import build_ehz_module
+except Exception:
+    build_ehz_module = None
+
 ROOT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "/run/media/fabio/Dados/Fabio/sgdk-test-projects/s2disasm"
 OUT = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("-") else "/tmp/opencode/sonic_port"
 DEMO = "--demo" in sys.argv
@@ -518,7 +523,7 @@ FONT = {
  '-': ["00000","00000","00000","11111","00000","00000","00000"],
  ' ': ["00000","00000","00000","00000","00000","00000","00000"],
 }
-HUD_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:- "
+HUD_CHARS = "0123456789ACEGIMNORSTV:- "
 
 def font_tile(rows):
     out = bytearray(32)
@@ -790,7 +795,7 @@ def object_tile_index(tile):
 
 
 for _setname, _frame_id, _artname in OBJECT_FRAME_DEFS:
-    if _setname == "monitor" and _frame_id in (1, 2, 3, 9, 10):
+    if (_setname == "monitor" and _frame_id in (1, 2, 3, 4, 9, 10)) or (_setname == "bridge" and _frame_id == 1):
         object_frame_start.append(len(object_draw_dx))
         object_frame_len.append(0)
         continue
@@ -966,6 +971,8 @@ def _build_sfx():
 
 sfx_data = _build_sfx()
 SFX_ENABLED = bool(sfx_data)
+music_bank = build_ehz_module(ROOT, os.path.join(OUT, "audio")) if build_ehz_module else None
+MUSIC_ENABLED = bool(music_bank)
 
 # ---------------------------------------------------------------- C output ---
 def carray(name, data, typ="unsigned char"):
@@ -1020,6 +1027,9 @@ for i, group in enumerate(page_groups):
 for _name in SFX_ORDER:
     if _name in sfx_data:
         blobs.append(blob("sfx_" + _name, "sfx_%s.brr" % _name, sfx_data[_name]))
+if MUSIC_ENABLED:
+    with open(os.path.join(OUT, "src", "ehz_bank.bnk"), "wb") as _bank_file:
+        _bank_file.write(music_bank)
 asm = """.MEMORYMAP
   SLOTSIZE $8000
   DEFAULTSLOT 0
@@ -1038,6 +1048,8 @@ asm = """.MEMORYMAP
 for label, filename in blobs:
     asm += ".section \".rodata_%s\" superfree\n" % label
     asm += "%s:\n.incbin \"src/%s\"\n.export %s\n.ends\n\n" % (label, filename, label)
+if MUSIC_ENABLED:
+    asm += ".BANK 15\n.SECTION \"SOUNDBANK\"\nsoundbank:\n.incbin \"src/ehz_bank.bnk\"\n.export soundbank\n.ENDS\n"
 with open(f"{OUT}/src/assets_data.asm", "w") as f:
     f.write(asm)
 
@@ -1131,6 +1143,9 @@ assets_h += "extern const unsigned char obj_kind[];\nextern const unsigned char 
 assets_h += "extern const unsigned char obj_flags[];\n"
 assets_h += "extern const unsigned char spiral_cos[%d];\nextern const unsigned char spiral_flip[%d];\n" % (len(spiral_cos), len(spiral_flip))
 assets_h += "#define SFX_ENABLED %d\n" % (1 if SFX_ENABLED else 0)
+assets_h += "#define MUSIC_ENABLED %d\n" % (1 if MUSIC_ENABLED else 0)
+if MUSIC_ENABLED:
+    assets_h += "#define MOD_EHZ 0\nextern const unsigned char soundbank[];\n"
 if SFX_ENABLED:
     for _name in SFX_ORDER:
         assets_h += "#define SFX_%s_SIZE %d\n" % (_name.upper(), len(sfx_data[_name]))
@@ -1646,10 +1661,23 @@ static void draw_lost_rings(void)
 static unsigned char hud_index(char c)
 {
     if (c >= '0' && c <= '9') return (unsigned char)(c - '0');
-    if (c >= 'A' && c <= 'Z') return (unsigned char)(10 + (c - 'A'));
-    if (c == ':') return 36;
-    if (c == '-') return 37;
-    return 38;
+    switch (c) {
+        case 'A': return 10;
+        case 'C': return 11;
+        case 'E': return 12;
+        case 'G': return 13;
+        case 'I': return 14;
+        case 'M': return 15;
+        case 'N': return 16;
+        case 'O': return 17;
+        case 'R': return 18;
+        case 'S': return 19;
+        case 'T': return 20;
+        case 'V': return 21;
+        case ':': return 22;
+        case '-': return 23;
+        default: return 24;
+    }
 }
 
 static unsigned char hud_char(unsigned char x, unsigned char y, char c, unsigned char slot)
@@ -2395,15 +2423,24 @@ int main(void)
 {
     unsigned short pad, pressed, oldpad = 0;
     consoleInit();
-#if SFX_ENABLED
+#if MUSIC_ENABLED || SFX_ENABLED
     spcBoot();
     spcAllocateSoundRegion(80);
+#endif
+#if MUSIC_ENABLED
+    spcSetBank((u8 *)soundbank);
+    spcLoad(MOD_EHZ);
+#endif
+#if SFX_ENABLED
     spcSetSoundEntry(15, 8, 6, SFX_RING_SIZE, (u8 *)sfx_ring, &snd_ring);
     spcSetSoundEntry(15, 8, 6, SFX_SPRING_SIZE, (u8 *)sfx_spring, &snd_spring);
     spcSetSoundEntry(15, 8, 6, SFX_HURT_SIZE, (u8 *)sfx_hurt, &snd_hurt);
     spcSetSoundEntry(15, 8, 6, SFX_JUMP_SIZE, (u8 *)sfx_jump, &snd_jump);
     spcSetSoundEntry(15, 8, 6, SFX_MONITOR_SIZE, (u8 *)sfx_monitor, &snd_monitor);
     spcSetSoundEntry(15, 8, 6, SFX_SIGNPOST_SIZE, (u8 *)sfx_signpost, &snd_signpost);
+#endif
+#if MUSIC_ENABLED
+    spcPlay(0);
 #endif
     setMode(BG_MODE1, 0);
     bgInitTileSet(0, (u8 *)bg_tiles, (u8 *)bg_pal, 0, BG_TILES_SIZE, BG_PAL_SIZE, BG_16COLORS, 0x1000);
@@ -2600,7 +2637,7 @@ int main(void)
         if (!game_over) draw_effects();
         draw_tails();
         draw_sonic();
-#if SFX_ENABLED
+#if MUSIC_ENABLED || SFX_ENABLED
         spcProcess();
 #endif
         WaitForVBlank();
