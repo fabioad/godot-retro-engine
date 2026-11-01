@@ -2361,3 +2361,24 @@ Validated by walking right in the preview: the large tree moves from the right
 edge toward the centre/left instead of moving further right.
 
 ![Correct scroll direction](screenshots/gothicvania_md_scroll.png)
+
+### Cross-platform export warning and project suffix (0.1.59)
+
+The Game Build dialog now shows a warning for both cross-platform modes:
+
+```text
+Cross-platform export: this conversion is not perfect. Manual adjustments
+will be required in the generated project.
+```
+
+The warning is translated (en/pt_BR/es, English fallback for the other locales)
+and is also written to the build log. Generated projects are named
+`<source_project>_md_export` for SNES -> Mega Drive and
+`<source_project>_snes_export` for Mega Drive -> SNES.
+
+Validated by generating both:
+
+```text
+SNES -> MD: gothicvania_md_export
+MD -> SNES: s2disasm_snes_export
+```

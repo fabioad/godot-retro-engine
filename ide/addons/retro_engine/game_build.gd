@@ -25,6 +25,12 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		return {"ok": false, "error": "unknown build mode: " + mode}
 	if out_root.is_empty():
 		return {"ok": false, "error": "output directory is empty"}
+	# Cross-platform exports get a stable, explicit project suffix so the
+	# generated project is never confused with the source project.
+	if mode == "snes_megadrive" and not game_name.ends_with("_md_export"):
+		game_name += "_md_export"
+	elif mode == "megadrive_snes" and not game_name.ends_with("_snes_export"):
+		game_name += "_snes_export"
 	var profile := ExportProfiles.for_target(target)
 	if profile.is_empty():
 		return {"ok": false, "error": "no validated export profile for target: " + target}

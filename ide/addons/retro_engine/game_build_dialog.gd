@@ -371,6 +371,8 @@ func _refresh_warnings() -> void:
 				"selected": I18n.platform_label(platform),
 				"project": I18n.platform_label(source_platform),
 			}))
+		if _selected_mode() in ["snes_megadrive", "megadrive_snes"]:
+			warnings.append(I18n.t("game_build.cross_export_warning"))
 	var ready := false
 	if target == "snes":
 		var sdk: Dictionary = RetroSDK.get_sdk("snes")
@@ -413,12 +415,17 @@ func _generate() -> Dictionary:
 		name = "retro_native"
 	_save_options()
 	var out_root := project.resolve("builds")
+	var cross_mode := _selected_mode() in ["snes_megadrive", "megadrive_snes"]
+	if cross_mode:
+		_log.append_text("[color=#ffd45e]%s[/color]\n" % I18n.t("game_build.cross_export_warning"))
 	var result: Dictionary = GameBuild.generate(_selected_mode(), project, out_root, name, _splash.button_pressed, "", _rom_settings())
 	if not bool(result.get("ok", false)):
 		_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.generation_failed", {"error": String(result.get("error", "unknown"))}))
 		status.emit(I18n.t("game_build.generation_failed_status"))
 		return {}
 	_project = result.get("project")
+	if _project != null and cross_mode:
+		_name.text = _project.get_name()
 	_rom = String(result.get("rom", ""))
 	_build_button.disabled = false
 	_run_button.disabled = true
