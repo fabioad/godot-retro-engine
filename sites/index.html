@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070b14">
+  <meta name="description" content="Godot Retro Engine is an independent Godot 4 fork for building, porting and validating SNES and Mega Drive games with real toolchains and emulator-in-the-loop preview.">
+  <meta property="og:title" content="Godot Retro Engine — SNES & Mega Drive game development">
+  <meta property="og:description" content="Build native SNES and Mega Drive games, port source-level game logic, and validate real ROMs in a real emulator.">
+  <meta property="og:image" content="assets/sonic2-ehz.png">
+  <title>Godot Retro Engine — SNES &amp; Mega Drive development</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.86 9.73.5.1.68-.22.68-.49v-1.9c-2.78.62-3.37-1.2-3.37-1.2-.45-1.18-1.1-1.5-1.1-1.5-.9-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.88 1.55 2.3 1.1 2.86.84.09-.65.35-1.1.63-1.35-2.22-.26-4.55-1.14-4.55-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.9-1.33 2.74-1.05 2.74-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9v2.81c0 .27.18.6.69.49A10.23 10.23 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" fill="currentColor"/></symbol>
+    <symbol id="i-console" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M6 10v4m-2-2h4m7.5-1.5h.01M18 13h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 3v3m3-3v3m3-3v3M9 18v3m3-3v3m3-3v3M3 9h3m-3 3h3m-3 3h3m12-6h3m-3 3h3m-3 3h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12M9 18a3 3 0 1 1-3-3h3m10-1a3 3 0 1 1-3-3h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m10 8 6 4-6 4V8Z" fill="currentColor"/></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><path d="m4 20 6-6m0 0 1.5 1.5M10 14l7.5-7.5a3.5 3.5 0 0 0-5-5L5 9v5h5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 0v18m9-13-9 5-9-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m7 9 3 3-3 3m6 0h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Zm-3 9 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <header class="site-header" id="top">
+    <a class="brand" href="#top" aria-label="Godot Retro Engine home">
+      <img src="assets/icon.svg" alt="" width="42" height="42">
+      <span class="brand-copy">
+        <strong>Godot Retro Engine</strong>
+        <small>a Godot 4 fork for 16-bit consoles</small>
+      </span>
+    </a>
+
+    <button class="nav-toggle" id="nav-toggle" aria-controls="main-nav" aria-expanded="false" aria-label="Open navigation">
+      <svg class="icon"><use href="#i-menu"></use></svg>
+    </button>
+
+    <nav class="main-nav" id="main-nav" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#consoles">Consoles</a>
+      <a href="#ports">Ports</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#showcase">Showcase</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-github" href="https://github.com/fabioad/godot-retro-engine" target="_blank" rel="noopener">
+        <svg class="icon"><use href="#i-github"></use></svg> GitHub
+      </a>
+      <a class="btn btn-small" href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener">
+        <svg class="icon"><use href="#i-download"></use></svg> Download
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-glow hero-glow-one" aria-hidden="true"></div>
+      <div class="hero-glow hero-glow-two" aria-hidden="true"></div>
+      <div class="hero-grid" aria-hidden="true"></div>
+
+      <div class="wrap hero-layout">
+        <div class="hero-copy reveal">
+          <p class="eyebrow"><span class="pulse"></span> Independent fork of Godot 4.7</p>
+          <h1 id="hero-title">Build for the consoles<br><span>that raised you.</span></h1>
+          <p class="hero-lede">
+            Godot Retro Engine is a free, open-source Godot fork for building, porting
+            and validating <strong>SNES</strong> and <strong>Mega Drive</strong> games.
+            Real SDKs, real ROMs, real emulators — with source-level adapters for the
+            games that deserve more than a binary translation.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener">
+              <svg class="icon"><use href="#i-download"></use></svg>
+              Download latest
+              <span class="btn-version">0.1.60</span>
+            </a>
+            <a class="btn btn-ghost" href="#features">Explore the fork <svg class="icon"><use href="#i-arrow"></use></svg></a>
+          </div>
+          <div class="hero-meta">
+            <span><svg class="icon"><use href="#i-check"></use></svg> Windows · Linux · macOS</span>
+            <span><svg class="icon"><use href="#i-check"></use></svg> MIT-licensed fork</span>
+            <span><svg class="icon"><use href="#i-check"></use></svg> No telemetry</span>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal" aria-label="Godot Retro Engine game previews">
+          <div class="console-frame">
+            <div class="console-top">
+              <span class="dot dot-red"></span><span class="dot dot-gold"></span><span class="dot dot-green"></span>
+              <span class="console-label">RETRO BUILD / PREVIEW</span>
+            </div>
+            <div class="screen">
+              <img src="assets/sonic2-ehz.png" alt="Sonic 2 Emerald Hill Act 1 running on the SNES port" width="320" height="224">
+              <div class="scanlines" aria-hidden="true"></div>
+              <div class="screen-badge">SNES · EHZ ACT 1</div>
+            </div>
+            <div class="console-controls">
+              <div class="dpad" aria-hidden="true"><i></i><i></i></div>
+              <div class="console-pills"><span>16-bit</span><span>60 fps</span><span>source-level</span></div>
+              <div class="face-buttons" aria-hidden="true"><b>A</b><b>B</b><b>C</b></div>
+            </div>
+          </div>
+          <div class="floating-card floating-card-md">
+            <span class="tag tag-pink">MEGA DRIVE</span>
+            <strong>Gothicvania</strong>
+            <small>SNES → SGDK source port</small>
+          </div>
+          <div class="floating-card floating-card-snes">
+            <span class="tag tag-cyan">SNES</span>
+            <strong>Sonic 2</strong>
+            <small>MD → 65816 engine port</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="wrap stats-bar reveal">
+        <div><strong>2</strong><span>target consoles</span></div>
+        <div><strong>9</strong><span>retro editors</span></div>
+        <div><strong>3</strong><span>desktop builds</span></div>
+        <div><strong>100%</strong><span>source-level workflows</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Fork features</p>
+          <h2>One editor. Two consoles.<br>Zero black boxes.</h2>
+          <p>The fork keeps Godot's workflow and adds the parts a retro project actually needs:
+            toolchains, asset converters, ROM profiles, emulator feedback and game-specific port adapters.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-cyan"><svg><use href="#i-box"></use></svg></span>
+            <h3>Dual-console Game Build</h3>
+            <p>Generate a real PVSnesLib/SGDK project and build a playable ROM from the same editor.
+              Choose the target, mapper, ROM profile and splash, then validate the checksum.</p>
+            <span class="feature-meta">SNES · Mega Drive</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-pink"><svg><use href="#i-chip"></use></svg></span>
+            <h3>Source-level game ports</h3>
+            <p>Dedicated adapters rebuild game logic for the other CPU instead of interpreting
+              a 68000 or 65816 binary in real time. Sonic 2 and Gothicvania ship as working examples.</p>
+            <span class="feature-meta">MD → SNES · SNES → MD</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-gold"><svg><use href="#i-layers"></use></svg></span>
+            <h3>Native scene import</h3>
+            <p>Bring Sprite2D, AnimatedSprite2D, TileMapLayer, collisions, cameras and UI from a
+              Godot scene into a portable actor and stage runtime for both consoles.</p>
+            <span class="feature-meta">Godot → ROM</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-cyan"><svg><use href="#i-tools"></use></svg></span>
+            <h3>Retro editors</h3>
+            <p>Stage, sprite, animation, palette, collision, audio, input, state graph and code editors
+              share one project format and one build pipeline.</p>
+            <span class="feature-meta">9 editors</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-gold"><svg><use href="#i-audio"></use></svg></span>
+            <h3>Console audio workbench</h3>
+            <p>MIDI, module and sampled audio become SNESMOD/BRR or YM2612/PSG VGM. SFX can be
+              synthesized, converted and previewed before they reach the ROM.</p>
+            <span class="feature-meta">SPC · YM2612 · PSG</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-pink"><svg><use href="#i-play"></use></svg></span>
+            <h3>Emulator in the loop</h3>
+            <p>Run the built ROM in a real libretro core, inject pad input, step frames, rewind and
+              inspect audio — without leaving the editor.</p>
+            <span class="feature-meta">Snes9x · Genesis Plus GX</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-cyan"><svg><use href="#i-terminal"></use></svg></span>
+            <h3>ROM pipeline &amp; validation</h3>
+            <p>LoROM, HiROM, ExHiROM, MSU-1, FastROM and Mega Drive mapper profiles, with
+              header, size, checksum and SD2SNES readiness checks.</p>
+            <span class="feature-meta">build · validate · export</span>
+          </article>
+
+          <article class="feature-card reveal">
+            <span class="feature-icon icon-gold"><svg><use href="#i-shield"></use></svg></span>
+            <h3>Honest about fidelity</h3>
+            <p>Cross-platform exports warn you when manual work is required, and generated projects
+              are named <code>_snes_export</code> / <code>_md_export</code> so they never get confused with the source.</p>
+            <span class="feature-meta">warnings · portable projects</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section console-section" id="consoles">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Targets</p>
+          <h2>Pick a console.<br>The editor speaks its language.</h2>
+        </div>
+        <div class="console-grid">
+          <article class="console-card console-card-snes reveal">
+            <div class="console-card-top">
+              <div>
+                <span class="tag tag-cyan">SUPER NINTENDO</span>
+                <h3>65816 · SPC700 · PPU</h3>
+              </div>
+              <img src="assets/icon.svg" alt="" width="48" height="48" loading="lazy">
+            </div>
+            <p>PVSnesLib 4.6, 4bpp tiles, Mode 1, OBJ bands, HDMA colour math, BRR samples,
+              SNESMOD music and LoROM/HiROM/ExHiROM images with MSU-1 support.</p>
+            <ul class="check-list">
+              <li><svg class="icon"><use href="#i-check"></use></svg> Stage + sprite + collision editors</li>
+              <li><svg class="icon"><use href="#i-check"></use></svg> BRR/SFX and SNESMOD soundbanks</li>
+              <li><svg class="icon"><use href="#i-check"></use></svg> ROM checksum and SD2SNES readiness</li>
+            </ul>
+            <a class="text-link" href="#showcase">See SNES output <svg class="icon"><use href="#i-arrow"></use></svg></a>
+          </article>
+
+          <article class="console-card console-card-md reveal">
+            <div class="console-card-top">
+              <div>
+                <span class="tag tag-pink">MEGA DRIVE / GENESIS</span>
+                <h3>68000 · Z80 · YM2612</h3>
+              </div>
+              <img src="assets/icon.svg" alt="" width="48" height="48" loading="lazy">
+            </div>
+            <p>SGDK 2.11, H40/H32, 4bpp packed tiles, planes A/B, hardware sprites, XGM2
+              PCM/FM music, PSG sound and linear mapper profiles with a real SEGA header.</p>
+            <ul class="check-list">
+              <li><svg class="icon"><use href="#i-check"></use></svg> Native SGDK project generation</li>
+              <li><svg class="icon"><use href="#i-check"></use></svg> YM2612/PSG VGM and PCM SFX</li>
+              <li><svg class="icon"><use href="#i-check"></use></svg> Sprite/stage import for 68000</li>
+            </ul>
+            <a class="text-link" href="#showcase">See Mega Drive output <svg class="icon"><use href="#i-arrow"></use></svg></a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="ports">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Source-level ports</p>
+          <h2>Not a binary translator.<br>A second native build.</h2>
+          <p>A 3.58 MHz 68000 cannot be interpreted by a 65816 in real time, and vice versa.
+            The fork ships per-game adapters that read the original assets and rebuild the game
+            against the target SDK.</p>
+        </div>
+
+        <div class="port-grid">
+          <article class="port-card reveal">
+            <div class="port-shot">
+              <img src="assets/gothicvania-play.png" alt="Gothicvania running on Mega Drive" loading="lazy">
+              <span class="tag tag-pink">SNES → MEGA DRIVE</span>
+            </div>
+            <div class="port-body">
+              <h3>Gothicvania</h3>
+              <p>A complete PVSnesLib homebrew rebuilt for SGDK: original level pages, collision,
+                hero physics, sword combat, three enemy types, title art and music.</p>
+              <div class="port-tags"><span>SGDK</span><span>68000</span><span>source port</span></div>
+            </div>
+          </article>
+
+          <article class="port-card reveal">
+            <div class="port-shot">
+              <img src="assets/sonic2-spiral.png" alt="Sonic 2 corkscrew on the SNES port" loading="lazy">
+              <span class="tag tag-cyan">MEGA DRIVE → SNES</span>
+            </div>
+            <div class="port-body">
+              <h3>Sonic 2 — Emerald Hill</h3>
+              <p>EHZ Act 1 rebuilt for the 65816: original chunk layout, collision, rings, badniks,
+                springs, monitors, loops, corkscrew, Tails follower and SMPS-derived music.</p>
+              <div class="port-tags"><span>PVSnesLib</span><span>65816</span><span>source port</span></div>
+            </div>
+          </article>
+        </div>
+
+        <div class="callout reveal">
+          <svg class="icon"><use href="#i-shield"></use></svg>
+          <p><strong>Cross-platform export is a starting point, not magic.</strong>
+            The editor shows a warning, asks for manual adjustments, and creates the result as
+            <code>your_game_snes_export</code> or <code>your_game_md_export</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section pipeline-section" id="pipeline">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Workflow</p>
+          <h2>From scene to cartridge<br>in three loops.</h2>
+        </div>
+        <ol class="pipeline">
+          <li class="reveal">
+            <span class="step-number">01</span>
+            <div>
+              <h3>Import &amp; author</h3>
+              <p>Open a PVSnesLib, WLA-DX or SGDK project, or import a Godot scene. Use the
+                stage, sprite, animation, palette and collision editors to shape the game.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="step-number">02</span>
+            <div>
+              <h3>Generate &amp; build</h3>
+              <p>Game Build writes a standalone project with converted assets, chooses the ROM
+                profile, runs the real SDK and validates the resulting image.</p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span class="step-number">03</span>
+            <div>
+              <h3>Run &amp; verify</h3>
+              <p>The ROM boots in a real emulator core. Press buttons, step frames, rewind,
+                inspect the audio stream and fix what the preview shows you.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="showcase">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="eyebrow">Showcase</p>
+          <h2>Real ROMs. Real consoles.</h2>
+          <p>Every image below comes from a generated ROM running in the editor's emulator preview.</p>
+        </div>
+        <div class="gallery">
+          <figure class="gallery-item gallery-wide reveal">
+            <img src="assets/sonic2-ehz.png" alt="Sonic 2 Emerald Hill Act 1 on SNES" loading="lazy">
+            <figcaption><span class="tag tag-cyan">SNES</span> Sonic 2 · Emerald Hill Act 1</figcaption>
+          </figure>
+          <figure class="gallery-item reveal">
+            <img src="assets/gothicvania-title.png" alt="Gothicvania title screen on Mega Drive" loading="lazy">
+            <figcaption><span class="tag tag-pink">MD</span> Gothicvania · title</figcaption>
+          </figure>
+          <figure class="gallery-item reveal">
+            <img src="assets/gothicvania-jump.png" alt="Gothicvania hero jumping on Mega Drive" loading="lazy">
+            <figcaption><span class="tag tag-pink">MD</span> Gothicvania · gameplay</figcaption>
+          </figure>
+          <figure class="gallery-item reveal">
+            <img src="assets/sonic2-spiral.png" alt="Sonic 2 corkscrew path on SNES" loading="lazy">
+            <figcaption><span class="tag tag-cyan">SNES</span> Sonic 2 · corkscrew</figcaption>
+          </figure>
+          <figure class="gallery-item reveal">
+            <img src="assets/gothicvania-jump.png" alt="Gothicvania hero jumping on Mega Drive" loading="lazy">
+            <figcaption><span class="tag tag-pink">MD</span> Gothicvania · jump</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section download-section" id="download">
+      <div class="wrap">
+        <div class="download-panel reveal">
+          <div class="download-copy">
+            <p class="eyebrow">Download</p>
+            <h2>Start building<br>for 16-bit hardware.</h2>
+            <p>Grab the latest editor build and point it at your PVSnesLib or SGDK project.
+              The fork is open source; releases are published on GitHub.</p>
+            <a class="btn btn-primary btn-large" href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener">
+              <svg class="icon"><use href="#i-github"></use></svg>
+              Download on GitHub Releases
+            </a>
+            <p class="tiny">Latest tagged build: <strong>0.1.60</strong> · Godot 4.7 fork</p>
+          </div>
+          <div class="download-platforms">
+            <div class="platform-row">
+              <span class="platform-icon">LIN</span>
+              <div><strong>Linux</strong><small>.deb · .rpm · .tar.gz</small></div>
+              <a href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener" aria-label="Download Linux build">Download <svg class="icon"><use href="#i-arrow"></use></svg></a>
+            </div>
+            <div class="platform-row">
+              <span class="platform-icon">WIN</span>
+              <div><strong>Windows</strong><small>64-bit .zip</small></div>
+              <a href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener" aria-label="Download Windows build">Download <svg class="icon"><use href="#i-arrow"></use></svg></a>
+            </div>
+            <div class="platform-row">
+              <span class="platform-icon">MAC</span>
+              <div><strong>macOS</strong><small>Universal · Intel + Apple Silicon</small></div>
+              <a href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener" aria-label="Download macOS build">Download <svg class="icon"><use href="#i-arrow"></use></svg></a>
+            </div>
+            <div class="platform-note">
+              <svg class="icon"><use href="#i-check"></use></svg>
+              No account, no telemetry, no bundled ROMs. Bring your own legally obtained assets.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section faq-section" id="faq">
+      <div class="wrap faq-layout">
+        <div class="section-head reveal">
+          <p class="eyebrow">FAQ</p>
+          <h2>Before you<br>insert the cartridge.</h2>
+          <p>Short answers to the questions a retro port usually raises.</p>
+        </div>
+        <div class="faq-list reveal">
+          <details>
+            <summary>Is this the official Godot Engine?</summary>
+            <p>No. Godot Retro Engine is an independent fork of Godot 4.7, focused on SNES and
+              Mega Drive development. It is not affiliated with or endorsed by the Godot Foundation.</p>
+          </details>
+          <details>
+            <summary>Can it convert any SNES or Mega Drive game?</summary>
+            <p>No. Binary translation between 65816 and 68000 is not practical in real time.
+              The fork uses source-level adapters built per game; Sonic 2 and Gothicvania are
+              the reference implementations.</p>
+          </details>
+          <details>
+            <summary>Are ROMs or copyrighted assets included?</summary>
+            <p>No. The editor and toolchains are open source. You supply your own legally obtained
+              source project, assets and ROMs. The original files are never modified by the exporters.</p>
+          </details>
+          <details>
+            <summary>Does it really build Windows and macOS apps?</summary>
+            <p>Yes. Linux is built natively. Windows is cross-compiled with MinGW-w64. macOS is
+              built with osxcross as a universal x86_64 + arm64 app. Release archives are on GitHub.</p>
+          </details>
+          <details>
+            <summary>Is the audio bit-exact?</summary>
+            <p>Not always. SNES and YM2612 audio use real console formats and original samples where
+              available, but some envelopes, timing and transcriptions remain approximations.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top">
+          <img src="assets/icon.svg" alt="" width="38" height="38">
+          <span class="brand-copy"><strong>Godot Retro Engine</strong><small>SNES · Mega Drive</small></span>
+        </a>
+        <p>An independent, source-available Godot fork for 16-bit console development,
+          porting and validation.</p>
+        <a class="btn btn-ghost btn-small" href="https://github.com/fabioad/godot-retro-engine" target="_blank" rel="noopener">
+          <svg class="icon"><use href="#i-github"></use></svg> Source on GitHub
+        </a>
+      </div>
+
+      <div>
+        <h3>Engine</h3>
+        <a href="#features">Features</a>
+        <a href="#consoles">Consoles</a>
+        <a href="#pipeline">Workflow</a>
+        <a href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener">Download</a>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <a href="https://github.com/fabioad/godot-retro-engine" target="_blank" rel="noopener">Repository</a>
+        <a href="https://github.com/fabioad/godot-retro-engine/releases/" target="_blank" rel="noopener">Releases</a>
+        <a href="#ports">Ports</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div>
+        <h3>Legal</h3>
+        <a href="https://github.com/fabioad/godot-retro-engine/blob/retro-engine/LICENSE.txt" target="_blank" rel="noopener">License</a>
+        <a href="https://godotengine.org/license/" target="_blank" rel="noopener">Godot license</a>
+        <a href="https://github.com/fabioad/godot-retro-engine" target="_blank" rel="noopener">Contributors</a>
+      </div>
+    </div>
+    <div class="wrap footer-bottom">
+      <p>© <span id="year">2026</span> Godot Retro Engine contributors. Godot is a trademark of
+        Juan Linietsky, Ariel Manzur and contributors. This independent fork is not affiliated with
+        or endorsed by the Godot Foundation.</p>
+      <p class="footer-note">No ROMs bundled. Bring your own legally obtained assets.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

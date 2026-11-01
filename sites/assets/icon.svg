@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="18" fill="#1b1f2a"/>
+  <rect x="18" y="34" width="92" height="60" rx="8" fill="#2b3242" stroke="#7fd1ff" stroke-width="3"/>
+  <rect x="28" y="46" width="34" height="22" rx="3" fill="#0d1118" stroke="#7fd1ff" stroke-width="2"/>
+  <circle cx="84" cy="55" r="6" fill="#ffcf5c"/>
+  <circle cx="99" cy="55" r="6" fill="#ff7a7a"/>
+  <rect x="38" y="76" width="52" height="6" rx="3" fill="#7fd1ff"/>
+  <text x="64" y="118" font-family="monospace" font-size="12" fill="#d8e6ff" text-anchor="middle">RETRO</text>
+</svg>
