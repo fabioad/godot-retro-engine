@@ -1513,7 +1513,7 @@ Prev | Spr | Cen | Anim | Pal | Cód | Comp | Áudio | MUGEN Tools | Native
 The numeric tab targets used when opening audio assets and MUGEN resources
 were swapped accordingly, so both still select the correct tab.
 
-### Native UI, actors and from-scratch builds (0.1.33)
+### Native UI, actors and from-scratch builds (0.1.34)
 
 The Native tab already imported sprites, animated sprites, 3D bakes, stages,
 widgets, other nodes and scripts. Two gaps were fixed and the build path was
@@ -1544,16 +1544,20 @@ validated end to end.
   limit. Long project names no longer fail the PVSnesLib build.
 - The Mega Drive native starter now creates a player sprite from the first
   native sprite asset and moves it with the D-pad. Its palette uses PAL1 so the
-  background palette stays intact. SNES OAM/tilemap allocation for the same
-  starter is still pending, so SNES native games remain static.
+  background palette stays intact.
+- The SNES native starter now does the same. The sprite is loaded while the
+  display is in forced blank and `loadStage()` leaves only BG1 enabled
+  (`REG_TM = 0x01`), so the generated main restores `REG_TM = 0x11` (BG1 + OBJ)
+  after `initPlayer()` and only then calls `setScreenOn()`. This was the reason
+  earlier SNES starters showed the background but no player.
 
 **From-scratch build validation**
 
 ```text
 SNES starter:  test_snes_from_scratch.sfc  262144 bytes  build ok
 Mega Drive:    test_md_from_scratch/out/rom.bin 131072 bytes  build ok
-Native UI SNES: final_ui_snes.sfc 262144 bytes  build ok
-Native UI MD:   final_ui_md/out/rom.bin 131072 bytes  build ok
+Native UI SNES: final2_ui_snes.sfc 262144 bytes  build ok
+Native UI MD:   final2_ui_md/out/rom.bin 131072 bytes  build ok
 
 ROM_PREVIEW snes ... PASS
 ROM_PREVIEW megadrive ... PASS
@@ -1561,16 +1565,17 @@ ROM_PREVIEW megadrive ... PASS
 
 The native UI test scene contained a background, `Label("SCORE 000")`,
 `Button("START")`, a `Sprite2D` and a `Marker2D`. The generated ROMs displayed
-the baked UI; the Mega Drive ROM also displayed and moved the red player
-sprite. The native port bundle reported 3 widgets, 6 nodes and the imported
-sprite asset.
+the baked UI and the red player sprite. Pressing Right for 20 frames moved the
+sprite on both targets (SNES 120 -> 240, Mega Drive 152 -> 280). The native port
+bundle reported 3 widgets, 6 nodes and the imported sprite asset.
 
 **Limitations**
 
 - UI widgets are baked as graphics. Buttons are visible but not interactive;
   console input/selection logic still has to be written in `src/main.c`.
 - GDScript is copied as reference, not transpiled to C/68000.
-- Actors are imported as sprite/animation assets and manifest entries; only the
-  Mega Drive starter currently spawns one automatically.
+- Actors are imported as sprite/animation assets and manifest entries; the
+  starter spawns the first imported sprite automatically. Additional actors,
+  collision and animation logic remain project C code.
 - A full game from scratch is possible with the existing PVSnesLib/SGDK
   projects and the Build button; gameplay logic remains project C code.

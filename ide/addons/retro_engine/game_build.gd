@@ -614,9 +614,7 @@ static func _array_decl(name: String, values: Array, type: String) -> String:
 	return out
 
 static func _find_player(source: RetroProject, target: String) -> Dictionary:
-	# The SNES OAM/tilemap interaction still needs a proper sprite-VRAM allocator;
-	# keep generated SNES native games static until that path is validated.
-	if source == null or target == "snes":
+	if source == null:
 		return {}
 	var png_path := ""
 	var links := source.resolve(".retro/editor/native_links.json")
@@ -809,9 +807,17 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 	code += "    // Show BG1 only; uninitialised OAM/BG2/BG3 would otherwise draw stripes.\n"
 	code += "    REG_TM = 0x01; REG_TS = 0x00;\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
-	code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 1);\n"
-	if not player.is_empty():
+	if player.is_empty():
+		code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 1);\n"
+	else:
+		# Prepare the background and the sprite while the display is in forced
+		# blank. loadStage() leaves BG1-only enabled; restore the OBJ layer
+		# after initPlayer() and only then turn the screen on. Writing VRAM
+		# while the display is active would drop the sprite tile upload.
+		code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 0);\n"
 		code += "    initPlayer();\n"
+		code += "    REG_TM = 0x11; /* BG1 + OBJ */\n"
+		code += "    setScreenOn();\n"
 	if bool(rom.get("msu1", false)):
 		if not has_bgm:
 			code += "#if RETRO_MSU1\n"
