@@ -67,19 +67,22 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
 - badnik fireballs/coconuts, explosions, shield and invincibility visuals,
   the 1-up monitor icon and the lives HUD;
 - hurt/death poses, ring scatter, lives, checkpoint respawn, pit deaths, the
-  GAME OVER screen and spin dash.
+  GAME OVER screen and spin dash;
+- bridges and EHZ platforms with original art/palette and solid tops;
+- SNES sound effects through the PVSnesLib sound engine, and a 1 MiB ROM with
+  room for future music/title/ending data.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
-systems (slopes/loops, bridges/platforms, audio, Tails/specials/openings/
-ending). Those are per-game adapter work, not a missing generic translation
-step.
+systems (slopes/loops, SMPS music, Tails, special stages, title/act cards,
+openings/ending). Those are per-game adapter work, not a missing generic
+translation step.
 
 ## Port capability today
 
 | Source project | Path | Fidelity |
 | --- | --- | --- |
 | Engine-native actor/stage project | shared native runtime | same actors/widgets/solids on SNES |
-| Sonic 2 disassembly | `sonic2_snes_port.py` | EHZ Act 1 gameplay port, still missing audio/Tails/special stages |
+| Sonic 2 disassembly | `sonic2_snes_port.py` | EHZ Act 1 gameplay port; SFX in, music/Tails/special stages pending |
 | Arbitrary SGDK/68000 project | unsupported | needs a per-game source adapter |
 
 The supported paths are deliberately explicit: the app does not claim that an

@@ -13,6 +13,7 @@ import math
 import os
 import re
 import struct
+import subprocess
 import sys
 from PIL import Image
 
@@ -553,10 +554,27 @@ OBJECT_ART = {
     "shield": "/art/nemesis/Shield.nem",
     "stars": "/art/nemesis/Invincibility stars.nem",
     "lives": "/art/nemesis/Sonic lives counter.nem",
+    "bridge": "/art/nemesis/EHZ bridge.nem",
 }
 object_art = {}
 for _name, _path in OBJECT_ART.items():
     object_art[_name] = nemesis_decode(read(ROOT + _path))
+
+
+def md_tile_indices(data, tile):
+    out = []
+    for y in range(8):
+        row = []
+        for x in range(8):
+            b = data[tile * 32 + y * 4 + (x // 2)]
+            row.append((b >> (0 if (x & 1) else 4)) & 15)
+        out.append(row)
+    return out
+
+
+# EHZ platform sprites reuse the level art (palette line 2), not a separate
+# Nemesis file.
+object_art["levelart"] = [md_tile_indices(tiles, t) for t in range(len(tiles) // 32)]
 
 
 def _map_num(text):
@@ -620,6 +638,8 @@ object_mappings = {
     "explosion": (["/mappings/sprite/obj27.asm"], "Map_obj27"),
     "shield": (["/mappings/sprite/obj38.asm"], "Map_obj38"),
     "stars": (["/mappings/sprite/obj35.asm"], "Map_obj35"),
+    "bridge": (["/mappings/sprite/obj11_b.asm"], "Map_obj11_b"),
+    "platform": (["/mappings/sprite/obj18_a.asm"], "Map_obj18_a"),
 }
 object_mapping_frames = {}
 for _name, (_paths, _label) in object_mappings.items():
@@ -657,7 +677,9 @@ OBJECT_FRAME_DEFS = (
     [("explosion", i, "explosion") for i in (1, 2, 3, 4)] +
     [("shield", i, "shield") for i in range(6)] +
     [("stars", i, "stars") for i in (1, 2, 3, 4)] +
-    [("mon_1up", 0, "monitor_1up")]
+    [("mon_1up", 0, "monitor_1up")] +
+    [("bridge", 0, "bridge"), ("bridge", 1, "bridge")] +
+    [("platform", 0, "levelart")]
 )
 
 object_atlas = []
@@ -702,6 +724,8 @@ object_chr = b"\x00" * 32 + b"".join(snes_tile_8x8(t) for t in object_atlas)
 # Level object list: x (word), y+flags (word), id, subtype.
 OBJECT_KINDS = {
     13: 4,   # goal signpost
+    17: 9,   # bridge
+    24: 10,  # EHZ platform
     38: 1,   # monitor
     54: 5,   # spikes
     65: 2,   # spring
@@ -749,9 +773,102 @@ OBJ_FRAME = {
     "SHIELD_0": 50, "SHIELD_1": 51, "SHIELD_2": 52,
     "SHIELD_3": 53, "SHIELD_4": 54, "SHIELD_5": 55,
     "STAR_1": 56, "STAR_2": 57, "STAR_3": 58, "STAR_4": 59,
-    "MON_1UP": 60,
+    "MON_1UP": 60, "BRIDGE_0": 61, "BRIDGE_1": 62, "PLATFORM": 63,
 }
 
+
+# ---------------------------------------------------------------- Audio ---
+# SNES SFX use the PVSnesLib sound engine plus BRR samples.  The engine's
+# audio tool synthesizes the WAV, and the SDK's snesbrr encodes it.  If either
+# tool is unavailable the port still builds (SFX_ENABLED=0).
+SFX_PARAMS = {
+    "ring": {"waveform": "square", "frequency": 1318.0, "duration_ms": 100.0,
+             "volume": 0.65, "duty": 0.5, "attack_ms": 1.0, "decay_ms": 25.0,
+             "sustain": 0.55, "release_ms": 60.0, "pitch_slide": 0.0,
+             "vibrato_hz": 0.0, "vibrato_depth": 0.0, "noise": 0.0,
+             "bitcrush": 16},
+    "spring": {"waveform": "square", "frequency": 420.0, "duration_ms": 150.0,
+               "volume": 0.65, "duty": 0.5, "attack_ms": 1.0, "decay_ms": 40.0,
+               "sustain": 0.6, "release_ms": 70.0, "pitch_slide": 12.0,
+               "vibrato_hz": 0.0, "vibrato_depth": 0.0, "noise": 0.0,
+               "bitcrush": 16},
+    "hurt": {"waveform": "saw", "frequency": 520.0, "duration_ms": 170.0,
+             "volume": 0.7, "duty": 0.5, "attack_ms": 1.0, "decay_ms": 45.0,
+             "sustain": 0.5, "release_ms": 90.0, "pitch_slide": -18.0,
+             "vibrato_hz": 18.0, "vibrato_depth": 0.7, "noise": 0.12,
+             "bitcrush": 16},
+    "jump": {"waveform": "square", "frequency": 330.0, "duration_ms": 90.0,
+             "volume": 0.55, "duty": 0.25, "attack_ms": 1.0, "decay_ms": 20.0,
+             "sustain": 0.5, "release_ms": 45.0, "pitch_slide": 9.0,
+             "vibrato_hz": 0.0, "vibrato_depth": 0.0, "noise": 0.0,
+             "bitcrush": 16},
+    "monitor": {"waveform": "noise", "frequency": 240.0, "duration_ms": 120.0,
+                "volume": 0.55, "duty": 0.5, "attack_ms": 1.0, "decay_ms": 30.0,
+                "sustain": 0.4, "release_ms": 60.0, "pitch_slide": -6.0,
+                "vibrato_hz": 0.0, "vibrato_depth": 0.0, "noise": 0.85,
+                "bitcrush": 16},
+    "signpost": {"waveform": "triangle", "frequency": 880.0, "duration_ms": 220.0,
+                 "volume": 0.6, "duty": 0.5, "attack_ms": 2.0, "decay_ms": 60.0,
+                 "sustain": 0.5, "release_ms": 90.0, "pitch_slide": 5.0,
+                 "vibrato_hz": 0.0, "vibrato_depth": 0.0, "noise": 0.0,
+                 "bitcrush": 16},
+}
+SFX_ORDER = ["ring", "spring", "hurt", "jump", "monitor", "signpost"]
+
+
+def _find_audio_tool():
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "retro_audio_tool.py"),
+        os.path.join(here, "..", "ide", "addons", "retro_engine", "tools", "retro_audio_tool.py"),
+        os.path.expanduser("~/.local/share/godot-retro-engine/ide/addons/retro_engine/tools/retro_audio_tool.py"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c)
+    return ""
+
+
+def _find_snesbrr():
+    root = os.environ.get("PVSNESLIB_HOME", "")
+    candidates = []
+    if root:
+        candidates.append(os.path.join(root, "devkitsnes", "tools", "snesbrr"))
+    candidates.append(os.path.expanduser(
+        "~/.local/share/godot-retro-engine/sdks/snes/devkitsnes/tools/snesbrr"))
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return ""
+
+
+def _build_sfx():
+    tool = _find_audio_tool()
+    snesbrr = _find_snesbrr()
+    if not tool or not snesbrr:
+        return {}
+    out = os.path.join(OUT, "audio")
+    os.makedirs(out, exist_ok=True)
+    data = {}
+    try:
+        for name in SFX_ORDER:
+            params_path = os.path.join(out, name + ".json")
+            wave_path = os.path.join(out, name + ".wav")
+            brr_path = os.path.join(out, name + ".brr")
+            with open(params_path, "w", encoding="utf-8") as f:
+                json.dump(SFX_PARAMS[name], f)
+            subprocess.run([sys.executable, tool, "sfx", "--params", params_path,
+                            "--out", wave_path], check=True, capture_output=True)
+            subprocess.run([snesbrr, "-e", wave_path, brr_path], check=True,
+                           capture_output=True)
+            data[name] = read(brr_path)
+    except Exception:
+        return {}
+    return data
+
+
+sfx_data = _build_sfx()
+SFX_ENABLED = bool(sfx_data)
 
 # ---------------------------------------------------------------- C output ---
 def carray(name, data, typ="unsigned char"):
@@ -801,6 +918,9 @@ blobs = [
 ]
 for i, group in enumerate(page_groups):
     blobs.append(blob("page%d" % i, "page%d.bin" % i, group))
+for _name in SFX_ORDER:
+    if _name in sfx_data:
+        blobs.append(blob("sfx_" + _name, "sfx_%s.brr" % _name, sfx_data[_name]))
 asm = """.MEMORYMAP
   SLOTSIZE $8000
   DEFAULTSLOT 0
@@ -910,6 +1030,14 @@ assets_h += "extern const unsigned short obj_frame_start[];\nextern const unsign
 assets_h += "extern const unsigned short obj_x[];\nextern const unsigned short obj_y[];\n"
 assets_h += "extern const unsigned char obj_kind[];\nextern const unsigned char obj_sub[];\n"
 assets_h += "extern const unsigned char obj_flags[];\n"
+assets_h += "#define SFX_ENABLED %d\n" % (1 if SFX_ENABLED else 0)
+if SFX_ENABLED:
+    for _name in SFX_ORDER:
+        assets_h += "#define SFX_%s_SIZE %d\n" % (_name.upper(), len(sfx_data[_name]))
+        assets_h += "extern const unsigned char sfx_%s[];\n" % _name
+    # spcPlaySound index 0 is the last loaded entry.
+    for _idx, _name in enumerate(reversed(SFX_ORDER)):
+        assets_h += "#define SFX_ID_%s %d\n" % (_name.upper(), _idx)
 
 for name, ids in anim_indices.items():
     assets_h += "extern const unsigned char anim_%s[];\n" % name
@@ -981,6 +1109,10 @@ static short expl_x[4], expl_y[4];
 static unsigned char expl_timer[4];
 static unsigned char game_over;
 static unsigned short game_over_timer;
+
+#if SFX_ENABLED
+static brrsamples snd_ring, snd_spring, snd_hurt, snd_jump, snd_monitor, snd_signpost;
+#endif
 
 static short cam_x, cam_y;
 
@@ -1302,6 +1434,9 @@ static void jump_if_needed(unsigned short pressed)
         grounded = 0;
         jumping = 1;
         angle = 0;
+#if SFX_ENABLED
+        spcPlaySound(SFX_ID_JUMP);
+#endif
     }
 }
 
@@ -1355,6 +1490,9 @@ static void collect_rings(void)
             ring_taken[i] = 1;
             if (rings_collected < 999) rings_collected++;
             score += 10;
+#if SFX_ENABLED
+            spcPlaySound(SFX_ID_RING);
+#endif
         }
     }
 }
@@ -1490,16 +1628,19 @@ static unsigned char sign_frame(void)
     return sign_seq[idx];
 }
 
-static void obj_put(short sx, short sy, unsigned short tile, unsigned char flip)
+static void obj_put(short sx, short sy, unsigned short tile, unsigned char flip,
+        unsigned char pal)
 {
     short tx = (short)(sx >> 3);
     short ty = (short)(sy >> 3);
     if (tx < 0 || tx >= 32 || ty < 0 || ty >= 28) return;
     obj_map[(unsigned short)ty * 32 + (unsigned short)tx] =
-        (unsigned short)(tile | ((unsigned short)(flip & 3) << 14) | 0x3C00);
+        (unsigned short)(tile | ((unsigned short)(flip & 3) << 14) |
+            ((unsigned short)(pal & 7) << 10) | 0x2000);
 }
 
-static void draw_obj_frame(unsigned char frame, short sx, short sy, unsigned char flip)
+static void draw_obj_frame_pal(unsigned char frame, short sx, short sy,
+        unsigned char flip, unsigned char pal)
 {
     unsigned short i, start, count;
     start = obj_frame_start[frame];
@@ -1510,8 +1651,13 @@ static void draw_obj_frame(unsigned char frame, short sx, short sy, unsigned cha
         unsigned char fl = obj_draw_flip[start + i];
         if (flip & 1) { dx = (short)(-dx - 8); fl = (unsigned char)(fl ^ 1); }
         if (flip & 2) { dy = (short)(-dy - 8); fl = (unsigned char)(fl ^ 2); }
-        obj_put((short)(sx + dx), (short)(sy + dy), obj_draw_tile[start + i], fl);
+        obj_put((short)(sx + dx), (short)(sy + dy), obj_draw_tile[start + i], fl, pal);
     }
+}
+
+static void draw_obj_frame(unsigned char frame, short sx, short sy, unsigned char flip)
+{
+    draw_obj_frame_pal(frame, sx, sy, flip, 7);
 }
 
 static void clear_obj_map(void)
@@ -1533,6 +1679,19 @@ static void draw_objects(void)
         if (oy < cam_y - 96 || oy > cam_y + 320) continue;
         sx = (short)(ox - cam_x);
         sy = (short)(oy - cam_y);
+        if (obj_kind[i] == 10) {
+            draw_obj_frame_pal(OF_PLATFORM, sx, sy, obj_flags[i], 2);
+            continue;
+        }
+        if (obj_kind[i] == 9) {
+            short n = (short)obj_sub[i];
+            short start = (short)(-n * 8 + 8);
+            short k;
+            for (k = 0; k < n; k++) {
+                draw_obj_frame_pal(OF_BRIDGE_0, (short)(sx + start + k * 16), sy, 0, 2);
+            }
+            continue;
+        }
         if (obj_kind[i] == 1) {
             if (obj_state[i] & 1) frame = OF_MON_BROKEN;
             else frame = mon_frames[obj_sub[i] & 7];
@@ -1662,6 +1821,9 @@ static void hurt_sonic(void)
     if (dead || hurt_timer || invincible_timer) return;
     spindash_active = 0;
     rolling = 0;
+#if SFX_ENABLED
+    spcPlaySound(SFX_ID_HURT);
+#endif
     if (shield_flag) {
         shield_flag = 0;
         hurt_timer = 60;
@@ -1825,6 +1987,9 @@ static void update_objects(void)
                     vy = (short)-strength;
                     vx = 0; inertia = 0; grounded = 0; jumping = 1;
                     obj_timer[i] = 14;
+#if SFX_ENABLED
+                    spcPlaySound(SFX_ID_SPRING);
+#endif
                 }
             } else if (o == 2) {
                 if (dx < 24 && dy < 22) {
@@ -1836,11 +2001,17 @@ static void update_objects(void)
                     facing = dir < 0;
                     xpos = (short)(ox + dir * 20);
                     obj_timer[i] = 14;
+#if SFX_ENABLED
+                    spcPlaySound(SFX_ID_SPRING);
+#endif
                 }
             } else if (o == 4) {
                 if (dx < 16 && dy < 20 && vy <= 0) {
                     vy = strength; grounded = 0;
                     obj_timer[i] = 14;
+#if SFX_ENABLED
+                    spcPlaySound(SFX_ID_SPRING);
+#endif
                 }
             } else if (o == 6) {
                 if (dx < 22 && dy < 24) {
@@ -1850,6 +2021,9 @@ static void update_objects(void)
                     inertia = vx; grounded = 0; jumping = 1;
                     facing = dir < 0;
                     obj_timer[i] = 14;
+#if SFX_ENABLED
+                    spcPlaySound(SFX_ID_SPRING);
+#endif
                 }
             } else {
                 if (dx < 22 && dy < 24) {
@@ -1859,6 +2033,9 @@ static void update_objects(void)
                     inertia = vx; grounded = 0;
                     facing = dir < 0;
                     obj_timer[i] = 14;
+#if SFX_ENABLED
+                    spcPlaySound(SFX_ID_SPRING);
+#endif
                 }
             }
         } else if (kind == 1) {
@@ -1867,6 +2044,9 @@ static void update_objects(void)
                 if (dx < 20 && vy > 0 && feet >= top - 4 && feet <= top + 14) {
                     if (jumping) {
                         obj_state[i] = 1;
+#if SFX_ENABLED
+                        spcPlaySound(SFX_ID_MONITOR);
+#endif
                         monitor_grant(obj_sub[i]);
                         ypos = (short)(top - YRADIUS);
                         vy = -0x380; grounded = 0;
@@ -1889,9 +2069,32 @@ static void update_objects(void)
                 goal_flag = 1;
                 goal_timer = 0;
                 sign_spin = 0;
+#if SFX_ENABLED
+                spcPlaySound(SFX_ID_SIGNPOST);
+#endif
             }
         }
-        if (kind >= 5 && !(obj_state[i] & 2)) {
+        if (kind == 10) {
+            short top = (short)(oy - 16);
+            if (vy > 0 && feet >= top - 4 && feet <= top + 12 && dx < 40) {
+                ypos = (short)(top - YRADIUS);
+                vy = 0;
+                grounded = 1;
+                jumping = 0;
+            }
+        }
+        if (kind == 9) {
+            short n = (short)obj_sub[i];
+            short top = (short)(oy - 8);
+            if (vy > 0 && feet >= top - 4 && feet <= top + 12 &&
+                    dx < (short)(n * 8 + 8)) {
+                ypos = (short)(top - YRADIUS);
+                vy = 0;
+                grounded = 1;
+                jumping = 0;
+            }
+        }
+        if (kind >= 5 && kind <= 8 && !(obj_state[i] & 2)) {
             short hw, hh;
             unsigned char stomp;
             if (kind == 5) {
@@ -2025,6 +2228,16 @@ int main(void)
 {
     unsigned short pad, pressed, oldpad = 0;
     consoleInit();
+#if SFX_ENABLED
+    spcBoot();
+    spcAllocateSoundRegion(80);
+    spcSetSoundEntry(15, 8, 6, SFX_RING_SIZE, (u8 *)sfx_ring, &snd_ring);
+    spcSetSoundEntry(15, 8, 6, SFX_SPRING_SIZE, (u8 *)sfx_spring, &snd_spring);
+    spcSetSoundEntry(15, 8, 6, SFX_HURT_SIZE, (u8 *)sfx_hurt, &snd_hurt);
+    spcSetSoundEntry(15, 8, 6, SFX_JUMP_SIZE, (u8 *)sfx_jump, &snd_jump);
+    spcSetSoundEntry(15, 8, 6, SFX_MONITOR_SIZE, (u8 *)sfx_monitor, &snd_monitor);
+    spcSetSoundEntry(15, 8, 6, SFX_SIGNPOST_SIZE, (u8 *)sfx_signpost, &snd_signpost);
+#endif
     setMode(BG_MODE1, 0);
     bgInitTileSet(0, (u8 *)bg_tiles, (u8 *)bg_pal, 0, BG_TILES_SIZE, BG_PAL_SIZE, BG_16COLORS, 0x1000);
     bgSetMapPtr(0, 0x0000, SC_64x64);
@@ -2202,6 +2415,9 @@ int main(void)
         draw_objects();
         if (!game_over) draw_effects();
         draw_sonic();
+#if SFX_ENABLED
+        spcProcess();
+#endif
         WaitForVBlank();
         dmaCopyVram((u8 *)obj_map, OBJ_BG_MAP, 2048);
     }
@@ -2221,8 +2437,8 @@ endif
 export ROMNAME := sonic_port
 export ROMTITLE := SONIC PORT
 FASTROM := 1
-ROMSIZE := 09
-ROMBANKS := 16
+ROMSIZE := 0A
+ROMBANKS := 32
 include $(PVSNESLIB_HOME)/devkitsnes/snes_rules
 all: $(ROMNAME).sfc
 """

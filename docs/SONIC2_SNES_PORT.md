@@ -27,10 +27,11 @@ misc/sinewave.bin             -> 256-entry sin/cos table
 .retro/generated/sprites/common_ring.png
                               -> 4 ring animation frames, 16x16 OBJ pieces
 level/rings/EHZ_1.bin         -> 226 ring positions expanded from the row/col list
-level/objects/EHZ_1.bin       -> 75 interactive objects:
+level/objects/EHZ_1.bin       -> 89 interactive objects:
                                  13 monitors, 14 springs, 3 star posts,
                                  1 goal signpost, 12 spike sets,
-                                 11 Buzzers, 13 Mashers, 8 Coconuts
+                                 11 Buzzers, 13 Mashers, 8 Coconuts,
+                                 7 bridges, 7 EHZ platforms
 art/nemesis/*.nem + mappings  -> original object art (Nemesis) and sprite mappings
 art/nemesis + obj36/4B/5C/9D  -> spikes and badnik art/mappings
 ```
@@ -77,7 +78,13 @@ The runtime is C on the SNES side:
 - lives counter shown at the bottom-left as SONIC + digit, and a GAME OVER
   screen with automatic restart when lives reach zero;
 - spin dash: hold down + jump to charge, release down to launch, with the roll
-  animation and a 40-frame rolling state.
+  animation and a 40-frame rolling state;
+- bridges and EHZ platforms: original bridge logs on level palette line 2,
+  solid tops, and the level-art platform sprites;
+- SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
+  PVSnesLib sound engine (synthesized placeholders; original SMPS music is
+  still pending);
+- ROM expanded to 1 MiB to leave room for audio and future modes.
 
 ## Build and run
 
@@ -129,6 +136,8 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Lives HUD](screenshots/sonic2_snes_port_lives_hud.png)
 ![Spin dash](screenshots/sonic2_snes_port_spindash.png)
 ![Game over](screenshots/sonic2_snes_port_game_over.png)
+![Bridge](screenshots/sonic2_snes_port_bridge.png)
+![Platform](screenshots/sonic2_snes_port_platform.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -139,19 +148,20 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 1. **Slope velocity/loops.** Terrain Y snap is active, but horizontal speed is
    still plain inertia; `AnglePos` velocity rotation and `Sonic_SlopeResist`
    acceleration need the signed 16x16 path validated for every angle.
-2. **Remaining objects.** Bridges, moving platforms, waterfalls and scenery
-   still need their own importers and behaviors. Badnik AI is still
-   approximate around ledges/turning points. Badniks respawn on death; broken
-   monitors and used star posts intentionally remain in their state.
+2. **Remaining objects.** Moving platforms, waterfalls and scenery still need
+   their own importers and behaviors. Badnik AI is still approximate around
+   ledges/turning points. Badniks respawn on death; broken monitors and used
+   star posts intentionally remain in their state.
 3. **HUD art/title card.** The layout is faithful, but the font is a compact
    5x7 OBJ font and the GAME OVER screen is text-only; the original HUD font,
    title card and act card are still missing.
 4. **Death/game-over details.** The game-over state is a simple text screen;
    the original art/animation and the invincibility-kills-badniks behavior are
    still missing.
-5. **Audio.** The SMPS music, ring sound and DAC driver are not translated; the
-   current ROM is silent.
-6. **Tails, special stages, water, two-player mode, openings and ending.**
+5. **Audio music.** SFX are in through the SNES sound engine, but the original
+   SMPS music/DAC driver is not translated yet; the music is still silent.
+6. **Tails, special stages, water, two-player mode, title/act cards, openings
+   and ending.**
 
 ## Notes for the next implementation
 
@@ -164,7 +174,7 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
   shifts/adds for the jump and slope math. The ground snap itself is inlined
   (no separate `AnglePos` call) to avoid the same ABI/stack symptom.
 - BG page groups are 16 KiB assembly sections (8 pages each); 172 pages fit
-  in 22 groups and 512 KiB with ~30 KiB free.
+  in 22 groups and a 1 MiB ROM with ~529 KiB free.
 - The object layer uses BG2 with a 32x32 screen-space map at VRAM 0x3800 and
   512 tiles of CHR at 0x4000; OBJ tiles moved to 0x6000. The map is copied to
   VRAM after `WaitForVBlank()` (RAM-to-VRAM DMA during active display is lost).
@@ -173,7 +183,8 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 - Sonic now uses 18 frames (idle/walk/run/roll/hurt/death), 384 OBJ tiles;
   rings use 32 and the HUD 39, for 455 of the 512 available OBJ tiles.
 - The BG2 object atlas now includes monitor icons, spikes, badniks, shield,
-  invincibility stars and explosion frames (380 of 512 CHR tiles).
+  invincibility stars, explosion, bridge and platform frames (402 of 512 CHR
+  tiles).
 - The preview's injected controller events were not reliable in headless mode;
   the `--demo` build uses assignment (`pad = padsCurrent(0) | KEY_RIGHT`)
   because `pad |= KEY_RIGHT` did not reach the physics in that build.

@@ -2078,3 +2078,29 @@ restart, Masher water jumps and spin dash launch.
 Still pending: original SMPS audio, slopes/loops, bridges/platforms/scenery,
 the original HUD font/title card, Tails, special stages, two-player mode,
 openings and ending.
+
+### Sonic 2 bridges, platforms and SNES SFX (0.1.45)
+
+This pass adds the remaining static traversal objects, a first SNES sound
+implementation and a larger ROM for future modes:
+
+```text
+bridges       -> 7 EHZ bridge objects, original logs, level palette line 2,
+                 solid tops
+platforms     -> 7 EHZPlatform objects, original level-art mappings, solid tops
+audio         -> ring, spring, jump, hurt, monitor and signpost BRR SFX
+                 (PVSnesLib sound engine; synthesized placeholders)
+ROM           -> 1,048,576 bytes, LoROM FastROM, checksum OK
+free ROM      -> 529,708 bytes
+OBJ           -> 455 / 512 tiles
+BG2 CHR       -> 402 / 512 tiles
+```
+
+The audio generator uses `tools/retro_audio_tool.py` + `snesbrr`; if either
+tool is missing the port still builds with `SFX_ENABLED=0`.
+
+![Bridge](screenshots/sonic2_snes_port_bridge.png)
+![Platform](screenshots/sonic2_snes_port_platform.png)
+
+Still pending: original SMPS music/DAC, slopes/loops, moving platforms/scenery,
+title/act cards, Tails, special stages, two-player mode, openings/ending.
