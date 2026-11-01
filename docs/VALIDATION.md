@@ -2287,3 +2287,25 @@ preview: 500 audio packets / 267,019 frames
 ```
 
 Still approximate: the YM2612 envelope/timing is not bit-exact.
+
+### Sonic 2 all EHZ FM voices and native-speed DAC (0.1.55)
+
+The transcoder now renders all nine `EHZ_Voices` FM voices (FM1 uses voice 7,
+FM2/FM3 use 0/3/4/6 and FM4 uses 2/3/8), preserving relative Total Level, and
+uses a single-period sustain loop at the base note. DAC events now play at the
+base note, so Kick/Snare/Tom/Bongo run at their original speed; floor tom uses
+Bongo at 2x as in the SMPS driver table. Unused Clap/Scratch samples were
+dropped from the EHZ bank to stay inside the 32 KiB bank-15 window.
+
+```text
+FM instruments: 9 (all EHZ voices)
+DAC instruments: 4 (Kick, Snare, Tom, Bongo@2x)
+PSG instrument: 1 square
+soundbank: 29,476 bytes (bank 15)
+ROM: 1,048,576 bytes, LoROM FastROM, checksum OK
+preview: 700 audio packets / 373,643 frames
+```
+
+![All EHZ FM voices](screenshots/sonic2_snes_port_fm_voices.png)
+
+Still approximate: the YM2612 envelope/timing is not bit-exact.

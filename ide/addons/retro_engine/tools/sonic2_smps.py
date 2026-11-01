@@ -121,17 +121,9 @@ def _parse_voices(lines):
     return voices
 
 
-def _loop_crossfade(out, loop_start, fade=64):
-    n = len(out)
-    if loop_start < fade or n < fade:
-        return
-    for i in range(fade):
-        w = i / float(fade - 1)
-        out[n - fade + i] = (out[n - fade + i] * (1.0 - w) +
-                             out[loop_start - fade + i] * w)
-
-
-def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.20):
+def _fm_sample(voice, rate=16744, seconds=0.22, base_freq=523.251,
+               loop_start=0.18):
+    """Render one YM2612 voice as a sample with a single-period sustain loop."""
     n = max(1, int(rate * seconds))
     alg = voice["alg"] & 7
     fb = voice["fb"] & 7
@@ -140,7 +132,6 @@ def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.
     attacks = []
     decays = []
     sustains = []
-    releases = []
     for i in range(4):
         coarse = voice["coarse"][i] & 0xF
         detune = voice["detune"][i] & 7
@@ -150,7 +141,6 @@ def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.
         attacks.append(0.004 + (31 - (voice["attack"][i] & 0x1F)) * 0.007)
         decays.append(0.02 + (31 - (voice["decay"][i] & 0x1F)) * 0.012)
         sustains.append(1.0 - (voice["sustain"][i] & 0xF) * 0.05)
-        releases.append(0.04 + (15 - (voice["release"][i] & 0xF)) * 0.02)
     phases = [0.0, 0.0, 0.0, 0.0]
     prev = 0.0
     out = []
@@ -193,13 +183,39 @@ def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.
         else:
             val = o1 + o2 + o3 + o4
         out.append(val)
-    peak = max((abs(v) for v in out), default=0.0)
-    if peak > 1e-6:
-        out = [v * 0.82 / peak for v in out]
-    loop_at = int(rate * loop_start)
-    _loop_crossfade(out, loop_at)
+
+    # Loop exactly one fundamental period.  Pick the phase offset whose
+    # one-period repeat is closest, so the seam is continuous.
+    period = max(2, int(round(rate / base_freq)))
+    target = max(period, int(rate * loop_start))
+    best = target
+    best_error = None
+    limit = min(period // 2, 64)
+    for delta in range(-limit, limit + 1):
+        at = target + delta
+        if at < period or at + period >= n:
+            continue
+        error = abs(out[at + period] - out[at])
+        if best_error is None or error < best_error:
+            best_error = error
+            best = at
+    out = out[:best + period]
     return {"name": "fm", "data": out, "loop": True, "rate": rate,
-            "loop_start": loop_at, "loop_end": len(out), "fadeout": 320}
+            "loop_start": best, "loop_end": len(out), "fadeout": 320}
+
+
+def _pitch_sample(sample, audio, factor):
+    """Resample a sample so it plays `factor` times faster at the base note."""
+    if abs(factor - 1.0) < 1e-6:
+        return sample
+    data = audio._resample_linear(sample["data"], sample["rate"],
+                                  max(1, int(round(sample["rate"] / factor))))
+    out = dict(sample)
+    out["data"] = data
+    out["loop"] = False
+    out.pop("loop_start", None)
+    out.pop("loop_end", None)
+    return out
 
 
 def _square_sample(rate=16744, seconds=0.3):
@@ -360,41 +376,64 @@ def build_ehz_module(root: str, out_dir: str):
         if not voices:
             return None
         fm_samples = []
-        for voice in voices[:6]:
-            sample = _fm_sample(voice, rate=16744, seconds=0.38,
-                                base_freq=523.251, loop_start=0.20)
-            sample["name"] = "fm%d" % len(fm_samples)
+        for index, voice in enumerate(voices):
+            sample = _fm_sample(voice, rate=16744, seconds=0.22,
+                                base_freq=523.251, loop_start=0.18)
+            sample["name"] = "fm%d" % index
             fm_samples.append(sample)
+        # Keep the relative voice levels from Total Level instead of making
+        # every instrument equally loud.
+        peak = max((abs(v) for sample in fm_samples for v in sample["data"]),
+                   default=0.0)
+        if peak > 1e-6:
+            scale = 0.82 / peak
+            for sample in fm_samples:
+                sample["data"] = [v * scale for v in sample["data"]]
 
-        dac_samples = []
-        for dac_name in ("Kick", "Snare", "Tom"):
-            path = os.path.join(root, "sound", "DAC", dac_name + ".wav")
+        drum_specs = [
+            ("kick", "Kick", 1.0),
+            ("snare", "Snare", 1.0),
+            ("tom", "Tom", 1.0),
+            ("floortom", "Bongo", 2.0),
+        ]
+        drum_samples = []
+        drum_program = {}
+        for name, wav_name, factor in drum_specs:
+            path = os.path.join(root, "sound", "DAC", wav_name + ".wav")
             if not os.path.isfile(path):
                 continue
             values, rate = audio.read_wav_mono(path)
-            if rate > 16744:
+            if rate != 16744:
                 values = audio._resample_linear(values, rate, 16744)
                 rate = 16744
             peak = max((abs(v) for v in values), default=0.0)
             if peak > 1e-6:
                 values = [v * 0.9 / peak for v in values]
-            dac_samples.append({"name": dac_name.lower(), "data": values,
-                                "loop": False, "rate": rate})
-        while len(dac_samples) < 3:
-            dac_samples.append({"name": "drum%d" % len(dac_samples),
-                                "data": [0.0] * 64, "loop": False,
-                                "rate": 16744})
+            sample = {"name": name, "data": values, "loop": False, "rate": rate}
+            sample = _pitch_sample(sample, audio, factor)
+            drum_program[name] = len(fm_samples) + len(drum_samples)
+            drum_samples.append(sample)
 
         square = _square_sample(rate=16744, seconds=0.20)
-        samples = fm_samples + dac_samples + [square]
-        instrument_map = {}
-        for i in range(len(fm_samples)):
-            instrument_map[i] = i + 1
-        drum_base = len(fm_samples) + 1
-        instrument_map[100] = drum_base
-        instrument_map[101] = drum_base + 1
-        instrument_map[102] = drum_base + 2
-        instrument_map[90] = len(samples)
+        samples = fm_samples + drum_samples + [square]
+        instrument_map = {index: index + 1 for index in range(len(samples))}
+
+        # The original driver maps DAC note numbers to these samples.  All
+        # drums play at the base note so they keep their original speed.
+        drum_notes = {
+            36: drum_program.get("kick"),
+            38: drum_program.get("snare"),
+            47: drum_program.get("tom"),
+            41: drum_program.get("floortom"),
+            39: drum_program.get("clap"),
+            37: drum_program.get("scratch"),
+            40: drum_program.get("clap"),
+            42: drum_program.get("clap"),
+            45: drum_program.get("tom"),
+            50: drum_program.get("tom"),
+            49: drum_program.get("tom"),
+        }
+        square_program = len(samples) - 1
 
         channels = [
             ("EHZ_FM1", 0, None),
@@ -402,8 +441,8 @@ def build_ehz_module(root: str, out_dir: str):
             ("EHZ_FM3", 2, None),
             ("EHZ_FM4", 3, None),
             ("EHZ_FM5", 4, None),
-            ("EHZ_PSG1", 5, 90),
-            ("EHZ_PSG2", 6, 90),
+            ("EHZ_PSG1", 5, square_program),
+            ("EHZ_PSG2", 6, square_program),
             ("EHZ_DAC", 9, None),
         ]
         events = []
@@ -412,14 +451,14 @@ def build_ehz_module(root: str, out_dir: str):
                 if fixed_program is not None:
                     program = fixed_program
                 elif label == "EHZ_DAC":
-                    if note == 36:
-                        program = 100
-                    elif note == 38:
-                        program = 101
-                    else:
-                        program = 102
+                    program = drum_notes.get(note)
+                    if program is None:
+                        continue
+                    note = 60
                 else:
-                    program = voice if voice < len(fm_samples) else 0
+                    if voice >= len(fm_samples):
+                        continue
+                    program = voice
                 events.append(audio.NoteEvent(
                     time, channel, note, 100 if is_on else 0, program, not is_on))
         if not events:
@@ -438,6 +477,8 @@ def build_ehz_module(root: str, out_dir: str):
             return None
         with open(bank_path, "rb") as handle:
             return handle.read()
+    except Exception:
+        return None
     except Exception:
         return None
     except Exception:
