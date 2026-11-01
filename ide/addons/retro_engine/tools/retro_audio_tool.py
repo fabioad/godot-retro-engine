@@ -273,6 +273,7 @@ def write_it_from_events(path: str, events: list[NoteEvent], title: str,
         ins[0:4] = b"IMPI"
         nm = s["name"].encode("ascii")[:25]
         ins[0x1F:0x1F + len(nm)] = nm
+        ins[0x14:0x16] = _le16(int(s.get("fadeout", 0)))
         ins[0x18] = 128  # global volume
         ins[0x19] = 0xA0  # use default pan, center
         ins[0x1C:0x1E] = _le16(0x0214)

@@ -121,6 +121,16 @@ def _parse_voices(lines):
     return voices
 
 
+def _loop_crossfade(out, loop_start, fade=64):
+    n = len(out)
+    if loop_start < fade or n < fade:
+        return
+    for i in range(fade):
+        w = i / float(fade - 1)
+        out[n - fade + i] = (out[n - fade + i] * (1.0 - w) +
+                             out[loop_start - fade + i] * w)
+
+
 def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.20):
     n = max(1, int(rate * seconds))
     alg = voice["alg"] & 7
@@ -186,19 +196,23 @@ def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.
     peak = max((abs(v) for v in out), default=0.0)
     if peak > 1e-6:
         out = [v * 0.82 / peak for v in out]
+    loop_at = int(rate * loop_start)
+    _loop_crossfade(out, loop_at)
     return {"name": "fm", "data": out, "loop": True, "rate": rate,
-            "loop_start": int(rate * loop_start), "loop_end": len(out)}
+            "loop_start": loop_at, "loop_end": len(out), "fadeout": 320}
 
 
 def _square_sample(rate=16744, seconds=0.3):
-    n = int(rate * seconds)
+    period = rate / 523.251
+    n = max(1, int(round(rate * seconds / period)) * int(round(period)))
     out = []
     phase = 0.0
     for i in range(n):
         phase = (phase + 523.251 / rate) % 1.0
-        envelope = min(1.0, i / (rate * 0.005)) * min(1.0, (n - i) / (rate * 0.03))
+        envelope = min(1.0, i / (rate * 0.005)) * min(1.0, (n - i) / (rate * 0.01))
         out.append((1.0 if phase < 0.5 else -1.0) * envelope * 0.7)
-    return {"name": "psg", "data": out, "loop": True, "rate": rate}
+    return {"name": "psg", "data": out, "loop": True, "rate": rate,
+            "loop_start": 0, "loop_end": n, "fadeout": 320}
 
 
 def _parse_channel(lines, label):

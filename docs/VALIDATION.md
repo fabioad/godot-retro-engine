@@ -2274,3 +2274,16 @@ preview: 500 audio packets / 267,019 frames
 
 Still approximate: the YM2612 envelope/timing and loop-boundary phase are not
 bit-exact.
+
+### Sonic 2 FM loop seam and note-off fade (0.1.54)
+
+The FM loop seam gets a 64-sample crossfade, instrument fade-out (320) is used
+on note-off, and the PSG square loop is an integer number of periods.
+
+```text
+soundbank: 32,390 bytes (bank 15)
+ROM: 1,048,576 bytes, LoROM FastROM, checksum OK, 490,580 bytes free
+preview: 500 audio packets / 267,019 frames
+```
+
+Still approximate: the YM2612 envelope/timing is not bit-exact.
