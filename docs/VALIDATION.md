@@ -1838,3 +1838,35 @@ complete game with this pipeline; it is achieved for the exported stage data:
   its `bg` stage is exposed as a `RetroStage`, so that is what gets exported.
 - Sonic 2's foreground level is imported from the original Kosinski data; the
   parallax background, sprites, HUD and SMPS music remain project-specific.
+
+### Sonic 2 → SNES engine port — first playable slice (experimental)
+
+A first vertical slice of the Sonic 2 engine was reimplemented in C for
+PVSnesLib and verified in the ROM preview. It is a source-level reimplementation
+of the core, not a binary translation.
+
+```text
+generator: tools/sonic2_snes_port.py
+ROM:       524,288 bytes, LoROM FastROM
+build:     exit 0
+preview:   walk at frame 90, jump at frame 135, land at frame 260
+```
+
+![Sonic 2 SNES port: walk](screenshots/sonic2_snes_port_walk.png)
+![Sonic 2 SNES port: jump](screenshots/sonic2_snes_port_jump.png)
+![Sonic 2 SNES port: land](screenshots/sonic2_snes_port_land.png)
+
+Implemented: original EHZ Act 1 tiles/map/palette for a 64x64-tile slice,
+original collision indexes/heightmaps, camera scrolling, ground
+acceleration/deceleration/top speed, jump, gravity, air control, floor/ceiling
+heightmap collision while airborne, and idle/walk/run/roll animations from the
+original Sonic sprite sheet.
+
+Not yet implemented: slope following (`AnglePos` still disabled after an
+816-tcc stack/ABI freeze), walls, full-level streaming, rings, objects,
+badniks, HUD, sound, Tails and special stages. See
+`docs/SONIC2_SNES_PORT.md` for the full list and implementation notes.
+
+The preview's injected controller events were unreliable in headless mode, so
+the evidence build (`--demo`) forces right and one jump. The normal generator
+output uses `padsCurrent(0)` for real input.
