@@ -31,8 +31,9 @@ Drive VDP.
 | HDMA colour math | not available; static backdrop/palette approximation |
 
 The level uses a 64×32 plane with two 32×32 page slots (288 tiles each), so a
-page is loaded off-screen before the camera reveals it. BG_B scrolls at
-`camX * 7 / 100`; the level uses the original camera speed.
+page is loaded off-screen before the camera reveals it. Both planes use the
+negative camera value (`-camX`) because the MD HScroll register is subtracted
+from the plane coordinate; BG_B uses `-(camX * 7 / 100)`.
 
 ## Build
 
@@ -64,6 +65,7 @@ preview: 1,254 frames; audio packets/frames flowing
 ![Mega Drive gameplay](screenshots/gothicvania_md_play.png)
 ![Mega Drive jump](screenshots/gothicvania_md_jump.png)
 ![Hurt recovery](screenshots/gothicvania_md_hurt_recovery.png)
+![Correct scroll direction](screenshots/gothicvania_md_scroll.png)
 
 ## Jump/hurt fix
 

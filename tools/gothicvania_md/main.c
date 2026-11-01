@@ -713,8 +713,10 @@ static void updatePlay(void)
     linkSprites();
     VDP_updateSprites(24, DMA);
 
-    VDP_setHorizontalScroll(BG_A, camX & 511);
-    VDP_setHorizontalScroll(BG_B, (camX * 7) / 100);
+    // MD HScroll is subtracted from the plane coordinate; use the negative
+    // camera value so moving right reveals the level to the right.
+    VDP_setHorizontalScroll(BG_A, -(s16)(camX & 511));
+    VDP_setHorizontalScroll(BG_B, -(s16)((camX * 7) / 100));
     VDP_setVerticalScroll(BG_A, 0);
     VDP_setVerticalScroll(BG_B, 0);
     enemyUploadStep();

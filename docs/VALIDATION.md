@@ -2348,3 +2348,16 @@ Validated in the preview: jump into the skeleton, then hold right; the hero
 lands at the left edge, stays visible and walks away.
 
 ![Hero visible after hurt knockback](screenshots/gothicvania_md_hurt_recovery.png)
+
+### Gothicvania MD: camera/parallax scroll sign (0.1.58)
+
+The Mega Drive HScroll register is subtracted from the plane coordinate, so
+feeding the positive camera value made the level and the moon/mountain layer
+move *right* when the hero moved right. Both planes now use the negative camera
+value; walking right reveals the level to the right and the parallax follows in
+the same direction at 0.07x.
+
+Validated by walking right in the preview: the large tree moves from the right
+edge toward the centre/left instead of moving further right.
+
+![Correct scroll direction](screenshots/gothicvania_md_scroll.png)
