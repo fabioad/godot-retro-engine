@@ -863,6 +863,10 @@ int main(void)
         }
         if (grounded) ground_move(pad);
         else air_move(pad);
+        if (ypos > SLICE_Y + WORLD_H - 16) {
+            xpos = 96; ypos = 655; xsub = 0; ysub = 0;
+            vx = vy = inertia = 0; grounded = 0; jumping = 0;
+        }
         update_camera();
         bgSetScroll(0, (u16)cam_x, (u16)(cam_y - SLICE_Y));
         draw_sonic();

@@ -1870,3 +1870,43 @@ badniks, HUD, sound, Tails and special stages. See
 The preview's injected controller events were unreliable in headless mode, so
 the evidence build (`--demo`) forces right and one jump. The normal generator
 output uses `padsCurrent(0)` for real input.
+
+### Mega Drive → SNES port registry and native runtime translation (0.1.39)
+
+The `megadrive_snes` Game Build mode now runs a source-format registry
+(`md_to_snes_port.gd`) before the stage viewer.
+
+**Native Mega Drive project (engine-generated) → SNES**
+
+```text
+source:    large_ssf2 native project (32x28 stage, 1 actor, 1 widget, 1 solid)
+export:    megadrive_snes
+ROM:       262,144 bytes, LoROM, checksum OK
+runtime:   actors=1 widgets=1 solids=1
+preview:   SCORE/START UI and runtime frame visible
+```
+
+The native path finds the bundle in `metadata.native_port`, loads the stage
+from the bundle, resolves actor assets against the bundle source root, and
+reuses the shared SNES runtime generator (states, animations, solids, widgets,
+input, camera). This is the general path for projects authored in the engine's
+portable format.
+
+**Sonic 2 disassembly → SNES through Game Build**
+
+```text
+GEN handled=true ok=true
+BUILD ok=true exit=0
+ROM:       524,288 bytes, LoROM FastROM, checksum OK
+runtime:   Sonic 2 EHZ source adapter
+preview:   walk at frame 90, jump at 135, landing at 260 (--demo)
+```
+
+**Unsupported raw 68000 projects**
+
+The registry returns an explicit error explaining that a faithful port needs a
+per-game source adapter; it no longer silently emits a stage viewer as a
+"port". See `docs/MD_TO_SNES_PORTING.md`.
+
+Remaining Sonic 2 adapter work (slopes/ground snap, walls, full-level
+streaming, rings, objects, HUD, audio) is tracked in `docs/SONIC2_SNES_PORT.md`.
