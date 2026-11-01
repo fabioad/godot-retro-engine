@@ -81,6 +81,9 @@ The runtime is C on the SNES side:
   animation and a 40-frame rolling state;
 - bridges and EHZ platforms: original bridge logs on level palette line 2,
   solid tops, and the level-art platform sprites;
+- spiral/corkscrew path: the original `Obj06_CosineTable` and
+  `FlipAngleTable` drive Sonic along the corkscrew, with the roll animation and
+  OAM priority switching so he can disappear behind the loop art;
 - SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
   PVSnesLib sound engine (synthesized placeholders; original SMPS music is
   still pending);
@@ -138,6 +141,8 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Game over](screenshots/sonic2_snes_port_game_over.png)
 ![Bridge](screenshots/sonic2_snes_port_bridge.png)
 ![Platform](screenshots/sonic2_snes_port_platform.png)
+![Spiral](screenshots/sonic2_snes_port_spiral.png)
+![Spiral behind the loop](screenshots/sonic2_snes_port_spiral_behind.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -145,9 +150,10 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 
 ## What is still missing (next phases)
 
-1. **Slope velocity/loops.** Terrain Y snap is active, but horizontal speed is
-   still plain inertia; `AnglePos` velocity rotation and `Sonic_SlopeResist`
-   acceleration need the signed 16x16 path validated for every angle.
+1. **Slopes and the remaining plane switching.** The corkscrew/spiral path is
+   in, but horizontal speed is still plain inertia and the full
+   `PlaneSwitcher`/vertical-loop coverage, `AnglePos` velocity rotation and
+   `Sonic_SlopeResist` acceleration still need work.
 2. **Remaining objects.** Moving platforms, waterfalls and scenery still need
    their own importers and behaviors. Badnik AI is still approximate around
    ledges/turning points. Badniks respawn on death; broken monitors and used

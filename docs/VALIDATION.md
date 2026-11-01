@@ -2104,3 +2104,25 @@ tool is missing the port still builds with `SFX_ENABLED=0`.
 
 Still pending: original SMPS music/DAC, slopes/loops, moving platforms/scenery,
 title/act cards, Tails, special stages, two-player mode, openings/ending.
+
+### Sonic 2 corkscrew/spiral path (0.1.46)
+
+The EHZ corkscrew objects (`Obj06`, id 6) are now imported. Their original
+`Obj06_CosineTable` and `Obj06_FlipAngleTable` drive Sonic's Y position along
+the spiral, and OAM priority switches him behind the loop art on the far side.
+The path uses the roll animation because the SNES port does not yet import the
+full 360-degree tumble frame set.
+
+```text
+objects: 92 total (3 spirals imported)
+ROM:     1,048,576 bytes, LoROM FastROM, checksum OK
+free:    528,653 bytes
+preview: spiral entry at x=4,800; Sonic follows the corkscrew and moves behind
+         the checkered loop art
+```
+
+![Spiral](screenshots/sonic2_snes_port_spiral.png)
+![Spiral behind the loop](screenshots/sonic2_snes_port_spiral_behind.png)
+
+The remaining big blocks are SMPS music, full vertical-loop/plane-switcher
+coverage, slopes, Tails/specials/two-player, title/act cards and ending.

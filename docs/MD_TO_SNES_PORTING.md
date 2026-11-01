@@ -70,11 +70,13 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
   GAME OVER screen and spin dash;
 - bridges and EHZ platforms with original art/palette and solid tops;
 - SNES sound effects through the PVSnesLib sound engine, and a 1 MiB ROM with
-  room for future music/title/ending data.
+  room for future music/title/ending data;
+- the EHZ corkscrew/spiral path using the original cosine/flip tables, with
+  sprite priority switching behind the loop art.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
-systems (slopes/loops, SMPS music, Tails, special stages, title/act cards,
-openings/ending). Those are per-game adapter work, not a missing generic
+systems (remaining vertical loops/plane switching, SMPS music, Tails, special
+stages, title/act cards, openings/ending). Those are per-game adapter work, not a missing generic
 translation step.
 
 ## Port capability today

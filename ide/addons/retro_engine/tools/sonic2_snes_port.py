@@ -561,6 +561,27 @@ for _name, _path in OBJECT_ART.items():
     object_art[_name] = nemesis_decode(read(ROOT + _path))
 
 
+def _asm_table(label, end_label):
+    text = read(ROOT + "/s2.asm").decode("utf-8", errors="ignore")
+    start = text.index(label + ":")
+    end = text.index(end_label, start)
+    vals = []
+    for m in re.finditer(r"dc\.b\s+([^\n;]+)", text[start:end]):
+        for part in m.group(1).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if part.startswith("$"):
+                vals.append(int(part[1:], 16))
+            elif re.match(r"^-?\d+$", part):
+                vals.append(int(part) & 0xFF)
+    return vals
+
+
+spiral_cos = _asm_table("Obj06_CosineTable", "Obj06_Cylinder")
+spiral_flip = _asm_table("Obj06_FlipAngleTable", "Obj06_CosineTable")
+
+
 def md_tile_indices(data, tile):
     out = []
     for y in range(8):
@@ -725,6 +746,7 @@ object_chr = b"\x00" * 32 + b"".join(snes_tile_8x8(t) for t in object_atlas)
 OBJECT_KINDS = {
     13: 4,   # goal signpost
     17: 9,   # bridge
+    6: 11,   # spiral / corkscrew
     24: 10,  # EHZ platform
     38: 1,   # monitor
     54: 5,   # spikes
@@ -915,6 +937,8 @@ blobs = [
     blob("sonic_pal", "sonic_pal.bin", snes_pal_bytes(sprite_colors) + snes_pal_bytes(ring_colors) + snes_pal_bytes(hud_colors)),
     blob("obj_chr", "obj_chr.bin", object_chr),
     blob("obj_pal", "obj_pal.bin", snes_pal_bytes(ring_colors)),
+    blob("spiral_cos", "spiral_cos.bin", bytes(v & 0xFF for v in spiral_cos)),
+    blob("spiral_flip", "spiral_flip.bin", bytes(v & 0xFF for v in spiral_flip)),
 ]
 for i, group in enumerate(page_groups):
     blobs.append(blob("page%d" % i, "page%d.bin" % i, group))
@@ -1030,6 +1054,7 @@ assets_h += "extern const unsigned short obj_frame_start[];\nextern const unsign
 assets_h += "extern const unsigned short obj_x[];\nextern const unsigned short obj_y[];\n"
 assets_h += "extern const unsigned char obj_kind[];\nextern const unsigned char obj_sub[];\n"
 assets_h += "extern const unsigned char obj_flags[];\n"
+assets_h += "extern const unsigned char spiral_cos[%d];\nextern const unsigned char spiral_flip[%d];\n" % (len(spiral_cos), len(spiral_flip))
 assets_h += "#define SFX_ENABLED %d\n" % (1 if SFX_ENABLED else 0)
 if SFX_ENABLED:
     for _name in SFX_ORDER:
@@ -1100,6 +1125,8 @@ static unsigned char hurt_timer;
 static unsigned char spindash_active;
 static unsigned char spindash_charge;
 static unsigned char rolling;
+static unsigned char on_spiral;
+static unsigned short spiral_i;
 static unsigned char lost_count;
 static short lost_x[20], lost_y[20], lost_vx[20], lost_vy[20];
 static unsigned char lost_timer[20];
@@ -1389,6 +1416,7 @@ static void ground_move(unsigned short pad)
     vx = inertia;
     vy = 0;
     move_x(vx);
+    if (on_spiral) { grounded = 1; return; }
     d = check_floor(&a);
     {
         short sp = (vx < 0 ? -vx : vx) >> 8;
@@ -1674,6 +1702,7 @@ static void draw_objects(void)
         short oy = obj_ry[i];
         short sx, sy;
         unsigned char frame;
+        if (obj_kind[i] == 11) continue;
         if (obj_kind[i] >= 5 && (obj_state[i] & 2)) continue;
         if (ox < cam_x - 64 || ox > cam_x + 320) continue;
         if (oy < cam_y - 96 || oy > cam_y + 320) continue;
@@ -1821,6 +1850,7 @@ static void hurt_sonic(void)
     if (dead || hurt_timer || invincible_timer) return;
     spindash_active = 0;
     rolling = 0;
+    on_spiral = 0;
 #if SFX_ENABLED
     spcPlaySound(SFX_ID_HURT);
 #endif
@@ -1976,7 +2006,24 @@ static void update_objects(void)
                 (short)(dir * 0x100), -0x100);
             obj_timer[i] = 180;
         }
-        if (kind == 2) {
+        if (kind == 11) {
+            short rel = (short)(xpos - ox);
+            if (on_spiral && spiral_i == i) {
+                short d0 = (short)(rel + 0xD0);
+                if (d0 < 0 || d0 >= 0x1A0 || jumping ||
+                        (inertia < 0 ? -inertia : inertia) < 0x600) {
+                    on_spiral = 0;
+                } else {
+                    ypos = (short)(oy + (signed char)spiral_cos[d0]);
+                    grounded = 1;
+                    vy = 0;
+                }
+            } else if (!on_spiral && rel >= -0xD0 && rel < -0xB0 &&
+                    !jumping && (inertia < 0 ? -inertia : inertia) >= 0x600) {
+                on_spiral = 1;
+                spiral_i = i;
+            }
+        } else if (kind == 2) {
             unsigned char sub = obj_sub[i];
             unsigned char o = (unsigned char)((sub >> 3) & 0x0E);
             short strength = (sub & 2) ? 0xA00 : 0x1000;
@@ -2163,8 +2210,10 @@ static void respawn_sonic(void)
 static void draw_sonic(void)
 {
     unsigned char idx, i;
+    unsigned char prio = 3;
     short sx, sy, fw, fh;
     const short *pieces;
+    if (on_spiral && xpos < (short)obj_x[spiral_i]) prio = 0;
     if (game_over) {
         for (i = 0; i < MAX_PIECES; i++) oamSetEx((u16)(i * 4), OBJ_LARGE, OBJ_HIDE);
         return;
@@ -2177,7 +2226,7 @@ static void draw_sonic(void)
         idx = 4;
     } else if (hurt_timer) {
         idx = 5;
-    } else if (rolling) {
+    } else if (rolling || on_spiral) {
         idx = 3;
     } else if (grounded) {
         if ((inertia < 0 ? -inertia : inertia) < 0x40) idx = 0;
@@ -2216,7 +2265,7 @@ static void draw_sonic(void)
             short dy = pieces[(base + i) * 3 + 1];
             short tile = pieces[(base + i) * 3 + 2];
             short ox = facing ? (short)(fw - 16 - dx) : dx;
-            oamSet(c * 4, (short)(sx + ox), (short)(sy + dy), 3, facing, 0, tile, 0);
+            oamSet(c * 4, (short)(sx + ox), (short)(sy + dy), prio, facing, 0, tile, 0);
             oamSetEx(c * 4, OBJ_LARGE, OBJ_SHOW);
             c++;
         }
@@ -2309,6 +2358,7 @@ int main(void)
     spindash_active = 0;
     spindash_charge = 0;
     rolling = 0;
+    on_spiral = 0;
     lost_count = 0;
     checkpoint_x = 96; checkpoint_y = 655;
     last_starpost = 0;
