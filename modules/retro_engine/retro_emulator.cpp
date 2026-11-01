@@ -188,7 +188,7 @@ Dictionary RetroEmulator::probe_rom(const String &p_rom) {
 			t += (c >= 32 && c < 127) ? String::chr(c) : String::chr(' ');
 		}
 		title = t.strip_edges();
-		mapper = "SGDK / Sega mapper";
+		mapper = data.size() > 0x400000 ? "SSF2 / Pier Solar / custom mapper (size-dependent)" : "Sega 4 MiB linear mapper";
 		if (data.size() > 0x1A0) {
 			out["region"] = String::chr(data[0x1F0]);
 		}
@@ -197,7 +197,12 @@ Dictionary RetroEmulator::probe_rom(const String &p_rom) {
 		// plausible size byte plus a valid checksum complement.
 		int header = 0x7FC0;
 		bool found = false;
-		const int headers[] = { 0x7FC0, 0xFFC0, 0x40FFC0 };
+		int headers[] = { 0x7FC0, 0xFFC0, 0x40FFC0 };
+		if (data.size() > 0x400000) {
+			headers[0] = 0x40FFC0;
+			headers[1] = 0xFFC0;
+			headers[2] = 0x7FC0;
+		}
 		for (int h = 0; h < 3; h++) {
 			const int pos = headers[h];
 			if (pos + 0x20 > data.size()) {
@@ -213,6 +218,8 @@ Dictionary RetroEmulator::probe_rom(const String &p_rom) {
 				found = true;
 				if (map_mode == 0x35) {
 					mapper = "ExHiROM";
+				} else if (map_mode == 0x32) {
+					mapper = "HiROM (S-DD1)";
 				} else if (map_mode & 0x01) {
 					mapper = "HiROM";
 				} else {

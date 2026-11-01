@@ -247,3 +247,43 @@ tiles use SGDK's packed-nibble format (two pixels per byte, high nibble is the l
 pixel) and the vertical scroll is negated because a positive Mega Drive VScroll
 moves the plane up. The generated showcase stage fills the full visible screen,
 so no empty backdrop remains after the splash.
+
+## Large ROMs and mappers (0.1.37)
+
+### SNES
+
+The existing profiles cover LoROM/HiROM up to 4 MiB, ExHiROM up to 8 MiB,
+Tales of Phantasia (ExHiROM 48 Mbit), Star Ocean (S-DD1 48 Mbit) and the
+KOF98/SD2SNES MKII preset (ExHiROM 8 MiB + MSU-1).
+
+| Preset | Header | Image | Notes |
+| --- | --- | --- | --- |
+| Tales of Phantasia | `$35` ExHiROM FastROM | 6 MiB trimmed | 64 KiB banks, checksum fixed |
+| Star Ocean | `$32` S-DD1 FastROM | 6 MiB trimmed | S-DD1 decompressor/MMC is not embedded |
+| KOF98 / SD2SNES MKII | `$35` ExHiROM FastROM | 8 MiB | keep the matching `.msu` companion |
+
+The build pads WLA-DX output to 8 MiB and `finalize_rom()` trims 6 MiB
+presets, patches the S-DD1 mode when requested and recomputes the SNES
+checksum. `GameBuild.validate_rom()` reports mapping, title, checksum,
+MSU-1 companion size and SD2SNES readiness.
+
+### Mega Drive
+
+| Profile | Capacity | Mapper |
+| --- | --- | --- |
+| `md_linear` | up to 4 MiB | no mapper |
+| `md_ssf2` | 8 MiB | SSF2, 8 x 512 KiB segments, `$A130F1-$A130FF` |
+| `md_ssf2_ext` | above 8 MiB | extended SSF2 / flashcart |
+| `md_pier_solar` | 8 MiB | Pier Solar mapper |
+| `md_custom_16` / `md_custom_32` | 16 / 32 MiB | hardware-specific custom mapper |
+| `md_mega_cd` | hundreds of MiB | Mega-CD image (export only) |
+| `md_msu_md` | 8 MiB base | MSU-MD / MD+ companion |
+
+Generated Mega Drive projects override SGDK's `padROM` target with the
+selected `-sizealign` and checksum. Mapper profiles also emit
+`src/mapper_ssf2.c/.h` or `src/mapper_profile.h`; the game must switch banks
+explicitly. `md_mega_cd` is rejected by the ordinary SGDK build because it
+needs a Mega-CD image builder.
+
+Sizes above 8 MiB are not universal Mega Drive formats: they depend on the
+mapper and the cartridge/flashcart hardware.

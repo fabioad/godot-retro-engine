@@ -335,7 +335,10 @@ Dictionary RetroSDK::get_limits(const String &p_platform, const String &p_mode) 
 	d["sprites_total"] = 80;
 	d["sprites_per_line"] = 20;
 	{ Array a; a.push_back(8); a.push_back(16); a.push_back(24); a.push_back(32); d["sprite_sizes"] = a; }
-	d["max_rom_bytes"] = 4194304;
+	d["max_rom_bytes"] = 8388608;
+	d["max_rom_bytes_linear"] = 4194304;
+	d["max_rom_bytes_ssf2"] = 8388608;
+	d["max_rom_bytes_custom"] = 33554432;
 	d["tile_4bpp_bytes"] = 32;
 	d["audio_channels"] = 10;
 	d["refresh_hz"] = 59.92;

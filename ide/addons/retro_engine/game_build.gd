@@ -92,6 +92,12 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		if not bool(rom.get("ok", false)):
 			var rom_errors: Array = rom.get("errors", [])
 			return {"ok": false, "error": String(rom_errors[0]) if not rom_errors.is_empty() else "invalid SNES ROM settings"}
+	else:
+		rom_estimate = _estimate_md_rom_bytes(stage, splash, audio)
+		rom = RomProfiles.resolve_md(rom_settings, rom_estimate)
+		if not bool(rom.get("ok", false)):
+			var md_rom_errors: Array = rom.get("errors", [])
+			return {"ok": false, "error": String(md_rom_errors[0]) if not md_rom_errors.is_empty() else "invalid Mega Drive ROM settings"}
 	var header_path := dir.path_join("src/assets.h")
 	var source_path := dir.path_join("src/assets.c")
 	var write := _write_assets(header_path, source_path, stage, splash, target, include_splash, rom)
@@ -123,7 +129,8 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	else:
 		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, player,
 			runtime_result if has_runtime else {})
-		_write_md_makefile(dir.path_join("Makefile"))
+		_write_md_makefile(dir.path_join("Makefile"), rom)
+		_write_md_mapper(dir, rom)
 		if not player.is_empty():
 			_write_md_player(dir, player)
 		# rescomp scans .res files in the project root. The generated C arrays
@@ -169,6 +176,10 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		meta["rom_mapping"] = String(rom.get("mapping", ""))
 		meta["rom_trim_bytes"] = int(rom.get("trim_to", 0))
 		meta["msu1"] = bool(rom.get("msu1", false))
+		meta["rom_mapper"] = String(rom.get("mapper", ""))
+		meta["rom_sizealign"] = int(rom.get("sizealign", 0))
+		meta["rom_requires_companion"] = bool(rom.get("requires_companion", false))
+		meta["rom_companion"] = String(rom.get("companion", ""))
 	var profile_settings := {
 		"game_name": game_name,
 		"mode": mode,
@@ -197,7 +208,11 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		"rom_banks": int(rom.get("banks", 0)),
 		"rom_mapping": String(rom.get("mapping", "")),
 		"rom_trim_bytes": int(rom.get("trim_to", 0)),
-		"msu1": bool(rom.get("msu1", false))
+		"msu1": bool(rom.get("msu1", false)),
+		"rom_mapper": String(rom.get("mapper", "")),
+		"rom_sizealign": int(rom.get("sizealign", 0)),
+		"rom_requires_companion": bool(rom.get("requires_companion", false)),
+		"rom_companion": String(rom.get("companion", ""))
 	}
 	if splash != null:
 		profile_settings["splash_map_w"] = splash.get_map_size().x
@@ -1874,6 +1889,45 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	code += "    return 0;\n}\n"
 	_write_text(path, code)
 
+static func estimate_md_payload(mode: String, source: RetroProject, include_splash := false) -> Dictionary:
+	if target_for_mode(mode) != "megadrive" or source == null:
+		return {"ok": false, "bytes": 0, "error": "not a Mega Drive source project"}
+	var stage := _find_stage(source, "megadrive", "")
+	if stage == null:
+		return {"ok": false, "bytes": 0, "error": "no stage/image asset available for conversion"}
+	var bridge := RetroNativeBridge.new()
+	stage = _retarget_stage(stage, "megadrive")
+	if stage.get_tileset() == null or stage.get_palette().is_empty():
+		return {"ok": false, "bytes": 0, "error": "source stage has no tileset/palette"}
+	var bytes := _estimate_md_rom_bytes(stage, null, {"converted": []})
+	for asset in _find_audio(source):
+		if typeof(asset) != TYPE_DICTIONARY:
+			continue
+		var path := String(asset.get("source", asset.get("path", "")))
+		if not path.is_empty() and FileAccess.file_exists(path):
+			bytes += FileAccess.get_size(path)
+	if include_splash:
+		bytes += 0x8000
+	return {"ok": true, "bytes": maxi(bytes, 0x20000)}
+
+static func _estimate_md_rom_bytes(stage: RetroStage, splash: RetroStage, audio: Dictionary) -> int:
+	var total := 0x10000
+	for item in [stage, splash]:
+		if item == null:
+			continue
+		var data := _stage_data(item, "megadrive")
+		total += PackedByteArray(data.get("tiles", PackedByteArray())).size()
+		total += PackedByteArray(data.get("pal", PackedByteArray())).size()
+		total += PackedByteArray(data.get("map", PackedByteArray())).size()
+	for converted in audio.get("converted", []):
+		if typeof(converted) != TYPE_DICTIONARY:
+			continue
+		var files: Dictionary = converted.get("files", {})
+		for value in files.values():
+			if value is String and FileAccess.file_exists(value):
+				total += FileAccess.get_size(value)
+	return maxi(total, 0x20000)
+
 static func estimate_snes_payload(mode: String, source: RetroProject, include_splash := false) -> Dictionary:
 	if target_for_mode(mode) != "snes" or source == null:
 		return {"ok": false, "bytes": 0, "error": "not a SNES source project"}
@@ -2038,6 +2092,75 @@ static func finalize_rom(project: RetroProject, rom_path: String) -> Dictionary:
 	project.save()
 	return {"ok": true, "rom": rom_path, "size": data.size(), "trimmed": needs_trim}
 
+static func validate_rom(rom_path: String) -> Dictionary:
+	if rom_path.is_empty() or not FileAccess.file_exists(rom_path):
+		return {"ok": false, "error": "ROM not found"}
+	var data := FileAccess.get_file_as_bytes(rom_path)
+	var out := {"ok": true, "path": rom_path, "size": data.size(), "warnings": []}
+	var lower := rom_path.to_lower()
+	if lower.ends_with(".md") or lower.ends_with(".gen") or lower.ends_with(".bin"):
+		var sega := ""
+		for i in range(16):
+			if 0x100 + i < data.size():
+				sega += String.chr(data[0x100 + i])
+		out["platform"] = "megadrive"
+		out["mapper"] = "SSF2 / Pier Solar / custom (size-dependent)" if data.size() > 0x400000 else "Sega 4 MiB linear"
+		out["header_ok"] = sega.begins_with("SEGA")
+		out["summary"] = "Mega Drive %s, %s, mapper: %s" % [RomProfiles.human_bytes(data.size()), "SEGA header OK" if bool(out["header_ok"]) else "header missing", String(out["mapper"])]
+		if not bool(out["header_ok"]):
+			out["warnings"].append("SEGA header not found at 0x100.")
+		if data.size() > 0x400000 and bool(out["header_ok"]):
+			out["warnings"].append("ROM above 4 MiB requires an SSF2/Pier Solar/custom mapper; bank switching is application code.")
+		return out
+	var header := -1
+	var mode := 0
+	var size_byte := 0
+	var checksum := 0
+	var complement := 0
+	var title := ""
+	var candidates := [0x7FC0, 0xFFC0, 0x40FFC0] if data.size() <= 0x400000 else [0x40FFC0, 0xFFC0, 0x7FC0]
+	for candidate in candidates:
+		if candidate + 0x20 > data.size():
+			continue
+		var csum := (data[candidate + 0x1F] << 8) | data[candidate + 0x1E]
+		var comp := (data[candidate + 0x1D] << 8) | data[candidate + 0x1C]
+		if ((csum + comp) & 0xFFFF) == 0xFFFF:
+			header = candidate
+			checksum = csum
+			complement = comp
+			mode = data[candidate + 0x15]
+			size_byte = data[candidate + 0x17]
+			for i in range(21):
+				title += String.chr(data[candidate + i]) if data[candidate + i] >= 32 and data[candidate + i] < 127 else " "
+			break
+	if header < 0:
+		out["ok"] = false
+		out["error"] = "valid SNES header/checksum not found"
+		return out
+	var msu_path := rom_path.get_basename() + ".msu"
+	var msu_present := FileAccess.file_exists(msu_path)
+	var msu_size := FileAccess.get_size(msu_path) if msu_present else 0
+	var mapping := "ExHiROM" if mode == 0x35 else ("HiROM (S-DD1)" if mode == 0x32 else ("HiROM" if (mode & 1) else "LoROM"))
+	out["platform"] = "snes"
+	out["mapping"] = mapping
+	out["mode"] = mode
+	out["size_byte"] = size_byte
+	out["title"] = title.strip_edges()
+	out["checksum"] = checksum
+	out["complement"] = complement
+	out["checksum_ok"] = true
+	out["msu_present"] = msu_present
+	out["msu_size"] = msu_size
+	out["summary"] = "SNES %s, %s, %s, checksum OK%s" % [RomProfiles.human_bytes(data.size()), mapping, title.strip_edges(), (", MSU-1 %s" % RomProfiles.human_bytes(msu_size)) if msu_present else ""]
+	if mode == 0x32:
+		out["warnings"].append("S-DD1 header/layout: the S-DD1 decompressor and MMC bank switching are not included in this ROM.")
+	if data.size() > 0x400000 and mode != 0x35 and mode != 0x32:
+		out["warnings"].append("ROM is larger than 4 MiB but the header is not ExHiROM/S-DD1; real hardware may not expose the full image.")
+	if data.size() > 0x400000 and not msu_present:
+		out["warnings"].append("Large ROM has no .msu companion; MSU-1 streaming will report UNAVAILABLE.")
+	out["sd2snes_ready"] = bool(out["checksum_ok"]) and (data.size() <= 0x400000 or mode == 0x35 or msu_present)
+	return out
+
 static func _fix_snes_checksum(data: PackedByteArray, header: int) -> PackedByteArray:
 	if header + 0x20 > data.size():
 		return data
@@ -2109,8 +2232,67 @@ static func _safe_audio_name(name: String) -> String:
 	out = out.strip_edges().trim_prefix("_").trim_suffix("_")
 	return out if not out.is_empty() else "audio"
 
-static func _write_md_makefile(path: String) -> void:
-	_write_text(path, "ifndef GDK\n$(error Set GDK to the SGDK root)\nendif\nLIBGCC := $(GDK)/lib/libgcc.a\ninclude $(GDK)/makefile.gen\n")
+static func _write_md_makefile(path: String, rom: Dictionary = {}) -> void:
+	var text := "ifndef GDK\n$(error Set GDK to the SGDK root)\nendif\nLIBGCC := $(GDK)/lib/libgcc.a\ninclude $(GDK)/makefile.gen\n"
+	if not rom.is_empty():
+		var align := maxi(131072, int(rom.get("sizealign", 131072)))
+		text += "\n# Large ROM: pad to the selected mapper capacity and fix the checksum.\n"
+		text += "padROM: $(OUT)/rom.bin\n\t$(SIZEBND) $(OUT)/rom.bin -sizealign %d -checksum\n" % align
+	_write_text(path, text)
+
+static func _write_md_mapper(dir: String, rom: Dictionary) -> void:
+	var mapper := String(rom.get("mapper", ""))
+	if mapper.is_empty():
+		return
+	var src := dir.path_join("src")
+	DirAccess.make_dir_recursive_absolute(src)
+	var sizealign := int(rom.get("sizealign", 0))
+	if mapper in ["ssf2", "ssf2_ext"]:
+		var header := "#ifndef RETRO_MAPPER_SSF2_H\n#define RETRO_MAPPER_SSF2_H\n\n#include <genesis.h>\n\n"
+		header += "#define SSF2_SEGMENTS %d\n#define SSF2_SEGMENT_BYTES 0x%X\n#define SSF2_WINDOW_BYTES 0x%X\n" % [
+			int(rom.get("segments", 8)), int(rom.get("segment_bytes", 0x80000)), int(rom.get("window_bytes", 0x400000))]
+		header += "#define SSF2_REG_BASE 0xA130F1\n#define SSF2_FIXED_SEGMENTS %d\n\n" % int(rom.get("fixed_segments", 1))
+		header += "/* Segment 0 is fixed. Segment 1 starts at 0x080000. */\n"
+		header += "void ssf2_set_segment(u8 segment, u8 bank);\nu8 ssf2_get_segment(u8 segment);\n"
+		header += "u8 ssf2_read_bank(u8 bank, u16 offset);\n\n#endif\n"
+		var source := "#include \"mapper_ssf2.h\"\n\n"
+		source += "void ssf2_set_segment(u8 segment, u8 bank)\n{\n"
+		source += "    if (segment > 0 && segment < SSF2_SEGMENTS) {\n"
+		source += "        *(volatile u8 *)(SSF2_REG_BASE + (segment - 1)) = bank;\n"
+		source += "    }\n}\n\n"
+		source += "u8 ssf2_get_segment(u8 segment)\n{\n"
+		source += "    if (segment > 0 && segment < SSF2_SEGMENTS) return *(volatile u8 *)(SSF2_REG_BASE + (segment - 1));\n"
+		source += "    return 0;\n}\n\n"
+		source += "u8 ssf2_read_bank(u8 bank, u16 offset)\n{\n"
+		source += "    ssf2_set_segment(1, bank);\n"
+		source += "    return *(volatile u8 *)(SSF2_SEGMENT_BYTES + (offset & (SSF2_SEGMENT_BYTES - 1)));\n"
+		source += "}\n"
+		_write_text(src.path_join("mapper_ssf2.h"), header)
+		_write_text(src.path_join("mapper_ssf2.c"), source)
+	elif mapper == "msu_md":
+		var msu := "#ifndef RETRO_MSU_MD_H\n#define RETRO_MSU_MD_H\n\n"
+		msu += "/* MSU-MD / MD+ are flashcart audio/data companions. The exact register\n"
+		msu += " * protocol depends on the flashcart firmware; keep the companion file\n"
+		msu += " * beside the ROM with the same base name. */\n"
+		msu += "#define RETRO_MSU_MD 1\n#define RETRO_MSU_MD_ROM_BYTES 0x%X\n\n#endif\n" % sizealign
+		_write_text(src.path_join("msu_md.h"), msu)
+	else:
+		var profile := "#ifndef RETRO_MAPPER_PROFILE_H\n#define RETRO_MAPPER_PROFILE_H\n\n"
+		profile += "#define RETRO_MAPPER_%s 1\n" % mapper.to_upper()
+		profile += "#define RETRO_MAPPER_WINDOW 0x%X\n#define RETRO_MAPPER_SEGMENT 0x%X\n" % [
+			int(rom.get("window_bytes", 0x400000)), int(rom.get("segment_bytes", 0))]
+		profile += "#define RETRO_MAPPER_ROM_BYTES 0x%X\n\n" % sizealign
+		profile += "/* %s mapper: implement the bank registers for the target cartridge/flashcart. */\n\n#endif\n" % String(rom.get("registers", "custom"))
+		_write_text(src.path_join("mapper_profile.h"), profile)
+	var doc := "# Mapper — %s\n\n" % String(rom.get("profile_label", mapper))
+	doc += "- Mapper: `%s`\n- ROM image: `%s`\n- Window: `%s` bytes\n- Segment: `%s` bytes\n- Registers: `%s`\n" % [
+		mapper, RomProfiles.human_bytes(sizealign), str(rom.get("window_bytes", 0)), str(rom.get("segment_bytes", 0)), String(rom.get("registers", ""))]
+	doc += "\nGenerated projects include the mapper header/source scaffold. Code that runs while switching banks must stay in the fixed segment (segment 0); data in higher banks is addressed through a mapped segment.\n"
+	if mapper == "mega_cd":
+		doc += "\nMega-CD images are not generated by SGDK; this is a profile/export reference only.\n"
+	if mapper == "msu_md":
+		doc += "\nCopy the matching MSU-MD/MD+ companion next to the ROM; audio/data streaming is provided by the flashcart.\n"
+	_write_text(dir.path_join("MAPPER.md"), doc)
 
 static func _remove_extension(dir: String, extension: String) -> void:
 	var files := DirAccess.get_files_at(dir)

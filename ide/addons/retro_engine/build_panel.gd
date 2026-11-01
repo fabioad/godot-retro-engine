@@ -331,6 +331,13 @@ func _on_build_finished(success: bool, result: Dictionary) -> void:
 		elif bool(finalize.get("trimmed", false)):
 			_append_log("[color=#6ee7a8]%s[/color]" % I18n.t("game_build.rom_trimmed", {
 				"size": String(result.get("rom_size_human", ""))}))
+		var validation := GameBuild.validate_rom(rom)
+		if bool(validation.get("ok", false)):
+			_append_log("[color=#9fb4d0]ROM: %s[/color]" % String(validation.get("summary", "")))
+			for warning in validation.get("warnings", []):
+				_append_log("[color=#ffd45e]ROM: %s[/color]" % String(warning))
+		elif not String(validation.get("error", "")).is_empty():
+			_append_log("[color=#ff7a7a]ROM: %s[/color]" % String(validation.get("error", "")))
 	if not rom.is_empty():
 		_rom_path = rom
 		if project:

@@ -33,6 +33,7 @@ var _rom_suggestion: Label
 var _rom_warning: Label
 var _rom_estimate := 0
 var _rom_error := ""
+var _rom_platform := ""
 var _mode_error := ""
 var _sdk_ready := false
 
@@ -211,29 +212,67 @@ func _selected_rom_size() -> String:
 	return String(_rom_size.get_item_metadata(_rom_size.selected))
 
 func _rom_settings() -> Dictionary:
+	var target := GameBuild.target_for_mode(_selected_mode())
 	return {
+		"platform": target,
 		"profile": _selected_rom_profile(),
 		"size_id": _selected_rom_size(),
-		"msu1": _rom_msu1.button_pressed,
+		"msu1": _rom_msu1.button_pressed and target == "snes",
+		"msu_md": _rom_msu1.button_pressed and target == "megadrive",
 	}
+
+func _populate_rom_options(target: String) -> void:
+	if _rom_platform == target:
+		return
+	var previous_profile := "auto"
+	var previous_size := "auto"
+	if _rom_profile != null and _rom_profile.item_count > 0:
+		previous_profile = _selected_rom_profile()
+	if _rom_size != null and _rom_size.item_count > 0:
+		previous_size = _selected_rom_size()
+	_rom_platform = target
+	_rom_profile.clear()
+	_rom_profile.add_item(I18n.t("game_build.rom_profile_auto"), 0)
+	_rom_profile.set_item_metadata(0, "auto")
+	for p in RomProfiles.profiles_for_platform(target):
+		var index := _rom_profile.item_count
+		_rom_profile.add_item(String(p.get("label", p.get("id", ""))), index)
+		_rom_profile.set_item_metadata(index, String(p.get("id", "")))
+	_rom_size.clear()
+	_rom_size.add_item(I18n.t("game_build.rom_size_auto"), 0)
+	_rom_size.set_item_metadata(0, "auto")
+	for sz in RomProfiles.sizes_for_platform(target):
+		var index2 := _rom_size.item_count
+		_rom_size.add_item(String(sz.get("label", sz.get("id", ""))), index2)
+		_rom_size.set_item_metadata(index2, String(sz.get("id", "")))
+	_select_option(_rom_profile, previous_profile)
+	_select_option(_rom_size, previous_size)
 
 func _refresh_rom_ui() -> void:
 	if _rom_row == null:
 		return
-	var snes := GameBuild.target_for_mode(_selected_mode()) == "snes"
-	_rom_row.visible = snes
-	_rom_suggestion.visible = snes
+	var target := GameBuild.target_for_mode(_selected_mode())
+	var visible := target == "snes" or target == "megadrive"
+	_rom_row.visible = visible
+	_rom_suggestion.visible = visible
 	_rom_warning.visible = false
-	if not snes:
+	if not visible:
 		_rom_error = ""
 		return
+	_populate_rom_options(target)
+	if target == "megadrive":
+		_rom_msu1.text = "MSU-MD / MD+"
+		_rom_msu1.tooltip_text = "Use a flashcart MSU-MD/MD+ companion for external audio/data."
+	else:
+		_rom_msu1.text = I18n.t("game_build.rom_msu1")
+		_rom_msu1.tooltip_text = I18n.t("game_build.rom_msu1_tip")
 	var profile_id := _selected_rom_profile()
-	var profile_data := RomProfiles.profile(profile_id) if profile_id != "auto" else {}
-	var fixed_size := int(profile_data.get("fixed_size", 0))
+	var profile_data := RomProfiles.profile_any(profile_id) if profile_id != "auto" else {}
+	var fixed_size := int(profile_data.get("fixed_size", 0)) if target == "snes" else 0
 	var was_fixed := _rom_size.disabled
 	_rom_size.disabled = fixed_size > 0
 	if fixed_size > 0:
-		var fixed := RomProfiles.size_for_bytes(fixed_size)
+		var fixed := RomProfiles.size_any(RomProfiles.size_for_bytes(fixed_size).get("id", "auto"))
 		if not fixed.is_empty():
 			_select_option(_rom_size, String(fixed.get("id", "auto")))
 	elif was_fixed:
@@ -242,20 +281,21 @@ func _refresh_rom_ui() -> void:
 		var size_id := String(_rom_size.get_item_metadata(i))
 		var disabled := fixed_size > 0
 		if not disabled and size_id != "auto" and not profile_data.is_empty():
-			var item := RomProfiles.size_by_id(size_id)
+			var item := RomProfiles.size_any(size_id)
 			disabled = int(item.get("bytes", 0)) > int(profile_data.get("max_bytes", 0x800000))
 		_rom_size.set_item_disabled(i, disabled)
 	var estimated := 0
 	var estimate_ok := false
 	if project != null:
-		var estimate: Dictionary = GameBuild.estimate_snes_payload(_selected_mode(), project, _splash.button_pressed)
+		var estimate: Dictionary = GameBuild.estimate_snes_payload(_selected_mode(), project, _splash.button_pressed) if target == "snes" else GameBuild.estimate_md_payload(_selected_mode(), project, _splash.button_pressed)
 		estimate_ok = bool(estimate.get("ok", false))
 		estimated = int(estimate.get("bytes", 0))
 	_rom_estimate = estimated
-	var msu1 := _rom_msu1.button_pressed
-	var resolved := RomProfiles.resolve(_rom_settings(), estimated if estimate_ok else 0x40000)
-	var suggestion := RomProfiles.suggest(estimated if estimate_ok else 0x40000, msu1)
-	var suggested_profile := RomProfiles.profile(String(suggestion.get("profile", "")))
+	var base_bytes := estimated if estimate_ok else (0x40000 if target == "snes" else 0x20000)
+	var companion := _rom_msu1.button_pressed
+	var resolved := RomProfiles.resolve_for(target, _rom_settings(), base_bytes)
+	var suggestion := RomProfiles.suggest_for(target, base_bytes, companion)
+	var suggested_profile := RomProfiles.profile_any(String(suggestion.get("profile", "")))
 	var suggested_size: Dictionary = suggestion.get("size", {})
 	var lines: Array = []
 	if estimate_ok:
@@ -272,7 +312,7 @@ func _refresh_rom_ui() -> void:
 			"size": String(RomProfiles.size_for_bytes(fixed_size).get("label", "")),
 		}))
 	else:
-		var chosen_profile := RomProfiles.profile(String(resolved.get("profile_id", "")))
+		var chosen_profile := RomProfiles.profile_any(String(resolved.get("profile_id", "")))
 		if chosen_profile.is_empty():
 			chosen_profile = suggested_profile
 		var chosen_size: Dictionary = resolved.get("size", {})
@@ -285,12 +325,19 @@ func _refresh_rom_ui() -> void:
 	_rom_suggestion.text = "\n".join(lines)
 	var warning_lines: Array = []
 	_rom_error = ""
+	for raw in resolved.get("errors", []):
+		if typeof(raw) == TYPE_STRING and _rom_error.is_empty():
+			_rom_error = String(raw)
+	for raw in resolved.get("warnings", []):
+		if typeof(raw) == TYPE_STRING:
+			warning_lines.append(String(raw))
 	var list_name := "warning_codes" if bool(resolved.get("ok", false)) else "error_codes"
 	for entry in resolved.get(list_name, []):
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var message := I18n.t(String(entry.get("code", "")), entry.get("params", {}))
-		warning_lines.append(message)
+		if not warning_lines.has(message):
+			warning_lines.append(message)
 		if list_name == "error_codes" and _rom_error.is_empty():
 			_rom_error = message
 	_rom_warning.text = "\n".join(warning_lines)
@@ -458,6 +505,13 @@ func _on_finished(success: bool, result: Dictionary) -> void:
 		else:
 			_log.append_text("[color=#ff7a7a]%s[/color]\n" % I18n.t("game_build.rom_finalize_failed", {
 				"error": String(finalize.get("error", "unknown"))}))
+		var validation := GameBuild.validate_rom(rom)
+		if bool(validation.get("ok", false)):
+			_log.append_text("[color=#9fb4d0]ROM: %s[/color]\n" % String(validation.get("summary", "")))
+			for warning in validation.get("warnings", []):
+				_log.append_text("[color=#ffd45e]ROM: %s[/color]\n" % String(warning))
+		elif not String(validation.get("error", "")).is_empty():
+			_log.append_text("[color=#ff7a7a]ROM: %s[/color]\n" % String(validation.get("error", "")))
 	if not rom.is_empty():
 		_rom = rom
 		_run_button.disabled = false

@@ -1723,3 +1723,41 @@ Super FX scaffold: gsu.asm host_65816.c
 SVP scaffold: ssp1601.asm m68k_host.c
 3D_HANDOFF.md contains the Super FX / SVP / 32X comparison table
 ```
+
+### Large ROMs, Star Ocean/Tales and KOF98 SD2SNES (0.1.37)
+
+**SNES presets built from source and finalized:**
+
+```text
+Star Ocean preset:  6.00 MiB  mode $32  S-DD1 header  checksum OK  (S-DD1 MMC external)
+Tales preset:       6.00 MiB  mode $35  ExHiROM       checksum OK
+KOF98 SD2SNES:      8.00 MiB  mode $35  ExHiROM       checksum OK  MSU-1 27.69 MiB
+```
+
+The KOF98 ROM already in the project was verified directly:
+
+```text
+probe: platform=snes mapper=ExHiROM size=8.0 MiB checksum_valid=true
+       title="KOF98 SNESFEST" .msu exists=true size=29,032,448
+validate_rom: sd2snes_ready=true
+```
+
+**Mega Drive profiles built and run:**
+
+```text
+md_ssf2 + md_8m:       8,388,608 bytes  SSF2 mapper scaffold  preview OK
+md_ssf2_ext + md_16m: 16,777,216 bytes  extended mapper scaffold
+md_pier_solar + 8m:    8,388,608 bytes  Pier Solar profile
+md_msu_md + 8m:        8,388,608 bytes  MSU-MD/MD+ header + companion warning
+md_linear + 4m:        4,194,304 bytes  no mapper
+md_mega_cd:            rejected: needs a Mega-CD image builder
+```
+
+Every large image passed the new `validate_rom()` check: SEGA header for
+Mega Drive, SNES mapping/size byte/checksum for SNES, MSU-1 companion status,
+and an explicit warning when bank switching remains application code.
+
+`padROM` is overridden per generated project with the selected
+`-sizealign`, so the ROM is padded to 4/8/16/32 MiB instead of SGDK's default
+128 KiB. The mapper headers expose SSF2 segment selection and bank reads;
+placing assets in banks above 4 MiB and switching them is still project code.
