@@ -1961,3 +1961,40 @@ RINGS 001
 
 The HUD layout matches Sonic 2; the original HUD art/font, ring sound, objects,
 slopes/loops, death/lives, audio and openings/ending remain pending.
+
+### Sonic 2 objects (0.1.42)
+
+The adapter now imports the EHZ Act 1 object list and renders the original
+spring, monitor, star post and goal signpost art from the Nemesis files with
+their original sprite mappings. Objects use a BG2 screen-space layer (palette
+7, priority above the level); OBJ tiles moved to VRAM 0x6000 so the object CHR
+fits at 0x4000.
+
+```text
+level/objects/EHZ_1.bin -> 31 interactive objects:
+                           13 monitors, 14 springs, 3 star posts, 1 signpost
+art/nemesis/Monitor and contents.nem
+art/nemesis/Star pole.nem
+art/nemesis/Signpost.nem
+art/nemesis/{Vertical,Horizontal,Diagonal} spring.nem
+                        -> 194 deduplicated 8x8 tiles (6,240 bytes)
+level width              -> 1,376 tiles / 11,008 px (goal signpost at 10,816)
+BG pages                 -> 43 x 4 = 172 pages, 22 groups
+ROM                      -> 524,288 bytes, LoROM FastROM, checksum OK
+free ROM                 -> 51,409 bytes
+```
+
+Interactions verified from controlled start positions:
+
+- monitor: solid top, spin-jump break, broken frame, power-up contents;
+- spring: vertical launch with the original strength and bounce animation;
+- star post: proximity activation, checkpoint saved, star ball removed;
+- goal signpost: idle Eggman face, spin to the Sonic face, HUD timer stopped.
+
+![Objects: monitor](screenshots/sonic2_snes_port_monitor.png)
+![Monitor break](screenshots/sonic2_snes_port_monitor_break.png)
+![Spring launch](screenshots/sonic2_snes_port_spring.png)
+![Star post checkpoint](screenshots/sonic2_snes_port_starpost.png)
+![Goal signpost](screenshots/sonic2_snes_port_signpost.png)
+
+Badniks, spikes, bridges/platforms, hurt/death/lives and audio remain.

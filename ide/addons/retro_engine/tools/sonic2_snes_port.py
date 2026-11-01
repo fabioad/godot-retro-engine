@@ -11,6 +11,7 @@ This is a development prototype; the engine integration comes after it runs.
 import json
 import math
 import os
+import re
 import struct
 import sys
 from PIL import Image
@@ -22,7 +23,7 @@ DEMO = "--demo" in sys.argv
 # Playable slice: 64x64 tiles = 512x512 px, starting at world (0, 512).
 SLICE_X = 0
 SLICE_Y = 0
-SLICE_W = 1332
+SLICE_W = 1376
 SLICE_H = 128
 CHUNKS_X = 8
 CHUNKS_Y = 4
@@ -86,6 +87,99 @@ def kosinski(data):
 def read(path):
     with open(path, "rb") as f:
         return f.read()
+
+
+# ---------------------------------------------------------------- Nemesis ---
+def nemesis_decode(data):
+    """Decode Sonic 2's Nemesis art to 8x8 palette-index tiles.
+
+    The Mega Drive decompressor packs two 4bpp pixels per byte, so the
+    row accumulator is nibble-packed; XOR art is applied row to row across
+    the whole stream (the previous row carries over tile boundaries).
+    """
+    ip = 2
+    header = (data[0] << 8) | data[1]
+    xor_mode = bool(header & 0x8000)
+    ntiles = header & 0x7FFF
+    table = [0] * 256
+    base = data[ip]
+    ip += 1
+    while base != 0xFF:
+        while True:
+            b = data[ip]
+            ip += 1
+            if b >= 0x80:
+                base = b
+                break
+            length = b & 0xF
+            repeat = (b >> 4) & 7
+            code = data[ip]
+            ip += 1
+            entry = (length << 8) | (repeat << 4) | (base & 0xF)
+            if length == 8:
+                table[code] = entry
+            else:
+                shift = 8 - length
+                idx = code << shift
+                for k in range(1 << shift):
+                    table[idx + k] = entry
+    pos = ip
+    buf = (data[pos] << 8) | data[pos + 1]
+    pos += 2
+    cnt = 16
+    out = []
+    total = ntiles * 64
+    while len(out) < total:
+        peek = (buf >> (cnt - 8)) & 0xFF
+        if peek >= 0xFC:
+            cnt -= 6
+            if cnt < 9:
+                buf = ((buf << 8) | (data[pos] if pos < len(data) else 0)) & 0xFFFF
+                pos += 1
+                cnt += 8
+            val = (buf >> (cnt - 7)) & 0x7F
+            cnt -= 7
+            if cnt < 9:
+                buf = ((buf << 8) | (data[pos] if pos < len(data) else 0)) & 0xFFFF
+                pos += 1
+                cnt += 8
+            pix = val & 0xF
+            repeat = (val >> 4) & 7
+            out.extend([pix] * (repeat + 1))
+        else:
+            e = table[peek]
+            length = (e >> 8) & 0xFF
+            repeat = (e >> 4) & 0xF
+            pix = e & 0xF
+            cnt -= length
+            if cnt < 9:
+                buf = ((buf << 8) | (data[pos] if pos < len(data) else 0)) & 0xFFFF
+                pos += 1
+                cnt += 8
+            out.extend([pix] * (repeat + 1))
+    out = out[:total]
+    if xor_mode:
+        prev = [0] * 8
+        for t in range(ntiles):
+            for r in range(8):
+                row = out[t * 64 + r * 8: t * 64 + r * 8 + 8]
+                row = [a ^ b for a, b in zip(row, prev)]
+                out[t * 64 + r * 8: t * 64 + r * 8 + 8] = row
+                prev = row
+    return [[[out[t * 64 + y * 8 + x] for x in range(8)] for y in range(8)]
+            for t in range(ntiles)]
+
+
+def snes_tile_8x8(block):
+    out = bytearray(32)
+    for y in range(8):
+        for x in range(8):
+            idx = block[y][x] & 15
+            for p in range(4):
+                pair = p // 2
+                off = pair * 16 + y * 2 + (p % 2)
+                out[off] |= ((idx >> p) & 1) << (7 - x)
+    return bytes(out)
 
 
 # ---------------------------------------------------------------- Level data ---
@@ -438,6 +532,168 @@ hud_tiles = b"".join(font_tile(FONT[c]) for c in HUD_CHARS)
 hud_colors = [(0,0,0),(255,255,255),(255,255,0)] + [(0,0,0)] * 13
 
 
+# --------------------------------------------------------------- Objects ---
+# Interactive EHZ Act 1 objects: springs, monitors, star posts and the goal
+# signpost.  Art and mappings are taken from the disassembly (Nemesis artwork
+# plus the original sprite mappings), so they are the Mega Drive graphics.
+OBJECT_ART = {
+    "monitor": "/art/nemesis/Monitor and contents.nem",
+    "starpost": "/art/nemesis/Star pole.nem",
+    "signpost": "/art/nemesis/Signpost.nem",
+    "spring_v": "/art/nemesis/Vertical spring.nem",
+    "spring_h": "/art/nemesis/Horizontal spring.nem",
+    "spring_d": "/art/nemesis/Diagonal spring.nem",
+}
+object_art = {}
+for _name, _path in OBJECT_ART.items():
+    object_art[_name] = nemesis_decode(read(ROOT + _path))
+
+
+def _map_num(text):
+    text = text.strip()
+    neg = text.startswith("-")
+    text = text.lstrip("+-")
+    value = int(text[1:], 16) if text.startswith("$") else int(text, 0)
+    return -value if neg else value
+
+
+def parse_mapping_frames(paths, table_label):
+    text = "".join(read(p).decode("utf-8", errors="ignore") + "\n" for p in paths)
+    lines = text.splitlines()
+    frame_labels = None
+    for i, line in enumerate(lines):
+        if re.match(r"^%s:" % re.escape(table_label), line.strip()):
+            entries = []
+            for j in range(i + 1, len(lines)):
+                m = re.match(r"\s*mappingsTableEntry\.w\s+(\w+)", lines[j])
+                if m:
+                    entries.append(m.group(1))
+                    continue
+                if entries:
+                    break
+            frame_labels = entries
+            break
+    if not frame_labels:
+        raise SystemExit("mapping table %s not found" % table_label)
+    blocks = {}
+    current = None
+    for line in lines:
+        m = re.match(r"^(\w+):", line.strip())
+        if m:
+            current = m.group(1)
+            blocks.setdefault(current, [])
+            continue
+        m = re.match(r"\s*spritePiece\s+([^;]+)", line)
+        if m and current:
+            a = [v.strip() for v in m.group(1).split(",")]
+            blocks[current].append((_map_num(a[0]), _map_num(a[1]),
+                                    int(a[2]), int(a[3]), _map_num(a[4]),
+                                    int(a[5]) & 1, int(a[6]) & 1))
+    frames = []
+    for label in frame_labels:
+        if label not in blocks:
+            raise SystemExit("missing sprite frame " + label)
+        frames.append(blocks[label])
+    return frames
+
+
+object_mappings = {
+    "monitor": (["/mappings/sprite/obj26.asm"], "Map_obj26"),
+    "starpost": (["/mappings/sprite/obj79_a.asm"], "Map_obj79_a"),
+    "signpost": (["/mappings/sprite/obj0D_a.asm"], "Map_obj0D_a"),
+    "spring_y": (["/s2.asm"], "Obj41_MapUnc_1901C"),
+    "spring_r": (["/s2.asm"], "Obj41_MapUnc_19032"),
+}
+object_mapping_frames = {}
+for _name, (_paths, _label) in object_mappings.items():
+    object_mapping_frames[_name] = parse_mapping_frames(
+        [ROOT + p for p in _paths], _label)
+
+# Global frame order.  Composite frames list the topmost piece first in the
+# mappings, so the draw order is reversed.
+OBJECT_FRAME_DEFS = (
+    [("monitor", i, "monitor") for i in range(12)] +
+    [("starpost", i, "starpost") for i in range(2)] +
+    [("signpost", i, "signpost") for i in range(6)] +
+    [("spring_y", i, "spring_v") for i in (0, 1, 2)] +
+    [("spring_y", i, "spring_h") for i in (3, 4, 5)] +
+    [("spring_y", 6, "spring_v")] +
+    [("spring_y", i, "spring_d") for i in (7, 8, 9, 10)] +
+    [("spring_r", i, "spring_d") for i in (7, 8, 9, 10)]
+)
+
+object_atlas = []
+object_atlas_map = {}
+object_draw_dx = []
+object_draw_dy = []
+object_draw_tile = []
+object_draw_flip = []
+object_frame_start = []
+object_frame_len = []
+
+
+def object_tile_index(tile):
+    key = bytes(v for row in tile for v in row)
+    if key not in object_atlas_map:
+        object_atlas_map[key] = len(object_atlas) + 1  # tile 0 is blank
+        object_atlas.append(tile)
+    return object_atlas_map[key]
+
+
+for _setname, _frame_id, _artname in OBJECT_FRAME_DEFS:
+    _start = len(object_draw_dx)
+    _pieces = list(reversed(object_mapping_frames[_setname][_frame_id]))
+    for (_x, _y, _w, _h, _tile, _hf, _vf) in _pieces:
+        for _ty in range(_h):
+            for _tx in range(_w):
+                _idx = _tile + _tx * _h + _ty
+                if _idx >= len(object_art[_artname]):
+                    continue
+                _t = object_art[_artname][_idx]
+                if not any(any(row) for row in _t):
+                    continue
+                object_draw_dx.append(_x + _tx * 8)
+                object_draw_dy.append(_y + _ty * 8)
+                object_draw_tile.append(object_tile_index(_t))
+                object_draw_flip.append((1 if _hf else 0) | (2 if _vf else 0))
+    object_frame_start.append(_start)
+    object_frame_len.append(len(object_draw_dx) - _start)
+
+object_chr = b"\x00" * 32 + b"".join(snes_tile_8x8(t) for t in object_atlas)
+
+# Level object list: x (word), y+flags (word), id, subtype.
+OBJECT_KINDS = {13: 4, 38: 1, 65: 2, 121: 3}  # signpost, monitor, spring, star post
+object_inst_x = []
+object_inst_y = []
+object_inst_kind = []
+object_inst_sub = []
+object_inst_flags = []
+_object_raw = read(f"{ROOT}/level/objects/EHZ_1.bin")
+for _i in range(0, len(_object_raw) - 5, 6):
+    _ox = struct.unpack(">H", _object_raw[_i:_i + 2])[0]
+    _ow = struct.unpack(">H", _object_raw[_i + 2:_i + 4])[0]
+    _oid = _object_raw[_i + 4]
+    _osub = _object_raw[_i + 5]
+    if _oid not in OBJECT_KINDS:
+        continue
+    _of = (_ow >> 12) & 0xF
+    object_inst_x.append(_ox)
+    object_inst_y.append(_ow & 0x0FFF)
+    object_inst_kind.append(OBJECT_KINDS[_oid])
+    object_inst_sub.append(_osub)
+    object_inst_flags.append((( _of >> 1) & 1) | (((_of >> 2) & 1) << 1))
+OBJ_COUNT = len(object_inst_x)
+OBJ_FRAME = {
+    "MON_BROKEN": 11,
+    "STAR_IDLE": 12, "STAR_ACTIVE": 13,
+    "SIGN_0": 14, "SIGN_1": 15, "SIGN_2": 16, "SIGN_3": 17,
+    "SIGN_4": 18, "SIGN_5": 19,
+    "SPR_UP": 20, "SPR_UP1": 21, "SPR_UP2": 22,
+    "SPR_H": 23, "SPR_H1": 24, "SPR_H2": 25,
+    "SPR_DOWN": 26,
+    "SPR_DU": 27, "SPR_DU1": 28, "SPR_DU2": 29, "SPR_DD": 30,
+    "SPR_RDU": 31, "SPR_RDU1": 32, "SPR_RDU2": 33, "SPR_RDD": 34,
+}
 
 
 # ---------------------------------------------------------------- C output ---
@@ -483,6 +739,8 @@ blobs = [
     blob("sine_table", "sine_table.bin", b"".join(struct.pack("<H", w & 0xFFFF) for w in sine)),
     blob("sonic_tiles", "sonic_tiles.bin", obj_tiles + ring_tiles + hud_tiles),
     blob("sonic_pal", "sonic_pal.bin", snes_pal_bytes(sprite_colors) + snes_pal_bytes(ring_colors) + snes_pal_bytes(hud_colors)),
+    blob("obj_chr", "obj_chr.bin", object_chr),
+    blob("obj_pal", "obj_pal.bin", snes_pal_bytes(ring_colors)),
 ]
 for i, group in enumerate(page_groups):
     blobs.append(blob("page%d" % i, "page%d.bin" % i, group))
@@ -522,6 +780,17 @@ for name, ids in anim_indices.items():
 data_c += carray("layout", layout)
 data_c += carray("blocks", blocks)
 data_c += cwords("ring_pos", ring_flat)
+data_c += cwords("obj_draw_dx", [v & 0xFFFF for v in object_draw_dx])
+data_c += cwords("obj_draw_dy", [v & 0xFFFF for v in object_draw_dy])
+data_c += cwords("obj_draw_tile", object_draw_tile)
+data_c += carray("obj_draw_flip", object_draw_flip)
+data_c += cwords("obj_frame_start", object_frame_start)
+data_c += carray("obj_frame_len", object_frame_len)
+data_c += cwords("obj_x", object_inst_x)
+data_c += cwords("obj_y", object_inst_y)
+data_c += carray("obj_kind", object_inst_kind)
+data_c += carray("obj_sub", object_inst_sub)
+data_c += carray("obj_flags", object_inst_flags)
 
 with open(f"{OUT}/src/assets.c", "w") as f:
     f.write(data_c)
@@ -529,11 +798,11 @@ with open(f"{OUT}/src/assets.c", "w") as f:
 # ---------------------------------------------------------------- C code ---
 assets_h = """#ifndef ASSETS_H
 #define ASSETS_H
-#define SLICE_W 1332
+#define SLICE_W %d
 #define SLICE_H 128
 #define SLICE_X 0
 #define SLICE_Y 0
-#define PAGES_X 42
+#define PAGES_X %d
 #define PAGES_Y 4
 #define TILE_COUNT %d
 #define PIECE_COUNT %d
@@ -563,7 +832,9 @@ extern const unsigned char frame_w[];
 extern const unsigned char frame_h[];
 extern const unsigned char frame_count[];
 extern const short frame_pieces[][3];
-""" % (len(used_tiles), len(pieces), len(frame_defs), MAX_PIECES, len(page_groups), len(blocks), len(bg_tiles), len(snes_pal_bytes(palette)), len(obj_tiles))
+""" % (SLICE_W, PAGES_X, len(used_tiles), len(pieces), len(frame_defs), MAX_PIECES,
+       len(page_groups), len(blocks), len(bg_tiles), len(snes_pal_bytes(palette)),
+       len(obj_tiles))
 for i in range(len(page_groups)):
     assets_h += "extern const unsigned char page%d[];\n" % i
 assets_h += "#define RING_COUNT %d\n#define RING_FRAMES %d\n" % (len(ring_positions), RING_FRAMES)
@@ -571,6 +842,17 @@ assets_h += ""
 assets_h += "#define HUD_TILES_SIZE %d\n#define HUD_TILE_BASE %d\n" % (len(hud_tiles), len(obj_tiles) // 32 + 32)
 assets_h += "extern const unsigned short ring_pos[];\n"
 assets_h += "#define RING_TILES_SIZE %d\n#define RING_BASE_TILE %d\n" % (len(ring_tiles), len(obj_tiles) // 32)
+assets_h += "#define OBJ_COUNT %d\n#define OBJ_CHR_SIZE %d\n" % (OBJ_COUNT, len(object_chr))
+assets_h += "#define OBJ_BG_MAP 0x3800\n#define OBJ_BG_CHR 0x4000\n"
+for name, index in OBJ_FRAME.items():
+    assets_h += "#define OF_%s %d\n" % (name, index)
+assets_h += "extern const unsigned char obj_chr[];\nextern const unsigned char obj_pal[];\n"
+assets_h += "extern const unsigned short obj_draw_dx[];\nextern const unsigned short obj_draw_dy[];\n"
+assets_h += "extern const unsigned short obj_draw_tile[];\nextern const unsigned char obj_draw_flip[];\n"
+assets_h += "extern const unsigned short obj_frame_start[];\nextern const unsigned char obj_frame_len[];\n"
+assets_h += "extern const unsigned short obj_x[];\nextern const unsigned short obj_y[];\n"
+assets_h += "extern const unsigned char obj_kind[];\nextern const unsigned char obj_sub[];\n"
+assets_h += "extern const unsigned char obj_flags[];\n"
 
 for name, ids in anim_indices.items():
     assets_h += "extern const unsigned char anim_%s[];\n" % name
@@ -610,6 +892,19 @@ static unsigned short rings_collected, score, game_time;
 static unsigned short frame_counter;
 static unsigned char ring_anim;
 static unsigned char time_timer;
+
+static unsigned short obj_state[OBJ_COUNT];
+static unsigned char obj_timer[OBJ_COUNT];
+static unsigned short obj_map[32 * 32];
+static short checkpoint_x = 96, checkpoint_y = 655;
+static unsigned char last_starpost;
+static unsigned char shield_flag;
+static unsigned short invincible_timer;
+static unsigned short speed_timer;
+static unsigned char lives = 3;
+static unsigned char goal_flag;
+static unsigned short goal_timer;
+static unsigned char sign_spin;
 
 static short cam_x, cam_y;
 
@@ -877,6 +1172,7 @@ static void ground_move(unsigned short pad)
         if (inertia < 0) inertia += DECEL;
         else inertia += ACCEL;
         if (inertia > TOP_SPEED) inertia = TOP_SPEED;
+        if (speed_timer && inertia > 0x900) inertia = 0x900;
         facing = 0;
     } else {
         if (inertia > 0) { inertia -= ACCEL; if (inertia < 0) inertia = 0; }
@@ -907,6 +1203,7 @@ static void air_move(unsigned short pad)
     } else if (right) {
         vx += (ACCEL * 2);
         if (vx > TOP_SPEED) vx = TOP_SPEED;
+        if (speed_timer && vx > 0x900) vx = 0x900;
         facing = 0;
     }
     if (vy > -0x400 && vx != 0) vx -= vx >> 5;
@@ -933,9 +1230,7 @@ static void jump_if_needed(unsigned short pressed)
 }
 
 static const unsigned char *page_arrays[PAGE_GROUP_COUNT] = {
-    page0, page1, page2, page3, page4, page5, page6, page7,
-    page8, page9, page10, page11, page12, page13, page14, page15,
-    page16, page17, page18, page19, page20
+    /*PAGE_ARRAYS*/
 };
 static unsigned char page_x = 0xFF;
 static unsigned char page_y = 0xFF;
@@ -1064,6 +1359,208 @@ static void draw_hud(void)
     for (; slot < 48; slot++) oamSetEx((u16)((60 + slot) * 4), OBJ_SMALL, OBJ_HIDE);
 }
 
+static const unsigned char mon_frames[8] = {0, 2, 0, 0, 5, 6, 7, 8};
+static const unsigned char sign_seq[9] = {
+    OF_SIGN_2, OF_SIGN_3, OF_SIGN_4, OF_SIGN_5, OF_SIGN_1,
+    OF_SIGN_3, OF_SIGN_4, OF_SIGN_5, OF_SIGN_0
+};
+
+static unsigned char spring_frame(unsigned short i)
+{
+    unsigned char sub = obj_sub[i];
+    unsigned char o = (unsigned char)((sub >> 3) & 0x0E);
+    unsigned char red = (unsigned char)(sub & 2);
+    unsigned char t = obj_timer[i];
+    if (o == 0) {
+        if (t) return (t & 4) ? OF_SPR_UP1 : OF_SPR_UP2;
+        return OF_SPR_UP;
+    }
+    if (o == 2) {
+        if (t) return (t & 4) ? OF_SPR_H1 : OF_SPR_H2;
+        return OF_SPR_H;
+    }
+    if (o == 4) return OF_SPR_DOWN;
+    if (o == 6) return red ? OF_SPR_RDU : OF_SPR_DU;
+    return red ? OF_SPR_RDD : OF_SPR_DD;
+}
+
+static unsigned char sign_frame(void)
+{
+    unsigned short idx = (unsigned short)(sign_spin >> 2);
+    if (idx >= 9) idx = 8;
+    return sign_seq[idx];
+}
+
+static void obj_put(short sx, short sy, unsigned short tile, unsigned char flip)
+{
+    short tx = (short)(sx >> 3);
+    short ty = (short)(sy >> 3);
+    if (tx < 0 || tx >= 32 || ty < 0 || ty >= 28) return;
+    obj_map[(unsigned short)ty * 32 + (unsigned short)tx] =
+        (unsigned short)(tile | ((unsigned short)(flip & 3) << 14) | 0x3C00);
+}
+
+static void draw_obj_frame(unsigned char frame, short sx, short sy, unsigned char flip)
+{
+    unsigned short i, start, count;
+    start = obj_frame_start[frame];
+    count = obj_frame_len[frame];
+    for (i = 0; i < count; i++) {
+        short dx = (short)obj_draw_dx[start + i];
+        short dy = (short)obj_draw_dy[start + i];
+        unsigned char fl = obj_draw_flip[start + i];
+        if (flip & 1) { dx = (short)(-dx - 8); fl = (unsigned char)(fl ^ 1); }
+        if (flip & 2) { dy = (short)(-dy - 8); fl = (unsigned char)(fl ^ 2); }
+        obj_put((short)(sx + dx), (short)(sy + dy), obj_draw_tile[start + i], fl);
+    }
+}
+
+static void clear_obj_map(void)
+{
+    unsigned short i;
+    for (i = 0; i < 1024; i++) obj_map[i] = 0;
+}
+
+static void draw_objects(void)
+{
+    unsigned short i;
+    for (i = 0; i < OBJ_COUNT; i++) {
+        short ox = (short)obj_x[i];
+        short oy = (short)obj_y[i];
+        short sx, sy;
+        unsigned char frame;
+        if (ox < cam_x - 64 || ox > cam_x + 320) continue;
+        if (oy < cam_y - 96 || oy > cam_y + 320) continue;
+        sx = (short)(ox - cam_x);
+        sy = (short)(oy - cam_y);
+        if (obj_kind[i] == 1) {
+            if (obj_state[i] & 1) frame = OF_MON_BROKEN;
+            else frame = mon_frames[obj_sub[i] & 7];
+        } else if (obj_kind[i] == 2) {
+            frame = spring_frame(i);
+        } else if (obj_kind[i] == 3) {
+            frame = (obj_state[i] & 1) ? OF_STAR_ACTIVE : OF_STAR_IDLE;
+        } else {
+            frame = goal_flag ? sign_frame() : OF_SIGN_2;
+        }
+        draw_obj_frame(frame, sx, sy, obj_flags[i]);
+    }
+}
+
+static void monitor_grant(unsigned char sub)
+{
+    if (sub == 4) {
+        if (rings_collected > 989) rings_collected = 999;
+        else rings_collected = (unsigned short)(rings_collected + 10);
+        score += 10;
+    } else if (sub == 5) {
+        speed_timer = 1200;
+    } else if (sub == 6) {
+        shield_flag = 1;
+    } else if (sub == 7) {
+        invincible_timer = 1200;
+    } else if (sub == 1) {
+        if (lives < 99) lives++;
+    }
+}
+
+static void update_objects(void)
+{
+    unsigned short i;
+    short feet = (short)(ypos + YRADIUS);
+    for (i = 0; i < OBJ_COUNT; i++) {
+        short ox = (short)obj_x[i];
+        short oy = (short)obj_y[i];
+        short dx = (short)(xpos - ox);
+        short dy = (short)(ypos - oy);
+        unsigned char kind = obj_kind[i];
+        if (obj_timer[i]) obj_timer[i]--;
+        if (dx < 0) dx = (short)-dx;
+        if (dy < 0) dy = (short)-dy;
+        if (kind == 2) {
+            unsigned char sub = obj_sub[i];
+            unsigned char o = (unsigned char)((sub >> 3) & 0x0E);
+            short strength = (sub & 2) ? 0xA00 : 0x1000;
+            if (obj_timer[i]) continue;
+            if (o == 0) {
+                if (dx < 20 && feet >= oy - 10 && feet <= oy + 12 && vy >= 0) {
+                    ypos = (short)(oy - YRADIUS - 2);
+                    vy = (short)-strength;
+                    vx = 0; inertia = 0; grounded = 0; jumping = 1;
+                    obj_timer[i] = 14;
+                }
+            } else if (o == 2) {
+                if (dx < 24 && dy < 22) {
+                    short dir = (obj_flags[i] & 1) ? -1 : 1;
+                    vx = (short)(dir * strength);
+                    inertia = vx;
+                    vy = -0x200;
+                    grounded = 0; jumping = 0;
+                    facing = dir < 0;
+                    xpos = (short)(ox + dir * 20);
+                    obj_timer[i] = 14;
+                }
+            } else if (o == 4) {
+                if (dx < 16 && dy < 20 && vy <= 0) {
+                    vy = strength; grounded = 0;
+                    obj_timer[i] = 14;
+                }
+            } else if (o == 6) {
+                if (dx < 22 && dy < 24) {
+                    short dir = (obj_flags[i] & 1) ? -1 : 1;
+                    vx = (short)(dir * (strength >> 1));
+                    vy = (short)-(strength >> 1);
+                    inertia = vx; grounded = 0; jumping = 1;
+                    facing = dir < 0;
+                    obj_timer[i] = 14;
+                }
+            } else {
+                if (dx < 22 && dy < 24) {
+                    short dir = (obj_flags[i] & 1) ? -1 : 1;
+                    vx = (short)(dir * (strength >> 1));
+                    vy = (short)(strength >> 2);
+                    inertia = vx; grounded = 0;
+                    facing = dir < 0;
+                    obj_timer[i] = 14;
+                }
+            }
+        } else if (kind == 1) {
+            if (!(obj_state[i] & 1)) {
+                short top = (short)(oy - 16);
+                if (dx < 20 && vy > 0 && feet >= top - 4 && feet <= top + 14) {
+                    if (jumping) {
+                        obj_state[i] = 1;
+                        monitor_grant(obj_sub[i]);
+                        ypos = (short)(top - YRADIUS);
+                        vy = -0x380; grounded = 0;
+                    } else {
+                        ypos = (short)(top - YRADIUS);
+                        vy = 0; grounded = 1; jumping = 0;
+                    }
+                }
+            }
+        } else if (kind == 3) {
+            if (!(obj_state[i] & 1) && dx < 10 && ypos >= oy - 64 && ypos <= oy + 40) {
+                obj_state[i] = 1;
+                last_starpost = obj_sub[i];
+                checkpoint_x = ox;
+                checkpoint_y = (short)(oy - YRADIUS);
+            }
+        } else {
+            short rel = (short)(xpos - ox);
+            if (!goal_flag && rel >= 0 && rel < 0x20 && ypos >= oy - 80 && ypos <= oy + 40) {
+                goal_flag = 1;
+                goal_timer = 0;
+                sign_spin = 0;
+            }
+        }
+    }
+    if (goal_flag) {
+        if (goal_timer < 60000) goal_timer++;
+        if (sign_spin < 40) sign_spin++;
+    }
+}
+
 static void draw_sonic(void)
 {
     unsigned char idx, i;
@@ -1124,13 +1621,23 @@ int main(void)
     bgSetEnable(0);
     REG_TM = 0x01;
 
-    oamInitGfxSet((u8 *)sonic_tiles, SONIC_TILES_SIZE, (u8 *)sonic_pal, SONIC_PAL_SIZE, 0, 0x4000, OBJ_SIZE8_L16);
+    oamInitGfxSet((u8 *)sonic_tiles, SONIC_TILES_SIZE, (u8 *)sonic_pal, SONIC_PAL_SIZE, 0, 0x6000, OBJ_SIZE8_L16);
     setPalette((u16 *)sonic_pal, 128, SONIC_PAL_SIZE);
-    dmaCopyVram((u8 *)(sonic_tiles + SONIC_TILES_SIZE), 0x4000 + SONIC_TILES_SIZE / 2, RING_TILES_SIZE);
+    dmaCopyVram((u8 *)(sonic_tiles + SONIC_TILES_SIZE), 0x6000 + SONIC_TILES_SIZE / 2, RING_TILES_SIZE);
     setPalette((u16 *)(sonic_pal + 32), 144, 32);
-    dmaCopyVram((u8 *)(sonic_tiles + SONIC_TILES_SIZE + RING_TILES_SIZE), 0x4000 + HUD_TILE_BASE * 16, HUD_TILES_SIZE);
+    dmaCopyVram((u8 *)(sonic_tiles + SONIC_TILES_SIZE + RING_TILES_SIZE), 0x6000 + HUD_TILE_BASE * 16, HUD_TILES_SIZE);
     setPalette((u16 *)(sonic_pal + 64), 160, 32);
-    REG_TM = 0x11; /* BG1 + OBJ */
+
+    /* BG2: original object art, screen-space tilemap. */
+    dmaCopyVram((u8 *)obj_chr, OBJ_BG_CHR, OBJ_CHR_SIZE);
+    setPalette((u16 *)obj_pal, 112, 32);
+    bgSetGfxPtr(1, OBJ_BG_CHR);
+    bgSetMapPtr(1, OBJ_BG_MAP, SC_32x32);
+    bgSetScroll(1, 0, 0);
+    bgSetEnable(1);
+    clear_obj_map();
+    dmaCopyVram((u8 *)obj_map, OBJ_BG_MAP, 2048);
+    REG_TM = 0x13; /* BG1 + BG2 (objects) + OBJ */
 
     xpos = 96; xsub = 0;
     ypos = 655; ysub = 0;
@@ -1152,12 +1659,29 @@ int main(void)
         int ri;
         for (ri = 0; ri < RING_COUNT; ri++) ring_taken[ri] = 0;
     }
+    {
+        int oi;
+        for (oi = 0; oi < OBJ_COUNT; oi++) {
+            obj_state[oi] = 0;
+            obj_timer[oi] = 0;
+        }
+    }
+    checkpoint_x = 96; checkpoint_y = 655;
+    last_starpost = 0;
+    shield_flag = 0;
+    invincible_timer = 0;
+    speed_timer = 0;
+    lives = 3;
+    goal_flag = 0;
+    goal_timer = 0;
+    sign_spin = 0;
     update_camera();
     update_pages();
     setScreenOn();
 
     while (1) {
         pad = padsCurrent(0);
+        if (goal_flag) pad = 0;
         pressed = pad & ~oldpad;
         oldpad = pad;
         if (grounded) {
@@ -1169,9 +1693,12 @@ int main(void)
         if (xpos < 16) { xpos = 16; if (vx < 0) vx = 0; if (inertia < 0) inertia = 0; }
         if (xpos > SLICE_W * 8 - 24) { xpos = SLICE_W * 8 - 24; if (vx > 0) vx = 0; if (inertia > 0) inertia = 0; }
         if (ypos > SLICE_Y + WORLD_H - 16) {
-            xpos = 96; ypos = 655; xsub = 0; ysub = 0;
+            xpos = checkpoint_x; ypos = checkpoint_y; xsub = 0; ysub = 0;
             vx = vy = inertia = 0; grounded = 0; jumping = 0;
         }
+        update_objects();
+        if (speed_timer) speed_timer--;
+        if (invincible_timer) invincible_timer--;
         update_camera();
         update_pages();
         bgSetScroll(0, (u16)(cam_x - page_x * 256), (u16)((cam_y - SLICE_Y) - page_y * 256));
@@ -1179,14 +1706,20 @@ int main(void)
         collect_rings();
         draw_rings();
         if ((frame_counter & 7) == 0) draw_hud();
-        if (++time_timer >= 60) { time_timer = 0; game_time++; }
+        if (!goal_flag && ++time_timer >= 60) { time_timer = 0; game_time++; }
+        clear_obj_map();
+        draw_objects();
         draw_sonic();
         WaitForVBlank();
+        dmaCopyVram((u8 *)obj_map, OBJ_BG_MAP, 2048);
     }
     return 0;
 }
 '''
 
+main_c = main_c.replace(
+    "    /*PAGE_ARRAYS*/",
+    "    " + ",\n    ".join("page%d" % i for i in range(len(page_groups))))
 with open(f"{OUT}/src/main.c", "w") as f:
     f.write(main_c)
 
@@ -1208,9 +1741,11 @@ if DEMO:
         demo = f.read()
     demo = demo.replace("int main(void)\n{\n    unsigned short pad, pressed, oldpad = 0;",
         "static unsigned short dbgframe;\nint main(void)\n{\n    unsigned short pad, pressed, oldpad = 0;")
-    demo = demo.replace("        pad = padsCurrent(0);\n        pressed = pad & ~oldpad;",
+    demo = demo.replace(
+        "        pad = padsCurrent(0);\n        if (goal_flag) pad = 0;\n        pressed = pad & ~oldpad;",
         "        dbgframe++;\n        pad = padsCurrent(0) | KEY_RIGHT;\n"
         "        if (dbgframe >= 120 && dbgframe < 126) pad = KEY_RIGHT | KEY_A;\n"
+        "        if (goal_flag) pad = 0;\n"
         "        pressed = pad & ~oldpad;")
     with open(f"{OUT}/src/main.c", "w") as f:
         f.write(demo)

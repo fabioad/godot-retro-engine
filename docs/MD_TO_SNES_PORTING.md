@@ -54,16 +54,20 @@ reimplementation is needed.
 `ide/addons/retro_engine/tools/sonic2_snes_port.py`. It reads the original
 Kosinski level/collision/sprite data and writes a PVSnesLib project with:
 
-- EHZ Act 1 64x64-tile slice, original tiles/map/palette;
+- full EHZ Act 1, original tiles/map/palette, streamed in 43x4 BG pages;
 - original 16x16 collision indexes and heightmaps;
 - Sonic sprite frames (idle/walk/run/roll) as SNES OBJs;
 - camera, ground acceleration, jump, gravity, air control and air floor/ceiling
-  collision.
+  collision;
+- 226 rings from the original ring list, with collection and score;
+- SCORE/TIME/RINGS HUD;
+- springs, monitors, star posts and the goal signpost on a BG2 object layer,
+  using the original Nemesis art and sprite mappings.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
-systems (slopes/ground snap, walls, full-level streaming, rings, objects, HUD,
-audio, Tails/specials). Those are per-game adapter work, not a missing generic
-translation step.
+systems (slopes/loops, badniks/spikes, hurt/death/lives, audio,
+Tails/specials/openings/ending). Those are per-game adapter work, not a missing
+generic translation step.
 
 ## Why not "any ROM" automatically
 
