@@ -1651,3 +1651,24 @@ hello_md/out/rom.bin    131072 bytes  build ok
   are exported as manifest data; the captured scene is still baked to one BG.
 - Collision is AABB-based. Rotated or concave shapes are approximated by their
   bounding box.
+
+### demo-Masiaka SGDK 2.11 port (0.1.35)
+
+The 2017 `demo-Masiaka` source now builds against the installed SGDK 2.11
+toolchain. The release binary under `release/` is kept only as a reference.
+
+```text
+make release -> src/out/rom.bin (2,359,296 bytes) -> Masiaka-built.bin
+PIPE2 build ok=true exit=0 rom=.../Masiaka-built.bin size=2359296 errors=0
+```
+
+The port covers the removed SGDK 1.x APIs: VDP plane/palette/fade/DMA names,
+XGM calls, fix16/fix32 helpers, sprite VRAM allocation flags, the legacy
+hardware-interrupt callback bridge, the new boot files and the new linker
+script. The wrapper copies the built ROM to the project root so the editor's
+`find_rom` picks it instead of the old release binary.
+
+The demo boots and runs the full sequence in the libretro preview. Known
+limitation: the 3D "RSE" logo frames are not pixel-identical to the 2017
+release because SGDK 2.11 changed the maths3D rotation convention and the BMP
+buffer behaviour; the rest of the source and build pipeline is migrated.
