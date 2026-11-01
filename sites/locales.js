@@ -321,7 +321,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Cross-platform exports warn you when manual work is required, and generated projects are named {{SNES}} / {{MD}} so they never get confused with the source.",
       "nav.language": "Language",
       "nav.open": "Open navigation",
-      "nav.close": "Close navigation"
+      "nav.close": "Close navigation",
+      "carousel.prev": "Previous preview",
+      "carousel.next": "Next preview",
+      "carousel.go": "Show preview {{n}}",
+      "carousel.slides": "Preview slides"
     },
     "ar": {
       "nav.features": "الميزات",
@@ -437,7 +441,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "تحذرك عمليات التصدير عبر الأنظمة الأساسية عندما يكون العمل اليدوي مطلوبًا، وتسمى المشاريع التي تم إنشاؤها {{SNES}} / {{MD}} حتى لا يتم الخلط بينها وبين المصدر.",
       "nav.language": "اللغة",
       "nav.open": "فتح الملاحة",
-      "nav.close": "إغلاق التنقل"
+      "nav.close": "إغلاق التنقل",
+      "carousel.prev": "المعاينة السابقة",
+      "carousel.next": "المعاينة التالية",
+      "carousel.go": "عرض المعاينة {{n}}",
+      "carousel.slides": "معاينة الشرائح"
     },
     "bg": {
       "nav.features": "Характеристики",
@@ -553,7 +561,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Експортирането на различни платформи ви предупреждава, когато е необходима ръчна работа, а генерираните проекти се наричат {{SNES}} / {{MD}}, така че никога да не се бъркат с източника.",
       "nav.language": "език",
       "nav.open": "Отворете навигацията",
-      "nav.close": "Затваряне на навигацията"
+      "nav.close": "Затваряне на навигацията",
+      "carousel.prev": "Предишен преглед",
+      "carousel.next": "Следващ преглед",
+      "carousel.go": "Показване на визуализация {{n}}",
+      "carousel.slides": "Преглед на слайдове"
     },
     "bn": {
       "nav.features": "বৈশিষ্ট্য",
@@ -669,7 +681,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "ক্রস-প্ল্যাটফর্ম রপ্তানি আপনাকে সতর্ক করে যখন ম্যানুয়াল কাজের প্রয়োজন হয়, এবং জেনারেট করা প্রকল্পগুলির নাম দেওয়া হয় {{SNES}} / {{MD}} যাতে তারা কখনই উত্সের সাথে বিভ্রান্ত না হয়৷",
       "nav.language": "ভাষা",
       "nav.open": "নেভিগেশন খুলুন",
-      "nav.close": "নেভিগেশন বন্ধ করুন"
+      "nav.close": "নেভিগেশন বন্ধ করুন",
+      "carousel.prev": "পূর্ববর্তী পূর্বরূপ",
+      "carousel.next": "পরবর্তী পূর্বরূপ",
+      "carousel.go": "পূর্বরূপ দেখান {{n}}",
+      "carousel.slides": "প্রাকদর্শন স্লাইড"
     },
     "ca": {
       "nav.features": "Característiques",
@@ -785,7 +801,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Les exportacions multiplataforma us avisen quan es requereix un treball manual i els projectes generats s'anomenen {{SNES}} / {{MD}} perquè mai es confonguin amb la font.",
       "nav.language": "Llengua",
       "nav.open": "Navegació oberta",
-      "nav.close": "Tanca la navegació"
+      "nav.close": "Tanca la navegació",
+      "carousel.prev": "Vista prèvia anterior",
+      "carousel.next": "Següent previsualització",
+      "carousel.go": "Mostra la previsualització {{n}}",
+      "carousel.slides": "Previsualitza les diapositives"
     },
     "cs": {
       "nav.features": "Vlastnosti",
@@ -901,7 +921,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Exporty napříč platformami vás varují, když je potřeba ruční práce, a generované projekty jsou pojmenovány {{SNES}} / {{MD}}, takže se nikdy nespletou se zdrojem.",
       "nav.language": "Jazyk",
       "nav.open": "Otevřete navigaci",
-      "nav.close": "Zavřít navigaci"
+      "nav.close": "Zavřít navigaci",
+      "carousel.prev": "Předchozí náhled",
+      "carousel.next": "Další náhled",
+      "carousel.go": "Zobrazit náhled {{n}}",
+      "carousel.slides": "Náhled snímků"
     },
     "de": {
       "nav.features": "Funktionen",
@@ -1017,7 +1041,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Plattformübergreifende Exporte warnen Sie, wenn manuelle Arbeit erforderlich ist, und generierte Projekte werden mit {{SNES}} / {{MD}} benannt, sodass sie nie mit der Quelle verwechselt werden.",
       "nav.language": "Sprache",
       "nav.open": "Navigation öffnen",
-      "nav.close": "Navigation schließen"
+      "nav.close": "Navigation schließen",
+      "carousel.prev": "Vorherige Vorschau",
+      "carousel.next": "Nächste Vorschau",
+      "carousel.go": "Vorschau anzeigen {{n}}",
+      "carousel.slides": "Vorschau der Folien"
     },
     "el": {
       "nav.features": "Χαρακτηριστικά",
@@ -1133,7 +1161,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Οι εξαγωγές μεταξύ πλατφορμών σάς προειδοποιούν όταν απαιτείται χειρωνακτική εργασία και τα έργα που δημιουργούνται ονομάζονται {{SNES}} / {{MD}}, ώστε να μην συγχέονται ποτέ με την πηγή.",
       "nav.language": "Γλώσσα",
       "nav.open": "Ανοίξτε την πλοήγηση",
-      "nav.close": "Κλείσιμο πλοήγησης"
+      "nav.close": "Κλείσιμο πλοήγησης",
+      "carousel.prev": "Προηγούμενη προεπισκόπηση",
+      "carousel.next": "Επόμενη προεπισκόπηση",
+      "carousel.go": "Εμφάνιση προεπισκόπησης {{n}}",
+      "carousel.slides": "Προεπισκόπηση διαφανειών"
     },
     "eo": {
       "nav.features": "Trajtoj",
@@ -1249,7 +1281,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Multplatformaj eksportaĵoj avertas vin kiam mana laboro estas bezonata, kaj generitaj projektoj estas nomitaj {{SNES}} / {{MD}} do ili neniam konfuziĝas kun la fonto.",
       "nav.language": "Lingvo",
       "nav.open": "Malfermu navigacion",
-      "nav.close": "Fermu navigacion"
+      "nav.close": "Fermu navigacion",
+      "carousel.prev": "Antaŭa antaŭrigardo",
+      "carousel.next": "Sekva antaŭrigardo",
+      "carousel.go": "Montri antaŭrigardon {{n}}",
+      "carousel.slides": "Antaŭrigardu diapozitivojn"
     },
     "es": {
       "nav.features": "Características",
@@ -1365,7 +1401,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Las exportaciones multiplataforma le advierten cuando se requiere trabajo manual y los proyectos generados se denominan {{SNES}} / {{MD}} para que nunca se confundan con la fuente.",
       "nav.language": "Idioma",
       "nav.open": "Abrir navegación",
-      "nav.close": "Cerrar navegación"
+      "nav.close": "Cerrar navegación",
+      "carousel.prev": "Vista previa anterior",
+      "carousel.next": "Siguiente vista previa",
+      "carousel.go": "Mostrar vista previa {{n}}",
+      "carousel.slides": "Vista previa de diapositivas"
     },
     "es_AR": {
       "nav.features": "Características",
@@ -1481,7 +1521,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Las exportaciones multiplataforma le advierten cuando se requiere trabajo manual y los proyectos generados se denominan {{SNES}} / {{MD}} para que nunca se confundan con la fuente.",
       "nav.language": "Idioma",
       "nav.open": "Abrir navegación",
-      "nav.close": "Cerrar navegación"
+      "nav.close": "Cerrar navegación",
+      "carousel.prev": "Vista previa anterior",
+      "carousel.next": "Siguiente vista previa",
+      "carousel.go": "Mostrar vista previa {{n}}",
+      "carousel.slides": "Vista previa de diapositivas"
     },
     "et": {
       "nav.features": "Omadused",
@@ -1597,7 +1641,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Platvormideülene eksport hoiatab teid, kui on vaja käsitsi tööd teha, ja loodud projektid kannavad nime {{SNES}} / {{MD}}, et neid kunagi allikaga segi ei läheks.",
       "nav.language": "Keel",
       "nav.open": "Avage navigeerimine",
-      "nav.close": "Sule navigeerimine"
+      "nav.close": "Sule navigeerimine",
+      "carousel.prev": "Eelmine eelvaade",
+      "carousel.next": "Järgmine eelvaade",
+      "carousel.go": "Näita eelvaadet {{n}}",
+      "carousel.slides": "Slaidide eelvaade"
     },
     "fa": {
       "nav.features": "ویژگی ها",
@@ -1713,7 +1761,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "هنگام نیاز به کار دستی، صادرات بین پلتفرمی به شما هشدار می دهد و پروژه های تولید شده {{SNES}} / {{MD}} نامیده می شوند تا هرگز با منبع اشتباه نشوند.",
       "nav.language": "زبان",
       "nav.open": "ناوبری را باز کنید",
-      "nav.close": "ناوبری را ببندید"
+      "nav.close": "ناوبری را ببندید",
+      "carousel.prev": "پیش نمایش قبلی",
+      "carousel.next": "پیش نمایش بعدی",
+      "carousel.go": "نمایش پیش نمایش {{n}}",
+      "carousel.slides": "پیش نمایش اسلایدها"
     },
     "fi": {
       "nav.features": "Ominaisuudet",
@@ -1829,7 +1881,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Eri alustojen viennit varoittavat, kun manuaalista työtä tarvitaan, ja luodut projektit ovat nimeltään {{SNES}} / {{MD}}, jotta niitä ei koskaan sekoita lähteeseen.",
       "nav.language": "Kieli",
       "nav.open": "Avaa navigointi",
-      "nav.close": "Sulje navigointi"
+      "nav.close": "Sulje navigointi",
+      "carousel.prev": "Edellinen esikatselu",
+      "carousel.next": "Seuraava esikatselu",
+      "carousel.go": "Näytä esikatselu {{n}}",
+      "carousel.slides": "Esikatsele dioja"
     },
     "fr": {
       "nav.features": "Caractéristiques",
@@ -1945,7 +2001,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Les exportations multiplateformes vous avertissent lorsqu'un travail manuel est requis, et les projets générés sont nommés {{SNES}} / {{MD}} afin qu'ils ne soient jamais confondus avec la source.",
       "nav.language": "Langue",
       "nav.open": "Ouvrir la navigation",
-      "nav.close": "Fermer la navigation"
+      "nav.close": "Fermer la navigation",
+      "carousel.prev": "Aperçu précédent",
+      "carousel.next": "Aperçu suivant",
+      "carousel.go": "Afficher l'aperçu {{n}}",
+      "carousel.slides": "Aperçu des diapositives"
     },
     "ga": {
       "nav.features": "Gnéithe",
@@ -2061,7 +2121,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Tugann easpórtálacha tras-ardáin rabhadh duit nuair a bhíonn obair láimhe ag teastáil, agus tugtar {{SNES}} / {{MD}} ar thionscadail ghinte ionas nach dtiocfaidh mearbhall orthu choíche leis an bhfoinse.",
       "nav.language": "Teanga",
       "nav.open": "Oscail nascleanúint",
-      "nav.close": "Dún nascleanúint"
+      "nav.close": "Dún nascleanúint",
+      "carousel.prev": "Réamhamharc roimhe seo",
+      "carousel.next": "Réamhamharc seo chugainn",
+      "carousel.go": "Taispeáin réamhamharc {{ n}}",
+      "carousel.slides": "Sleamhnáin réamhamhairc"
     },
     "gl": {
       "nav.features": "Características",
@@ -2177,7 +2241,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "As exportacións multiplataforma advírtenche cando se require un traballo manual e os proxectos xerados chámanse {{SNES}} / {{MD}} para que nunca se confundan coa fonte.",
       "nav.language": "Linguaxe",
       "nav.open": "Navegación aberta",
-      "nav.close": "Pechar a navegación"
+      "nav.close": "Pechar a navegación",
+      "carousel.prev": "Vista previa anterior",
+      "carousel.next": "Próxima vista previa",
+      "carousel.go": "Mostrar vista previa {{n}}",
+      "carousel.slides": "Vista previa de diapositivas"
     },
     "he": {
       "nav.features": "תכונות",
@@ -2293,7 +2361,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "ייצוא חוצה פלטפורמות מזהיר אותך כאשר נדרשת עבודה ידנית, ופרויקטים שנוצרו נקראים {{SNES}} / {{MD}} כך שהם לעולם לא מתבלבלים עם המקור.",
       "nav.language": "שפה",
       "nav.open": "פתח את הניווט",
-      "nav.close": "סגור ניווט"
+      "nav.close": "סגור ניווט",
+      "carousel.prev": "תצוגה מקדימה קודמת",
+      "carousel.next": "התצוגה המקדימה הבאה",
+      "carousel.go": "הצג תצוגה מקדימה {{n}}",
+      "carousel.slides": "תצוגה מקדימה של שקופיות"
     },
     "hu": {
       "nav.features": "Jellemzők",
@@ -2409,7 +2481,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "A platformok közötti exportálás figyelmezteti Önt, ha kézi munkára van szükség, a generált projektek neve pedig {{SNES}} / {{MD}}, így soha nem tévesztendő össze a forrással.",
       "nav.language": "Nyelv",
       "nav.open": "Nyissa meg a navigációt",
-      "nav.close": "Navigáció bezárása"
+      "nav.close": "Navigáció bezárása",
+      "carousel.prev": "Előző előnézet",
+      "carousel.next": "Következő előnézet",
+      "carousel.go": "Előnézet megjelenítése {{n}}",
+      "carousel.slides": "Diák előnézete"
     },
     "id": {
       "nav.features": "Fitur",
@@ -2525,7 +2601,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Ekspor lintas platform memperingatkan Anda ketika pekerjaan manual diperlukan, dan proyek yang dihasilkan diberi nama {{SNES}} / {{MD}} sehingga tidak akan tertukar dengan sumbernya.",
       "nav.language": "Bahasa",
       "nav.open": "Buka navigasi",
-      "nav.close": "Tutup navigasi"
+      "nav.close": "Tutup navigasi",
+      "carousel.prev": "Pratinjau sebelumnya",
+      "carousel.next": "Pratinjau berikutnya",
+      "carousel.go": "Tampilkan pratinjau {{n}}",
+      "carousel.slides": "Pratinjau slide"
     },
     "it": {
       "nav.features": "Caratteristiche",
@@ -2641,7 +2721,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Le esportazioni multipiattaforma ti avvisano quando è necessario un lavoro manuale e i progetti generati sono denominati {{SNES}} / {{MD}} in modo che non vengano mai confusi con l'origine.",
       "nav.language": "Lingua",
       "nav.open": "Apri la navigazione",
-      "nav.close": "Chiudi la navigazione"
+      "nav.close": "Chiudi la navigazione",
+      "carousel.prev": "Anteprima precedente",
+      "carousel.next": "Prossima anteprima",
+      "carousel.go": "Mostra anteprima {{n}}",
+      "carousel.slides": "Anteprima delle diapositive"
     },
     "ja": {
       "nav.features": "特長",
@@ -2757,7 +2841,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "クロスプラットフォームのエクスポートでは、手動作業が必要な場合に警告が表示され、生成されたプロジェクトには {{SNES}} / {{MD}} という名前が付けられるため、ソースと混同されることはありません。",
       "nav.language": "言語",
       "nav.open": "ナビゲーションを開く",
-      "nav.close": "ナビゲーションを閉じる"
+      "nav.close": "ナビゲーションを閉じる",
+      "carousel.prev": "前回のプレビュー",
+      "carousel.next": "次のプレビュー",
+      "carousel.go": "プレビューを表示 {{n}}",
+      "carousel.slides": "スライドのプレビュー"
     },
     "ka": {
       "nav.features": "მახასიათებლები",
@@ -2873,7 +2961,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "პლატფორმების ექსპორტი გაფრთხილებთ, როდესაც საჭიროა ხელით მუშაობა, და გენერირებულ პროექტებს ერქმევა სახელი {{SNES}} / {{MD}}, რათა ისინი არასოდეს აირიონ წყაროსთან.",
       "nav.language": "ენა",
       "nav.open": "გახსენით ნავიგაცია",
-      "nav.close": "ნავიგაციის დახურვა"
+      "nav.close": "ნავიგაციის დახურვა",
+      "carousel.prev": "წინა გადახედვა",
+      "carousel.next": "შემდეგი გადახედვა",
+      "carousel.go": "გადახედვის ჩვენება {{n}}",
+      "carousel.slides": "სლაიდების გადახედვა"
     },
     "ko": {
       "nav.features": "특징",
@@ -2989,7 +3081,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "크로스 플랫폼 내보내기는 수동 작업이 필요할 때 경고를 표시하며 생성된 프로젝트의 이름은 {{SNES}} / {{MD}}이므로 소스와 혼동되지 않습니다.",
       "nav.language": "언어",
       "nav.open": "탐색 열기",
-      "nav.close": "탐색 닫기"
+      "nav.close": "탐색 닫기",
+      "carousel.prev": "이전 미리보기",
+      "carousel.next": "다음 미리보기",
+      "carousel.go": "미리보기 표시 {{n}}",
+      "carousel.slides": "슬라이드 미리보기"
     },
     "lo": {
       "nav.features": "ຄຸນສົມບັດ",
@@ -3105,7 +3201,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "ການສົ່ງອອກຂ້າມແພລດຟອມເຕືອນທ່ານເມື່ອຕ້ອງໃຊ້ວຽກຄູ່ມື, ແລະໂຄງການທີ່ສ້າງຂຶ້ນມີຊື່ວ່າ {{SNES}} / {{MD}} ດັ່ງນັ້ນພວກມັນບໍ່ເຄີຍສັບສົນກັບແຫຼ່ງທີ່ມາ.",
       "nav.language": "ພາສາ",
       "nav.open": "ເປີດການນໍາທາງ",
-      "nav.close": "ປິດການນໍາທາງ"
+      "nav.close": "ປິດການນໍາທາງ",
+      "carousel.prev": "ຕົວຢ່າງທີ່ຜ່ານມາ",
+      "carousel.next": "ຕົວຢ່າງຕໍ່ໄປ",
+      "carousel.go": "ສະແດງຕົວຢ່າງ {{n}}",
+      "carousel.slides": "ເບິ່ງຕົວຢ່າງສະໄລ້"
     },
     "nl": {
       "nav.features": "Kenmerken",
@@ -3221,7 +3321,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Cross-platform exports waarschuwen u wanneer handmatig werk vereist is, en gegenereerde projecten krijgen de naam {{SNES}} / {{MD}}, zodat ze nooit verward raken met de bron.",
       "nav.language": "Taal",
       "nav.open": "Navigatie openen",
-      "nav.close": "Navigatie sluiten"
+      "nav.close": "Navigatie sluiten",
+      "carousel.prev": "Vorige voorbeeld",
+      "carousel.next": "Volgende voorbeeld",
+      "carousel.go": "Voorbeeld weergeven {{n}}",
+      "carousel.slides": "Preview dia's"
     },
     "pl": {
       "nav.features": "Funkcje",
@@ -3337,7 +3441,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Eksporty międzyplatformowe ostrzegają, gdy wymagana jest praca ręczna, a wygenerowane projekty noszą nazwy {{SNES}} / {{MD}}, dzięki czemu nigdy nie zostaną pomylone ze źródłem.",
       "nav.language": "Język",
       "nav.open": "Otwórz nawigację",
-      "nav.close": "Zamknij nawigację"
+      "nav.close": "Zamknij nawigację",
+      "carousel.prev": "Poprzedni podgląd",
+      "carousel.next": "Następny podgląd",
+      "carousel.go": "Pokaż podgląd {{n}}",
+      "carousel.slides": "Podgląd slajdów"
     },
     "pt": {
       "nav.features": "Recursos",
@@ -3453,7 +3561,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "As exportações entre plataformas avisam quando o trabalho manual é necessário e os projetos gerados são nomeados {{SNES}} / {{MD}} para que nunca sejam confundidos com a fonte.",
       "nav.language": "Idioma",
       "nav.open": "Abrir navegação",
-      "nav.close": "Fechar navegação"
+      "nav.close": "Fechar navegação",
+      "carousel.prev": "Visualização anterior",
+      "carousel.next": "Próxima visualização",
+      "carousel.go": "Mostrar visualização {{n}}",
+      "carousel.slides": "Visualizar slides"
     },
     "pt_BR": {
       "nav.features": "Recursos",
@@ -3569,7 +3681,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "As exportações entre plataformas avisam quando o trabalho manual é necessário e os projetos gerados são nomeados {{SNES}} / {{MD}} para que nunca sejam confundidos com a fonte.",
       "nav.language": "Idioma",
       "nav.open": "Abrir navegação",
-      "nav.close": "Fechar navegação"
+      "nav.close": "Fechar navegação",
+      "carousel.prev": "Visualização anterior",
+      "carousel.next": "Próxima visualização",
+      "carousel.go": "Mostrar visualização {{n}}",
+      "carousel.slides": "Visualizar slides"
     },
     "ro": {
       "nav.features": "Caracteristici",
@@ -3685,7 +3801,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Exporturile pe mai multe platforme vă avertizează când este necesară lucrul manual, iar proiectele generate sunt denumite {{SNES}} / {{MD}}, astfel încât să nu fie confundate niciodată cu sursa.",
       "nav.language": "Limba",
       "nav.open": "Deschideți navigarea",
-      "nav.close": "Închideți navigarea"
+      "nav.close": "Închideți navigarea",
+      "carousel.prev": "Previzualizare anterioară",
+      "carousel.next": "Următoarea previzualizare",
+      "carousel.go": "Afișează previzualizarea {{n}}",
+      "carousel.slides": "Previzualizează diapozitivele"
     },
     "ru": {
       "nav.features": "Особенности",
@@ -3801,7 +3921,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Кросс-платформенный экспорт предупреждает вас, когда требуется ручная работа, а созданные проекты называются {{SNES}} / {{MD}}, поэтому их никогда не перепутают с исходным кодом.",
       "nav.language": "Язык",
       "nav.open": "Открыть навигацию",
-      "nav.close": "Закрыть навигацию"
+      "nav.close": "Закрыть навигацию",
+      "carousel.prev": "Предыдущий предварительный просмотр",
+      "carousel.next": "Следующий предварительный просмотр",
+      "carousel.go": "Показать предварительный просмотр {{n}}",
+      "carousel.slides": "Предварительный просмотр слайдов"
     },
     "sk": {
       "nav.features": "Vlastnosti",
@@ -3917,7 +4041,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Exporty naprieč platformami vás upozornia, keď je potrebná manuálna práca, a vygenerované projekty majú názov {{SNES}} / {{MD}}, takže sa nikdy nepomýlia so zdrojom.",
       "nav.language": "Jazyk",
       "nav.open": "Otvorte navigáciu",
-      "nav.close": "Zavrieť navigáciu"
+      "nav.close": "Zavrieť navigáciu",
+      "carousel.prev": "Predchádzajúca ukážka",
+      "carousel.next": "Ďalší náhľad",
+      "carousel.go": "Zobraziť ukážku {{n}}",
+      "carousel.slides": "Ukážka snímok"
     },
     "sv": {
       "nav.features": "Funktioner",
@@ -4033,7 +4161,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Export över plattformar varnar dig när manuellt arbete krävs, och genererade projekt heter {{SNES}} / {{MD}} så att de aldrig förväxlas med källan.",
       "nav.language": "Språk",
       "nav.open": "Öppna navigering",
-      "nav.close": "Stäng navigering"
+      "nav.close": "Stäng navigering",
+      "carousel.prev": "Föregående förhandsvisning",
+      "carousel.next": "Nästa förhandsvisning",
+      "carousel.go": "Visa förhandsvisning {{n}}",
+      "carousel.slides": "Förhandsgranska bilder"
     },
     "ta": {
       "nav.features": "அம்சங்கள்",
@@ -4149,7 +4281,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "கிராஸ்-பிளாட்ஃபார்ம் ஏற்றுமதிகள், கைமுறையாக வேலை செய்ய வேண்டியிருக்கும் போது உங்களை எச்சரிக்கும், மேலும் உருவாக்கப்பட்ட திட்டங்களுக்கு {{SNES}} / {{MD}} என்று பெயரிடப்பட்டுள்ளது, எனவே அவை ஒருபோதும் மூலத்துடன் குழப்பமடையாது.",
       "nav.language": "மொழி",
       "nav.open": "வழிசெலுத்தலைத் திறக்கவும்",
-      "nav.close": "வழிசெலுத்தலை மூடு"
+      "nav.close": "வழிசெலுத்தலை மூடு",
+      "carousel.prev": "முந்தைய முன்னோட்டம்",
+      "carousel.next": "அடுத்த முன்னோட்டம்",
+      "carousel.go": "முன்னோட்டத்தைக் காட்டு {{n}}",
+      "carousel.slides": "ஸ்லைடுகளை முன்னோட்டமிடுங்கள்"
     },
     "th": {
       "nav.features": "คุณสมบัติ",
@@ -4265,7 +4401,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "การส่งออกข้ามแพลตฟอร์มจะเตือนคุณเมื่อจำเป็นต้องทำงานด้วยตนเอง และโปรเจ็กต์ที่สร้างขึ้นจะมีชื่อว่า {{SNES}} / {{MD}} ดังนั้นจึงไม่ต้องสับสนกับแหล่งที่มา",
       "nav.language": "ภาษา",
       "nav.open": "เปิดการนำทาง",
-      "nav.close": "ปิดการนำทาง"
+      "nav.close": "ปิดการนำทาง",
+      "carousel.prev": "ดูตัวอย่างก่อนหน้า",
+      "carousel.next": "ตัวอย่างถัดไป",
+      "carousel.go": "แสดงตัวอย่าง {{n}}",
+      "carousel.slides": "ดูตัวอย่างสไลด์"
     },
     "tok": {
       "nav.features": "Features",
@@ -4381,7 +4521,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Cross-platform exports warn you when manual work is required, and generated projects are named {{SNES}} / {{MD}} so they never get confused with the source.",
       "nav.language": "Language",
       "nav.open": "Open navigation",
-      "nav.close": "Close navigation"
+      "nav.close": "Close navigation",
+      "carousel.prev": "Previous preview",
+      "carousel.next": "Next preview",
+      "carousel.go": "Show preview {{n}}",
+      "carousel.slides": "Preview slides"
     },
     "tr": {
       "nav.features": "Özellikler",
@@ -4497,7 +4641,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Platformlar arası dışa aktarmalar, manuel çalışma gerektiğinde sizi uyarır ve oluşturulan projelere {{SNES}} / {{MD}} adı verilir, böylece hiçbir zaman kaynakla karıştırılmazlar.",
       "nav.language": "Dil",
       "nav.open": "Gezinmeyi aç",
-      "nav.close": "Gezinmeyi kapat"
+      "nav.close": "Gezinmeyi kapat",
+      "carousel.prev": "Önceki önizleme",
+      "carousel.next": "Sonraki önizleme",
+      "carousel.go": "Önizlemeyi göster {{n}}",
+      "carousel.slides": "Slaytları önizleyin"
     },
     "uk": {
       "nav.features": "особливості",
@@ -4613,7 +4761,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Міжплатформний експорт попереджає вас, коли потрібна ручна робота, а згенеровані проекти мають назви {{SNES}} / {{MD}}, щоб їх ніколи не сплутати з джерелом.",
       "nav.language": "Мова",
       "nav.open": "Відкрити навігацію",
-      "nav.close": "Закрити навігацію"
+      "nav.close": "Закрити навігацію",
+      "carousel.prev": "Попередній попередній перегляд",
+      "carousel.next": "Наступний попередній перегляд",
+      "carousel.go": "Показати попередній перегляд {{n}}",
+      "carousel.slides": "Попередній перегляд слайдів"
     },
     "vi": {
       "nav.features": "Tính năng",
@@ -4729,7 +4881,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "Xuất khẩu đa nền tảng sẽ cảnh báo bạn khi cần thực hiện thao tác thủ công và các dự án được tạo sẽ được đặt tên là {{SNES}} / {{MD}} để chúng không bao giờ bị nhầm lẫn với nguồn.",
       "nav.language": "Ngôn ngữ",
       "nav.open": "Mở điều hướng",
-      "nav.close": "Đóng điều hướng"
+      "nav.close": "Đóng điều hướng",
+      "carousel.prev": "Xem trước trước",
+      "carousel.next": "Xem trước tiếp theo",
+      "carousel.go": "Hiển thị bản xem trước {{n}}",
+      "carousel.slides": "Xem trước slide"
     },
     "zh_Hans": {
       "nav.features": "特点",
@@ -4845,7 +5001,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "当需要手动工作时，跨平台导出会向您发出警告，并且生成的项目被命名为 {{SNES}} / {{MD}}，因此它们永远不会与源混淆。",
       "nav.language": "语言",
       "nav.open": "打开导航",
-      "nav.close": "关闭导航"
+      "nav.close": "关闭导航",
+      "carousel.prev": "上一个预览",
+      "carousel.next": "下一个预览",
+      "carousel.go": "显示预览 {{n}}",
+      "carousel.slides": "预览幻灯片"
     },
     "zh_Hant": {
       "nav.features": "特點",
@@ -4961,7 +5121,11 @@ window.SITE_I18N = {
       "feature.fidelity.desc": "當需要手動工作時，跨平台匯出會向您發出警告，並且生成的項目被命名為 {{SNES}} / {{MD}}，因此它們永遠不會與來源混淆。",
       "nav.language": "語言",
       "nav.open": "打開導航",
-      "nav.close": "關閉導航"
+      "nav.close": "關閉導航",
+      "carousel.prev": "上一個預覽",
+      "carousel.next": "下一個預覽",
+      "carousel.go": "顯示預覽 {{n}}",
+      "carousel.slides": "預覽幻燈片"
     }
   }
 };

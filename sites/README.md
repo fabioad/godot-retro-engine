@@ -17,6 +17,13 @@ Every download CTA points to:
 
 <https://github.com/fabioad/godot-retro-engine/releases/>
 
+## Hero carousel
+
+The console preview at the top cycles through the Sonic 2 and Gothicvania
+screenshots every 4.8 seconds. It pauses while hovered or focused, has previous
+and next buttons plus dot navigation, and stays static when the visitor prefers
+reduced motion. The controls also work with keyboard navigation.
+
 ## Languages
 
 The site ships the same 41 locales as the editor:

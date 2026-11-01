@@ -76,6 +76,10 @@ SPECIAL = {
     "nav.language": "Language",
     "nav.open": "Open navigation",
     "nav.close": "Close navigation",
+    "carousel.prev": "Previous preview",
+    "carousel.next": "Next preview",
+    "carousel.go": "Show preview {{n}}",
+    "carousel.slides": "Preview slides",
 }
 DELIM = "\n@@\n"
 

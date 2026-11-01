@@ -10,6 +10,7 @@
   const byLowerCode = new Map(languages.map((language) => [language.code.toLowerCase(), language]));
   const STORAGE_KEY = 'godotRetroEngine.language';
   let currentTranslations = (i18n && i18n.strings && i18n.strings.en) || {};
+  let updateCarouselLabels = null;
   const navLabel = (open) => currentTranslations[open ? 'nav.close' : 'nav.open']
     || (open ? 'Close navigation' : 'Open navigation');
 
@@ -67,6 +68,7 @@
       langSelect.setAttribute('aria-label', translations['nav.language'] || 'Language');
     }
     if (navToggle) navToggle.setAttribute('aria-label', navLabel(nav && nav.classList.contains('is-open')));
+    if (updateCarouselLabels) updateCarouselLabels();
     if (persist) storeLanguage(language.code);
   };
 
@@ -90,6 +92,96 @@
       .map(resolveLanguage)
       .find(Boolean);
     applyLanguage((requested || stored || preferred || byLowerCode.get('en')).code, false);
+  }
+
+  /* hero preview carousel */
+  const carousel = document.querySelector('[data-carousel]');
+  if (carousel) {
+    const slides = [...carousel.querySelectorAll('.screen-slide')];
+    const dots = [...carousel.querySelectorAll('[data-carousel-dot]')];
+    const badge = carousel.querySelector('#hero-badge');
+    const prevButton = carousel.querySelector('[data-carousel-prev]');
+    const nextButton = carousel.querySelector('[data-carousel-next]');
+    const dotsGroup = carousel.querySelector('[data-carousel-dots]');
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let index = Math.max(0, slides.findIndex((slide) => slide.classList.contains('is-active')));
+    let timer = null;
+    let paused = false;
+
+    const update = (nextIndex) => {
+      if (!slides.length) return;
+      index = (nextIndex + slides.length) % slides.length;
+      slides.forEach((slide, i) => {
+        const active = i === index;
+        slide.classList.toggle('is-active', active);
+        slide.setAttribute('aria-hidden', String(!active));
+      });
+      dots.forEach((dot, i) => {
+        const active = i === index;
+        dot.classList.toggle('is-active', active);
+        if (active) dot.setAttribute('aria-current', 'true');
+        else dot.removeAttribute('aria-current');
+      });
+      if (badge) badge.textContent = slides[index].dataset.badge || '';
+    };
+
+    const stop = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const start = () => {
+      stop();
+      if (paused || motionQuery.matches || document.hidden || slides.length < 2) return;
+      timer = window.setInterval(() => update(index + 1), 4800);
+    };
+
+    const pause = () => {
+      paused = true;
+      stop();
+    };
+
+    const resume = () => {
+      paused = false;
+      start();
+    };
+
+    const refreshLabels = () => {
+      if (prevButton) prevButton.setAttribute('aria-label', currentTranslations['carousel.prev'] || 'Previous preview');
+      if (nextButton) nextButton.setAttribute('aria-label', currentTranslations['carousel.next'] || 'Next preview');
+      if (dotsGroup) dotsGroup.setAttribute('aria-label', currentTranslations['carousel.slides'] || 'Preview slides');
+      const label = currentTranslations['carousel.go'] || 'Show preview {{n}}';
+      dots.forEach((dot, i) => dot.setAttribute('aria-label', label.replace('{{n}}', String(i + 1))));
+    };
+
+    updateCarouselLabels = refreshLabels;
+    refreshLabels();
+    update(index);
+
+    if (prevButton) prevButton.addEventListener('click', () => { update(index - 1); start(); });
+    if (nextButton) nextButton.addEventListener('click', () => { update(index + 1); start(); });
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', () => { update(i); start(); });
+    });
+
+    carousel.addEventListener('mouseenter', pause);
+    carousel.addEventListener('mouseleave', resume);
+    carousel.addEventListener('focusin', pause);
+    carousel.addEventListener('focusout', (event) => {
+      if (!carousel.contains(event.relatedTarget)) resume();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop();
+      else if (!paused) start();
+    });
+    motionQuery.addEventListener?.('change', () => {
+      if (motionQuery.matches) stop();
+      else start();
+    });
+
+    start();
   }
 
   const closeNav = () => {
