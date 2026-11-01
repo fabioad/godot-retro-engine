@@ -1374,6 +1374,7 @@ static func _write_snes_runtime(dir: String, runtime: Dictionary, stage: RetroSt
 	code += "static unsigned char actor_timer[RUNTIME_ACTOR_COUNT];\n"
 	code += "static unsigned char actor_state[RUNTIME_ACTOR_COUNT];\n"
 	code += "static unsigned char actor_facing[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short camera_x = 0, camera_y = 0;\n"
 	code += "static unsigned char ui_focus = 0;\nstatic unsigned char ui_active = 0;\nstatic unsigned char ui_flash = 0;\n\n"
 	code += "static unsigned char overlap(short ax, short ay, short aw, short ah, short bx, short by, short bw, short bh)\n{\n"
 	code += "    return (unsigned char)(ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by);\n}\n\n"
@@ -1410,7 +1411,7 @@ static func _write_snes_runtime(dir: String, runtime: Dictionary, stage: RetroSt
 	code += "    if (actor_state[i] != (unsigned char)(s + 1)) { actor_state[i] = (unsigned char)(s + 1); actor_frame[i] = 0; actor_timer[i] = 0; }\n"
 	code += "    actor_timer[i]++;\n    if (actor_timer[i] >= 8) { actor_timer[i] = 0; actor_frame[i]++; if (actor_frame[i] >= count) actor_frame[i] = 0; }\n"
 	code += "    if (actor_frame[i] >= count) actor_frame[i] = 0;\n"
-	code += "    oamSet(i * 4, actor_x[i], actor_y[i], 3, actor_facing[i], 0, list[actor_frame[i]], 0);\n}\n\n"
+	code += "    oamSet(i * 4, (short)(actor_x[i] - camera_x), (short)(actor_y[i] - camera_y), 3, actor_facing[i], 0, list[actor_frame[i]], 0);\n}\n\n"
 	code += "static void update_player(unsigned short pad, unsigned short down)\n{\n"
 	code += "    int i = RUNTIME_PLAYER;\n    int s;\n    short vx = 0;\n"
 	code += "    if (!ui_active) { if (pad & KEY_LEFT) vx = -2; if (pad & KEY_RIGHT) vx = 2; }\n"
@@ -1473,6 +1474,7 @@ static func _write_snes_runtime(dir: String, runtime: Dictionary, stage: RetroSt
 	code += "        cy = (short)(actor_y[RUNTIME_PLAYER] + runtime_actors[RUNTIME_PLAYER].h / 2 - RUNTIME_SCREEN_H / 2);\n"
 	code += "        if (cy < 0) cy = 0; if (cy > RUNTIME_WORLD_H - RUNTIME_SCREEN_H) cy = (short)(RUNTIME_WORLD_H - RUNTIME_SCREEN_H);\n"
 	code += "    }\n"
+	code += "    camera_x = cx; camera_y = cy;\n"
 	code += "    bgSetScroll(0, (unsigned short)cx, (unsigned short)cy);\n"
 	code += "#endif\n}\n\n"
 	code += "void runtime_update(void)\n{\n"
@@ -1600,6 +1602,7 @@ static func _write_md_runtime(dir: String, runtime: Dictionary, stage: RetroStag
 	code += "static unsigned char actor_ground[RUNTIME_ACTOR_COUNT];\n"
 	code += "static unsigned char actor_facing[RUNTIME_ACTOR_COUNT];\n"
 	code += "static unsigned char actor_row[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short camera_x = 0, camera_y = 0;\n"
 	code += "static const short actor_w[RUNTIME_ACTOR_COUNT] = {"
 	for j in range(actors.size()):
 		code += "%d%s" % [int(actors[j].get("w", 16)), "," if j + 1 < actors.size() else ""]
@@ -1706,7 +1709,7 @@ static func _write_md_runtime(dir: String, runtime: Dictionary, stage: RetroStag
 	code += "        if (actor_state_rows[i][s] != 255 && actor_row[i] != actor_state_rows[i][s]) { actor_row[i] = actor_state_rows[i][s]; SPR_setAnim(actor_sprites[i], actor_row[i]); }\n"
 	code += "        SPR_setHFlip(actor_sprites[i], actor_facing[i]);\n"
 	code += "    } else if (actor_rows[i] > 1 && actor_row[i] != 0) { actor_row[i] = 0; SPR_setAnim(actor_sprites[i], 0); }\n"
-	code += "    SPR_setPosition(actor_sprites[i], actor_x[i], actor_y[i]);\n}\n\n"
+	code += "    SPR_setPosition(actor_sprites[i], (short)(actor_x[i] - camera_x), (short)(actor_y[i] - camera_y));\n}\n\n"
 	code += "static void update_camera(void)\n{\n"
 	code += "#if RUNTIME_WIDGET_COUNT == 0\n"
 	code += "    short cx = 0, cy = 0;\n"
@@ -1718,7 +1721,8 @@ static func _write_md_runtime(dir: String, runtime: Dictionary, stage: RetroStag
 	code += "        cy = (short)(actor_y[RUNTIME_PLAYER] + actor_h[RUNTIME_PLAYER] / 2 - RUNTIME_SCREEN_H / 2);\n"
 	code += "        if (cy < 0) cy = 0; if (cy > RUNTIME_WORLD_H - RUNTIME_SCREEN_H) cy = (short)(RUNTIME_WORLD_H - RUNTIME_SCREEN_H);\n"
 	code += "    }\n"
-	code += "    VDP_setHorizontalScroll(BG_A, cx);\n    VDP_setVerticalScroll(BG_A, (short)-cy);\n"
+	code += "    camera_x = cx; camera_y = cy;\n"
+	code += "    VDP_setHorizontalScroll(BG_A, (short)-cx);\n    VDP_setVerticalScroll(BG_A, (short)-cy);\n"
 	code += "#endif\n}\n\n"
 	code += "void runtime_update(void)\n{\n"
 	code += "    unsigned short joy = JOY_readJoypad(JOY_1);\n    unsigned short pressed = (unsigned short)(joy & ~joy_prev);\n    int i;\n"
@@ -1887,6 +1891,7 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		if has_bgm:
 			code += "    spcSetBank((u8 *)&%s);\n" % bank_symbol
 			code += "    spcLoad(%s);\n" % module_name
+			code += "    spcSetModuleVolume(255);\n"
 		for i in range(sfx_brr_arrays.size()):
 			var sfx_safe := String(sfx_brr_arrays[i])
 			code += "    spcSetSoundEntry(15, 8, 6, %d, (u8 *)sfx_%s_brr, &sfx_table[%d]);\n" % [
@@ -1894,8 +1899,8 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		if not sfx_brr_arrays.is_empty():
 			code += "    spcSetSoundTableEntry(&sfx_table[0]);\n"
 			code += "    spcAllocateSoundRegion(%d);\n" % region
-		code += "    spcFlush();\n"
 		if has_bgm:
+			code += "    spcSetModuleVolume(255);\n"
 			code += "    spcPlay(0);\n"
 	if not sfx_brr_arrays.is_empty() or has_bgm:
 		var player_step := "runtime_update(); " if has_runtime else ("updatePlayer(); " if not player.is_empty() else "")

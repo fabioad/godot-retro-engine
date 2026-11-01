@@ -1584,6 +1584,9 @@ func _import_tilemap(node: TileMapLayer, dir: String, assets: Array) -> void:
 			var image: Image = texture.get_image()
 			if image == null:
 				continue
+			# Indexed/paletted textures must be expanded before blitting into
+			# the RGBA8 stage atlas; otherwise every tile can become white.
+			image.convert(Image.FORMAT_RGBA8)
 			var tile_image := image.get_region(region)
 			if tile_image.get_width() != tile_size.x or tile_image.get_height() != tile_size.y:
 				tile_image.resize(tile_size.x, tile_size.y, Image.INTERPOLATE_NEAREST)

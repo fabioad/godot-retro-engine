@@ -2382,3 +2382,19 @@ Validated by generating both:
 SNES -> MD: gothicvania_md_export
 MD -> SNES: s2disasm_snes_export
 ```
+
+### Release test: user-built SNES/MD sidescroller (0.1.60)
+
+Built two games from downloaded web assets and a downloaded MIDI through the
+New Project, Native import, Audio and Game Build paths. Fixed four app bugs
+found during the test: indexed TileMapLayer tilesets were white; native runtime
+actors were not camera-relative (SNES and MD); MD camera scroll sign; SNES
+`spcFlush` silenced BGM after `spcLoad`.
+
+```text
+SNES ROM 262,144 bytes, LoROM checksum OK
+MD ROM   262,144 bytes, SEGA header OK
+preview: player moved, stage scrolled, audio packets/frames active
+SNES captured audio peak 20,480, RMS 5,482
+MD captured audio peak 4,517, RMS 840
+```
