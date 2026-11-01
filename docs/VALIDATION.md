@@ -2145,3 +2145,23 @@ free:    524,773 bytes
 
 Remaining: full Tails/2P AI, SMPS music, full vertical loops/plane switching,
 special stages, water, title/act cards, openings/ending.
+
+### Sonic 2 corkscrew tumble poses (0.1.48)
+
+Three original Sonic tumble/rotation poses are imported into the BG2 atlas and
+selected from the spiral flip angle. The OBJ Sonic is hidden while on the
+spiral, and the BG2 tumble sprite changes priority to disappear behind the loop
+art on the far side. Only 3 of the 12 tumble poses fit the 512-tile BG2 budget;
+the intermediate poses remain.
+
+```text
+BG2 CHR: 501 / 512 tiles
+ROM:     1,048,576 bytes, LoROM FastROM, checksum OK
+free:    523,773 bytes
+```
+
+![Corkscrew tumble](screenshots/sonic2_snes_port_tumble.png)
+
+Still pending: SMPS music, full vertical loops/plane switching, full Tails/2P,
+special stages, water, title/act cards, openings/ending, and the remaining
+tumble poses.

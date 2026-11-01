@@ -74,7 +74,8 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
 - the EHZ corkscrew/spiral path using the original cosine/flip tables, with
   sprite priority switching behind the loop art;
 - a Tails visual follower with original idle/walk/fly frames and delayed
-  position history.
+  position history;
+- three original tumble poses for the corkscrew, with BG2 priority switching.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
 systems (remaining vertical loops/plane switching, SMPS music, Tails, special

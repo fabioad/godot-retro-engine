@@ -703,6 +703,36 @@ for _fid in TAILS_FRAME_IDS:
                             _base_tile + _yy * _cols + _xx, 0, 0))
     object_mapping_frames["tails"].append(_pieces)
 
+# Four original tumble/rotation poses used on the corkscrew.  The full 360
+# frame set is too large for the 512-tile BG2 budget; four poses already give
+# a readable rotating Sonic.
+TUMBLE_FRAME_IDS = [0x5F, 0x63, 0x67]
+object_art["tumble"] = []
+object_mapping_frames["tumble"] = []
+for _fid in TUMBLE_FRAME_IDS:
+    _tx, _ty, _tw, _th = [int(v) for v in frames_meta[_fid]["rect"]]
+    _crop = sheet.crop((_tx, _ty, _tx + _tw, _ty + _th))
+    _cols = (_tw + 7) // 8
+    _rows = (_th + 7) // 8
+    _base_tile = len(object_art["tumble"])
+    for _yy in range(_rows):
+        for _xx in range(_cols):
+            _block = []
+            for _y in range(8):
+                for _x in range(8):
+                    _sx = _xx * 8 + _x
+                    _sy = _yy * 8 + _y
+                    _block.append(_crop.getpixel((_sx, _sy))
+                                  if _sx < _tw and _sy < _th else 0)
+            object_art["tumble"].append(
+                [[_block[_y * 8 + _x] for _x in range(8)] for _y in range(8)])
+    _pieces = []
+    for _yy in range(_rows):
+        for _xx in range(_cols):
+            _pieces.append((_xx * 8 - _tw // 2, _yy * 8 - _th // 2, 1, 1,
+                            _base_tile + _yy * _cols + _xx, 0, 0))
+    object_mapping_frames["tumble"].append(_pieces)
+
 # Monitor 1-up: monitor casing plus the original Sonic head from the lives
 # counter art at the content position used by mapping frame 2.
 object_art["monitor_1up"] = object_art["monitor"] + object_art["lives"][:4]
@@ -737,7 +767,8 @@ OBJECT_FRAME_DEFS = (
     [("mon_1up", 0, "monitor_1up")] +
     [("bridge", 0, "bridge"), ("bridge", 1, "bridge")] +
     [("platform", 0, "levelart")] +
-    [("tails", i, "tails") for i in range(5)]
+    [("tails", i, "tails") for i in range(5)] +
+    [("tumble", i, "tumble") for i in range(3)]
 )
 
 object_atlas = []
@@ -759,6 +790,10 @@ def object_tile_index(tile):
 
 
 for _setname, _frame_id, _artname in OBJECT_FRAME_DEFS:
+    if _setname == "monitor" and _frame_id in (1, 2, 3, 9, 10):
+        object_frame_start.append(len(object_draw_dx))
+        object_frame_len.append(0)
+        continue
     _start = len(object_draw_dx)
     _pieces = list(reversed(object_mapping_frames[_setname][_frame_id]))
     for (_x, _y, _w, _h, _tile, _hf, _vf) in _pieces:
@@ -835,6 +870,7 @@ OBJ_FRAME = {
     "MON_1UP": 60, "BRIDGE_0": 61, "BRIDGE_1": 62, "PLATFORM": 63,
     "TAILS_IDLE": 64, "TAILS_WALK0": 65, "TAILS_WALK1": 66,
     "TAILS_FLY0": 67, "TAILS_FLY1": 68,
+    "TUMBLE0": 69, "TUMBLE1": 70, "TUMBLE2": 71,
 }
 
 
@@ -1166,6 +1202,7 @@ static unsigned char spindash_charge;
 static unsigned char rolling;
 static unsigned char on_spiral;
 static unsigned short spiral_i;
+static unsigned char spiral_angle;
 static unsigned char lost_count;
 static short tail_hist_x[32], tail_hist_y[32];
 static unsigned char tail_hist_i, tail_anim_timer, tail_anim_frame, tail_facing;
@@ -1699,18 +1736,18 @@ static unsigned char sign_frame(void)
 }
 
 static void obj_put(short sx, short sy, unsigned short tile, unsigned char flip,
-        unsigned char pal)
+        unsigned char pal, unsigned char prio)
 {
     short tx = (short)(sx >> 3);
     short ty = (short)(sy >> 3);
     if (tx < 0 || tx >= 32 || ty < 0 || ty >= 28) return;
     obj_map[(unsigned short)ty * 32 + (unsigned short)tx] =
         (unsigned short)(tile | ((unsigned short)(flip & 3) << 14) |
-            ((unsigned short)(pal & 7) << 10) | 0x2000);
+            ((unsigned short)(pal & 7) << 10) | (prio ? 0x2000 : 0));
 }
 
-static void draw_obj_frame_pal(unsigned char frame, short sx, short sy,
-        unsigned char flip, unsigned char pal)
+static void draw_obj_frame_prio(unsigned char frame, short sx, short sy,
+        unsigned char flip, unsigned char pal, unsigned char prio)
 {
     unsigned short i, start, count;
     start = obj_frame_start[frame];
@@ -1721,8 +1758,14 @@ static void draw_obj_frame_pal(unsigned char frame, short sx, short sy,
         unsigned char fl = obj_draw_flip[start + i];
         if (flip & 1) { dx = (short)(-dx - 8); fl = (unsigned char)(fl ^ 1); }
         if (flip & 2) { dy = (short)(-dy - 8); fl = (unsigned char)(fl ^ 2); }
-        obj_put((short)(sx + dx), (short)(sy + dy), obj_draw_tile[start + i], fl, pal);
+        obj_put((short)(sx + dx), (short)(sy + dy), obj_draw_tile[start + i], fl, pal, prio);
     }
+}
+
+static void draw_obj_frame_pal(unsigned char frame, short sx, short sy,
+        unsigned char flip, unsigned char pal)
+{
+    draw_obj_frame_prio(frame, sx, sy, flip, pal, 1);
 }
 
 static void draw_obj_frame(unsigned char frame, short sx, short sy, unsigned char flip)
@@ -1801,6 +1844,13 @@ static void draw_effects(void)
         draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 1) & 3)), (short)(sx + 14), (short)(sy - 10), 0);
         draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 2) & 3)), (short)(sx - 12), (short)(sy + 12), 0);
         draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 3) & 3)), (short)(sx + 12), (short)(sy + 12), 0);
+    }
+    if (on_spiral) {
+        unsigned char f = (unsigned char)((spiral_angle >> 4) & 3);
+        if (f > 2) f = 2;
+        unsigned char p = (unsigned char)(xpos < (short)obj_x[spiral_i] ? 0 : 1);
+        draw_obj_frame_prio((unsigned char)(OF_TUMBLE0 + f), (short)(xpos - cam_x),
+            (short)(ypos - cam_y), 0, 7, p);
     }
     for (i = 0; i < 10; i++) {
         unsigned char frame;
@@ -2082,6 +2132,7 @@ static void update_objects(void)
                     on_spiral = 0;
                 } else {
                     ypos = (short)(oy + (signed char)spiral_cos[d0]);
+                    spiral_angle = spiral_flip[(unsigned short)(d0 >> 3)];
                     grounded = 1;
                     vy = 0;
                 }
@@ -2281,7 +2332,7 @@ static void draw_sonic(void)
     short sx, sy, fw, fh;
     const short *pieces;
     if (on_spiral && xpos < (short)obj_x[spiral_i]) prio = 0;
-    if (game_over) {
+    if (game_over || on_spiral) {
         for (i = 0; i < MAX_PIECES; i++) oamSetEx((u16)(i * 4), OBJ_LARGE, OBJ_HIDE);
         return;
     }
