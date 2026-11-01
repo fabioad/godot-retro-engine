@@ -823,6 +823,7 @@ object_chr = b"\x00" * 32 + b"".join(snes_tile_8x8(t) for t in object_atlas)
 OBJECT_KINDS = {
     13: 4,   # goal signpost
     17: 9,   # bridge
+    3: 12,   # plane switcher
     6: 11,   # spiral / corkscrew
     24: 10,  # EHZ platform
     38: 1,   # monitor
@@ -1218,6 +1219,8 @@ static unsigned char rolling;
 static unsigned char on_spiral;
 static unsigned short spiral_i;
 static unsigned char spiral_angle;
+static unsigned char top_solid = 0x0E;
+static unsigned char lrb_solid = 0x0E;
 static unsigned char lost_count;
 static short tail_hist_x[32], tail_hist_y[32];
 static unsigned char tail_hist_i, tail_anim_timer, tail_anim_frame, tail_facing;
@@ -1399,8 +1402,8 @@ static short check_floor(short *out_angle)
 {
     unsigned char a1 = 0, a2 = 0;
     short d1, d2, d;
-    d1 = find_floor((short)(px() + XRADIUS), (short)(py() + YRADIUS), 0x0E, &a1);
-    d2 = find_floor((short)(px() - XRADIUS), (short)(py() + YRADIUS), 0x0E, &a2);
+    d1 = find_floor((short)(px() + XRADIUS), (short)(py() + YRADIUS), top_solid, &a1);
+    d2 = find_floor((short)(px() - XRADIUS), (short)(py() + YRADIUS), top_solid, &a2);
     if (d2 <= d1) { d = d2; *out_angle = a2; }
     else { d = d1; *out_angle = a1; }
     if (*out_angle & 1) *out_angle = 0;
@@ -1413,8 +1416,8 @@ static short check_ceiling(void)
     short d1, d2, d;
     short y = (short)(py() - YRADIUS);
     y = (short)(y ^ 0xF);
-    d1 = find_floor((short)(px() + XRADIUS), y, 0x0E, &a1);
-    d2 = find_floor((short)(px() - XRADIUS), y, 0x0E, &a2);
+    d1 = find_floor((short)(px() + XRADIUS), y, lrb_solid, &a1);
+    d2 = find_floor((short)(px() - XRADIUS), y, lrb_solid, &a2);
     if (d2 <= d1) d = d2; else d = d1;
     return d;
 }
@@ -1424,13 +1427,13 @@ static short check_left_wall(void)
     unsigned char a = 0;
     short x = (short)(px() - XRADIUS);
     x = (short)(x ^ 0xF);
-    return find_wall(x, py(), 0x0E, &a);
+    return find_wall(x, py(), lrb_solid, &a);
 }
 
 static short check_right_wall(void)
 {
     unsigned char a = 0;
-    return find_wall((short)(px() + XRADIUS), py(), 0x0E, &a);
+    return find_wall((short)(px() + XRADIUS), py(), lrb_solid, &a);
 }
 
 static void do_collision(void)
@@ -1815,7 +1818,7 @@ static void draw_objects(void)
         short oy = obj_ry[i];
         short sx, sy;
         unsigned char frame;
-        if (obj_kind[i] == 11) continue;
+        if (obj_kind[i] == 11 || obj_kind[i] == 12) continue;
         if (obj_kind[i] >= 5 && (obj_state[i] & 2)) continue;
         if (ox < cam_x - 64 || ox > cam_x + 320) continue;
         if (oy < cam_y - 96 || oy > cam_y + 320) continue;
@@ -2151,7 +2154,51 @@ static void update_objects(void)
                 (short)(dir * 0x100), -0x100);
             obj_timer[i] = 180;
         }
-        if (kind == 11) {
+        if (kind == 12) {
+            unsigned char axis_y = (obj_sub[i] & 4) != 0;
+            unsigned short radius;
+            unsigned char flag;
+            switch (obj_sub[i] & 3) {
+                case 0: radius = 0x20; break;
+                case 1: radius = 0x40; break;
+                case 2: radius = 0x80; break;
+                default: radius = 0x100; break;
+            }
+            if (!obj_phase[i]) {
+                obj_phase[i] = 1;
+                obj_state[i] = (unsigned short)(axis_y ? (ypos >= oy) : (xpos >= ox));
+            }
+            flag = (unsigned char)(obj_state[i] & 1);
+            if (!axis_y) {
+                if (!flag && xpos >= ox) {
+                    obj_state[i] |= 1;
+                    if (dy < radius) {
+                        top_solid = 0x0C; lrb_solid = 0x0D;
+                        if (obj_sub[i] & 8) { top_solid = 0x0E; lrb_solid = 0x0F; }
+                    }
+                } else if (flag && xpos < ox) {
+                    obj_state[i] &= (unsigned short)~1;
+                    if (dy < radius) {
+                        top_solid = 0x0C; lrb_solid = 0x0D;
+                        if (obj_sub[i] & 16) { top_solid = 0x0E; lrb_solid = 0x0F; }
+                    }
+                }
+            } else {
+                if (!flag && ypos >= oy) {
+                    obj_state[i] |= 1;
+                    if (dx < radius) {
+                        top_solid = 0x0C; lrb_solid = 0x0D;
+                        if (obj_sub[i] & 8) { top_solid = 0x0E; lrb_solid = 0x0F; }
+                    }
+                } else if (flag && ypos < oy) {
+                    obj_state[i] &= (unsigned short)~1;
+                    if (dx < radius) {
+                        top_solid = 0x0C; lrb_solid = 0x0D;
+                        if (obj_sub[i] & 16) { top_solid = 0x0E; lrb_solid = 0x0F; }
+                    }
+                }
+            }
+        } else if (kind == 11) {
             short rel = (short)(xpos - ox);
             if (on_spiral && spiral_i == i) {
                 short d0 = (short)(rel + 0xD0);
@@ -2350,6 +2397,7 @@ static void respawn_sonic(void)
     for (i = 0; i < RING_COUNT; i++) ring_taken[i] = 0;
     for (i = 0; i < OBJ_COUNT; i++) {
         if (obj_kind[i] >= 5) obj_state[i] &= (unsigned short)~2;
+        if (obj_kind[i] == 12) { obj_state[i] = 0; obj_phase[i] = 0; }
     }
 }
 
@@ -2514,6 +2562,8 @@ int main(void)
     spindash_charge = 0;
     rolling = 0;
     on_spiral = 0;
+    top_solid = 0x0E;
+    lrb_solid = 0x0E;
     {
         int ti;
         for (ti = 0; ti < 32; ti++) {

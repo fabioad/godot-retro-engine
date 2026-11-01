@@ -84,6 +84,9 @@ The runtime is C on the SNES side:
 - spiral/corkscrew path: the original `Obj06_CosineTable` and
   `FlipAngleTable` drive Sonic along the corkscrew, with the roll animation and
   OAM priority switching so he can disappear behind the loop art;
+- PlaneSwitcher objects: solid-plane bits (`top_solid`/`lrb_solid`) switch on
+  the original X/Y crossing rectangles; the full vertical-loop path still
+  needs validation across every loop instance;
 - Tails follower: five original frames (idle/walk/fly), position history with
   delay, fly catch-up and BG2 rendering (visual sidekick, not full 2P AI);
 - corkscrew tumble poses: three rotated Sonic frames replace the ball on the
@@ -154,6 +157,7 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Corkscrew tumble](screenshots/sonic2_snes_port_tumble.png)
 ![Music and VRAM cleanup](screenshots/sonic2_snes_port_music.png)
 ![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
+![Plane switcher / water area](screenshots/sonic2_snes_port_plane.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The

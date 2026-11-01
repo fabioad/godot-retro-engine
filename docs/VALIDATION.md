@@ -2208,3 +2208,20 @@ OBJ/HUD:     441 / 512 tiles (25 HUD glyphs)
 ![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
 
 Remaining audio work: exact FM/PSG timbres and the rest of the soundtrack.
+
+### Sonic 2 PlaneSwitcher support (0.1.51)
+
+The PlaneSwitcher objects (id 3) now drive `top_solid`/`lrb_solid` using their
+original X/Y crossing rectangles and radius table, allowing the loop/collision
+planes to switch. The corkscrew path remains on the `Obj06` cosine/flip tables.
+
+```text
+ROM: 1,048,576 bytes, LoROM FastROM, checksum OK
+free: 519,576 bytes
+```
+
+![Plane switcher](screenshots/sonic2_snes_port_plane.png)
+
+The full vertical-loop path still needs validation across every loop instance.
+Still pending: exact FM/PSG timbre, full Tails/2P, special stages, water,
+title/act cards, openings/ending, remaining tumble poses.

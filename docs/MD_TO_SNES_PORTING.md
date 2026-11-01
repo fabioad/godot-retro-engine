@@ -77,7 +77,8 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
   position history;
 - three original tumble poses for the corkscrew, with BG2 priority switching;
 - EHZ music transcribed from SMPS note data (FM1-5, PSG1-2, DAC) to an
-  8-channel IT/SNESMOD soundbank (approximate FM timbre, original drum rhythm).
+  8-channel IT/SNESMOD soundbank (approximate FM timbre, original drum rhythm);
+- PlaneSwitcher solid-plane switching for the loop/collision planes.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
 systems (remaining vertical loops/plane switching, exact FM/DAC audio, Tails,
