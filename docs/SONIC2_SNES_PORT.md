@@ -96,9 +96,10 @@ The runtime is C on the SNES side:
 - EHZ music: the original SMPS note data is parsed into an 8-channel IT module
   (FM1-5, PSG1-2 and DAC) and a 30 KiB SNESMOD soundbank (bank 15). The six
   `EHZ_Voices` FM algorithms/operators are rendered into instrument samples;
-  the DAC Kick/Snare/Tom WAVs are used for drums. Arrangement, tempo, loop and
-  drum rhythm come from SMPS; the FM envelope/one-shot sample rendering is
-  still an approximation of the YM2612;
+  the DAC Kick/Snare/Tom WAVs are used for drums. FM instrument samples now
+  loop from 0.20 s to 0.38 s so long notes sustain instead of cutting.
+  Arrangement, tempo, loop and drum rhythm come from SMPS; the YM2612
+  envelope/timing is still an approximation;
 - ROM expanded to 1 MiB to leave room for audio and future modes.
 
 ## Build and run

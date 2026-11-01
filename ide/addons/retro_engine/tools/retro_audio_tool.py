@@ -328,9 +328,11 @@ def write_it_from_events(path: str, events: list[NoteEvent], title: str,
         hdr[0x2E] = 1  # signed samples
         hdr[0x2F] = 32  # default panning
         n = len(s["data"])
+        loop_start = int(s.get("loop_start", 0))
+        loop_end = int(s.get("loop_end", n))
         hdr[0x30:0x34] = _le32(n)
-        hdr[0x34:0x38] = _le32(0)
-        hdr[0x38:0x3C] = _le32(n)
+        hdr[0x34:0x38] = _le32(loop_start)
+        hdr[0x38:0x3C] = _le32(loop_end)
         hdr[0x3C:0x40] = _le32(s["rate"])
         hdr[0x40:0x44] = _le32(0)
         hdr[0x44:0x48] = _le32(0)

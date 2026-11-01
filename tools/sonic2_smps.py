@@ -121,7 +121,7 @@ def _parse_voices(lines):
     return voices
 
 
-def _fm_sample(voice, rate=16744, seconds=0.55, base_freq=523.251):
+def _fm_sample(voice, rate=16744, seconds=0.38, base_freq=523.251, loop_start=0.20):
     n = max(1, int(rate * seconds))
     alg = voice["alg"] & 7
     fb = voice["fb"] & 7
@@ -154,8 +154,6 @@ def _fm_sample(voice, rate=16744, seconds=0.55, base_freq=523.251):
                 env = 1.0 - (1.0 - sustains[i]) * ((t - attacks[i]) / max(1e-6, decays[i]))
             else:
                 env = sustains[i]
-            if t > seconds - releases[i]:
-                env *= max(0.0, (seconds - t) / max(1e-6, releases[i]))
             envs.append(env)
         for i in range(4):
             phases[i] = (phases[i] + base_freq * ratios[i] / rate) % 1.0
@@ -188,7 +186,8 @@ def _fm_sample(voice, rate=16744, seconds=0.55, base_freq=523.251):
     peak = max((abs(v) for v in out), default=0.0)
     if peak > 1e-6:
         out = [v * 0.82 / peak for v in out]
-    return {"name": "fm", "data": out, "loop": False, "rate": rate}
+    return {"name": "fm", "data": out, "loop": True, "rate": rate,
+            "loop_start": int(rate * loop_start), "loop_end": len(out)}
 
 
 def _square_sample(rate=16744, seconds=0.3):
@@ -348,8 +347,8 @@ def build_ehz_module(root: str, out_dir: str):
             return None
         fm_samples = []
         for voice in voices[:6]:
-            sample = _fm_sample(voice, rate=16744, seconds=0.34,
-                                base_freq=523.251)
+            sample = _fm_sample(voice, rate=16744, seconds=0.38,
+                                base_freq=523.251, loop_start=0.20)
             sample["name"] = "fm%d" % len(fm_samples)
             fm_samples.append(sample)
 

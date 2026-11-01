@@ -2259,3 +2259,18 @@ preview: 400 audio packets / 213,706 frames over 400 emulator frames
 ![FM voices and DAC](screenshots/sonic2_snes_port_fm_dac.png)
 
 The YM2612 envelope/timing is still approximated (0.34 s one-shot FM samples).
+
+### Sonic 2 FM sample sustain (0.1.53)
+
+FM instrument samples now use an IT loop range (0.20 s .. 0.38 s) instead of
+being one-shot. This lets the EHZ lead/bass sustain on long notes while keeping
+the soundbank inside the 32 KiB bank-15 window.
+
+```text
+soundbank: 32,390 bytes (bank 15)
+ROM: 1,048,576 bytes, LoROM FastROM, checksum OK, 490,580 bytes free
+preview: 500 audio packets / 267,019 frames
+```
+
+Still approximate: the YM2612 envelope/timing and loop-boundary phase are not
+bit-exact.
