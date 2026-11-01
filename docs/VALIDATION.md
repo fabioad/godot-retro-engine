@@ -2225,3 +2225,17 @@ free: 519,576 bytes
 The full vertical-loop path still needs validation across every loop instance.
 Still pending: exact FM/PSG timbre, full Tails/2P, special stages, water,
 title/act cards, openings/ending, remaining tumble poses.
+
+### Sonic 2 vertical loop validation (0.1.51)
+
+Controlled run at x=4,150 shows the full vertical loop: Sonic enters on the
+slope, follows the loop with the PlaneSwitcher solid-plane changes, and exits
+onto the far slope. Tails follows through the loop.
+
+```text
+entry: x=4,150; loop center ~4,224/4,368; exit slope visible at frame 300
+ROM:   1,048,576 bytes, LoROM FastROM, checksum OK
+```
+
+![Vertical loop](screenshots/sonic2_snes_port_vertical_loop.png)
+![Vertical loop exit](screenshots/sonic2_snes_port_vertical_loop_exit.png)

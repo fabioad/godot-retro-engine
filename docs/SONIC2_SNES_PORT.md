@@ -158,6 +158,8 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Music and VRAM cleanup](screenshots/sonic2_snes_port_music.png)
 ![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
 ![Plane switcher / water area](screenshots/sonic2_snes_port_plane.png)
+![Vertical loop](screenshots/sonic2_snes_port_vertical_loop.png)
+![Vertical loop exit](screenshots/sonic2_snes_port_vertical_loop_exit.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
