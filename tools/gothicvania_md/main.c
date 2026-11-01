@@ -8,6 +8,8 @@
 #include <genesis.h>
 #include "assets.h"
 
+extern const TileSet font_default;
+
 #define LEVEL_COLS   300
 #define LEVEL_ROWS   14
 #define LEVEL_PAGES  19
@@ -28,7 +30,8 @@
 #define PAL_HERO     2
 #define PAL_ENEMY    3
 
-#define CAM_MAX      (4800 - 256)
+#define LEVEL_PXW    4800
+#define CAM_MAX      (LEVEL_PXW - 256)
 #define HALF_W       6
 #define BODY_HI      24
 #define BODY_LO      4
@@ -66,7 +69,8 @@
 
 typedef enum { ST_TITLE, ST_PLAY, ST_END, ST_GAMEOVER } GameState;
 
-static u8 attackTimer, hurtFlag, hurtDir, spikeCD;
+static u8 attackTimer, hurtFlag, hurtIFrames, spikeCD;
+static s16 hurtDir;
 static u16 playPrevPad;
 static u8 animFrame, lastAnimF;
 static u16 animTimer;
@@ -98,7 +102,7 @@ static void loadPageNow(u16 page, u16 slot)
         return;
     }
     VDP_drawImageEx(BG_A, pageImgs[page],
-        TILE_ATTR_FULL(PAL_LEVEL, 1, 0, 0, VRAM_LEVEL0 + slot * PAGE_TILES),
+        TILE_ATTR_FULL(PAL_LEVEL, 0, 0, 0, VRAM_LEVEL0 + slot * PAGE_TILES),
         slot * 32, 0, FALSE, CPU);
 }
 
@@ -210,10 +214,10 @@ static const u8 *enemyBandSrc(u8 i)
     return skeletonFrameSrc(en[i].frame);
 }
 
-static s8 freeSlot(void)
+static s16 freeSlot(void)
 {
     u8 i;
-    for (i = 0; i < ENEMY_SLOTS; i++) if (!en[i].active) return (s8)i;
+    for (i = 0; i < ENEMY_SLOTS; i++) if (!en[i].active) return (s16)i;
     return -1;
 }
 
@@ -279,7 +283,7 @@ static void enemyUpdate(void)
         d = (s16)spawnTx[i] - ptile;
         if (d < 0) d = -d;
         if (d <= 8) {
-            s8 slot = freeSlot();
+            s16 slot = freeSlot();
             if (slot >= 0) {
                 spawnEnemy((u8)slot, i);
                 spawned[i] = 1;
@@ -364,10 +368,10 @@ static void enemyUpdate(void)
     }
 }
 
-static s8 enemyCombat(u8 attacking, u8 invuln)
+static s16 enemyCombat(u8 attacking, u8 invuln)
 {
     s16 px = (s16)(feetX >> 8), py = (s16)(feetY >> 8);
-    s8 hurt = 0;
+    s16 hurt = 0;
     u8 i;
     for (i = 0; i < ENEMY_SLOTS; i++) {
         s16 dx, adx, dy, ady;
@@ -506,6 +510,7 @@ static void enterPlay(void)
     VDP_clearSprites();
     VDP_updateSprites(0, DMA);
     VDP_clearPlane(BG_A, TRUE);
+    VDP_loadFont(&font_default, DMA);
     camX = 0;
     feetX = (s32)80 << 8;
     feetY = (s32)192 << 8;
@@ -523,6 +528,7 @@ static void enterPlay(void)
     attackTimer = 0;
     hurtFlag = 0;
     hurtDir = 0;
+    hurtIFrames = 0;
     spikeCD = 0;
     playPrevPad = 0;
     animFrame = 0;
@@ -603,6 +609,12 @@ static void updatePlay(void)
         if (cellv(c, (iy - BODY_LO) >> 4) == 1 || cellv(c, (iy - BODY_HI) >> 4) == 1)
             feetX = (s32)(((c + 1) << 4) + HALF_W) << 8;
     }
+    // Never let enemy knockback or a stale out-of-bounds cell push the hero
+    // outside the level; otherwise cellv() keeps clamping one solid virtual
+    // cell to the left and the sprite disappears off-screen.
+    if (feetX < ((s32)HERO_LEFT_DX << 8)) feetX = (s32)HERO_LEFT_DX << 8;
+    if (feetX > ((s32)(LEVEL_PXW - HERO_LEFT_DX) << 8))
+        feetX = (s32)(LEVEL_PXW - HERO_LEFT_DX) << 8;
 
     prevFeetPx = feetY >> 8;
     feetY += vy;
@@ -675,15 +687,18 @@ static void updatePlay(void)
     heroGfx = animF + sub;
     if (heroGfx != heroUploaded) heroDirty = 1;
 
+    if (hurtIFrames) hurtIFrames--;
     enemyUpdate();
     {
-        s8 kb = enemyCombat(attacking, hurtFlag);
+        s16 kb = enemyCombat(attacking, hurtFlag || hurtIFrames);
         if (kb) {
+            s16 dir = (kb < 0) ? -1 : 1;
             hurtFlag = 1;
-            hurtDir = kb;
+            hurtDir = dir;
+            hurtIFrames = 90;      // cover the full hurt arc + time to walk away
             onGround = 0;
             vy = -640;
-            vx = (s16)kb * 427;
+            vx = dir * 427;
             attackTimer = 0;
             XGM2_playPCM(sfx_hurt, sizeof(sfx_hurt), SOUND_PCM_CH2);
             if (--health == 0) { enterEnd("GAME OVER"); return; }

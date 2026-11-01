@@ -2331,3 +2331,20 @@ preview: 1,254 frames, audio packets flowing
 Limitations: two MD planes instead of three SNES layers (ground/deco
 pre-composited, sky gradient baked), end/game-over use the SGDK font, and the
 music is a MIDI -> YM2612 transcription.
+
+### Gothicvania MD: jump/hurt lock fix (0.1.57)
+
+Two bugs made the hero disappear/stick after jumping into the skeleton:
+
+- enemy knockback is returned as `s16` and normalized to `-1/+1`; the old
+  `s8` return was corrupted to `-52` under LTO and produced `vx = -22187`;
+- the hero is clamped to the 0..4736 level bounds after wall collision, so a
+  knockback can no longer push him through the left edge (`cellv()` kept
+  clamping one virtual cell to the left);
+- 90 frames of hurt invulnerability now cover the full arc plus time to walk
+  away, instead of re-hitting immediately on landing.
+
+Validated in the preview: jump into the skeleton, then hold right; the hero
+lands at the left edge, stays visible and walks away.
+
+![Hero visible after hurt knockback](screenshots/gothicvania_md_hurt_recovery.png)

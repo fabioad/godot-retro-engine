@@ -63,6 +63,14 @@ preview: 1,254 frames; audio packets/frames flowing
 ![Mega Drive title](screenshots/gothicvania_md_title.png)
 ![Mega Drive gameplay](screenshots/gothicvania_md_play.png)
 ![Mega Drive jump](screenshots/gothicvania_md_jump.png)
+![Hurt recovery](screenshots/gothicvania_md_hurt_recovery.png)
+
+## Jump/hurt fix
+
+The port clamps the hero to the level bounds and uses a 16-bit, normalized
+enemy-knockback direction.  A `s8` return corrupted by LTO had produced a huge
+`vx` (`-22187`) that teleported the hero off-screen; 90 frames of hurt
+invulnerability also let him escape a skeleton overlapping the level edge.
 
 ## Remaining differences
 
