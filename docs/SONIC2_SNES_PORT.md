@@ -84,6 +84,8 @@ The runtime is C on the SNES side:
 - spiral/corkscrew path: the original `Obj06_CosineTable` and
   `FlipAngleTable` drive Sonic along the corkscrew, with the roll animation and
   OAM priority switching so he can disappear behind the loop art;
+- Tails follower: five original frames (idle/walk/fly), position history with
+  delay, fly catch-up and BG2 rendering (visual sidekick, not full 2P AI);
 - SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
   PVSnesLib sound engine (synthesized placeholders; original SMPS music is
   still pending);
@@ -143,6 +145,7 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Platform](screenshots/sonic2_snes_port_platform.png)
 ![Spiral](screenshots/sonic2_snes_port_spiral.png)
 ![Spiral behind the loop](screenshots/sonic2_snes_port_spiral_behind.png)
+![Tails follower](screenshots/sonic2_snes_port_tails.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -166,8 +169,9 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
    still missing.
 5. **Audio music.** SFX are in through the SNES sound engine, but the original
    SMPS music/DAC driver is not translated yet; the music is still silent.
-6. **Tails, special stages, water, two-player mode, title/act cards, openings
-   and ending.**
+6. **Full Tails AI/two-player, special stages, water, title/act cards,
+   openings and ending.** The current Tails is a delayed follower with
+   idle/walk/fly frames, not the complete sidekick/2P logic.
 
 ## Notes for the next implementation
 
@@ -189,8 +193,8 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 - Sonic now uses 18 frames (idle/walk/run/roll/hurt/death), 384 OBJ tiles;
   rings use 32 and the HUD 39, for 455 of the 512 available OBJ tiles.
 - The BG2 object atlas now includes monitor icons, spikes, badniks, shield,
-  invincibility stars, explosion, bridge and platform frames (402 of 512 CHR
-  tiles).
+  invincibility stars, explosion, bridge, platform and Tails frames (474 of
+  512 CHR tiles).
 - The preview's injected controller events were not reliable in headless mode;
   the `--demo` build uses assignment (`pad = padsCurrent(0) | KEY_RIGHT`)
   because `pad |= KEY_RIGHT` did not reach the physics in that build.

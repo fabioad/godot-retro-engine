@@ -582,6 +582,8 @@ spiral_cos = _asm_table("Obj06_CosineTable", "Obj06_Cylinder")
 spiral_flip = _asm_table("Obj06_FlipAngleTable", "Obj06_CosineTable")
 
 
+
+
 def md_tile_indices(data, tile):
     out = []
     for y in range(8):
@@ -667,6 +669,40 @@ for _name, (_paths, _label) in object_mappings.items():
     object_mapping_frames[_name] = parse_mapping_frames(
         [ROOT + p for p in _paths], _label)
 
+
+# Tails follower art comes from the imported sprite sheet.  Five frames are
+# enough for idle/walk/fly; they are added as 8x8 tiles to the BG2 atlas.
+_tails_res = [r for r in proj["resources"] if r.get("id") == "sonic2_common_tails"][0]
+_tails_sheet = Image.open(f"{ROOT}/.retro/generated/sprites/common_tails.png")
+if _tails_sheet.mode != "P":
+    _tails_sheet = _tails_sheet.convert("P", palette=Image.ADAPTIVE, colors=16)
+TAILS_FRAME_IDS = [1, 0x10, 0x11, 0x5E, 0x5F]
+object_art["tails"] = []
+object_mapping_frames["tails"] = []
+for _fid in TAILS_FRAME_IDS:
+    _tx, _ty, _tw, _th = [int(v) for v in _tails_res["frames"][_fid]["rect"]]
+    _crop = _tails_sheet.crop((_tx, _ty, _tx + _tw, _ty + _th))
+    _cols = (_tw + 7) // 8
+    _rows = (_th + 7) // 8
+    _base_tile = len(object_art["tails"])
+    for _yy in range(_rows):
+        for _xx in range(_cols):
+            _block = []
+            for _y in range(8):
+                for _x in range(8):
+                    _sx = _xx * 8 + _x
+                    _sy = _yy * 8 + _y
+                    _block.append(_crop.getpixel((_sx, _sy))
+                                  if _sx < _tw and _sy < _th else 0)
+            object_art["tails"].append(
+                [[_block[_y * 8 + _x] for _x in range(8)] for _y in range(8)])
+    _pieces = []
+    for _yy in range(_rows):
+        for _xx in range(_cols):
+            _pieces.append((_xx * 8 - _tw // 2, _yy * 8 - _th // 2, 1, 1,
+                            _base_tile + _yy * _cols + _xx, 0, 0))
+    object_mapping_frames["tails"].append(_pieces)
+
 # Monitor 1-up: monitor casing plus the original Sonic head from the lives
 # counter art at the content position used by mapping frame 2.
 object_art["monitor_1up"] = object_art["monitor"] + object_art["lives"][:4]
@@ -700,7 +736,8 @@ OBJECT_FRAME_DEFS = (
     [("stars", i, "stars") for i in (1, 2, 3, 4)] +
     [("mon_1up", 0, "monitor_1up")] +
     [("bridge", 0, "bridge"), ("bridge", 1, "bridge")] +
-    [("platform", 0, "levelart")]
+    [("platform", 0, "levelart")] +
+    [("tails", i, "tails") for i in range(5)]
 )
 
 object_atlas = []
@@ -796,6 +833,8 @@ OBJ_FRAME = {
     "SHIELD_3": 53, "SHIELD_4": 54, "SHIELD_5": 55,
     "STAR_1": 56, "STAR_2": 57, "STAR_3": 58, "STAR_4": 59,
     "MON_1UP": 60, "BRIDGE_0": 61, "BRIDGE_1": 62, "PLATFORM": 63,
+    "TAILS_IDLE": 64, "TAILS_WALK0": 65, "TAILS_WALK1": 66,
+    "TAILS_FLY0": 67, "TAILS_FLY1": 68,
 }
 
 
@@ -1128,6 +1167,9 @@ static unsigned char rolling;
 static unsigned char on_spiral;
 static unsigned short spiral_i;
 static unsigned char lost_count;
+static short tail_hist_x[32], tail_hist_y[32];
+static unsigned char tail_hist_i, tail_anim_timer, tail_anim_frame, tail_facing;
+static short tail_x, tail_y;
 static short lost_x[20], lost_y[20], lost_vx[20], lost_vy[20];
 static unsigned char lost_timer[20];
 static short proj_x[10], proj_y[10], proj_vx[10], proj_vy[10];
@@ -1779,6 +1821,31 @@ static void draw_effects(void)
     }
 }
 
+static void draw_tails(void)
+{
+    unsigned char idx, frame;
+    if (game_over || dead) return;
+    if (++tail_anim_timer >= 6) {
+        tail_anim_timer = 0;
+        tail_anim_frame = (unsigned char)(tail_anim_frame ^ 1);
+    }
+    idx = (unsigned char)((tail_hist_i + 22) & 31);
+    tail_x = tail_hist_x[idx];
+    tail_y = tail_hist_y[idx];
+    if (tail_y > ypos + 32) {
+        tail_y = (short)(ypos - 8);
+        frame = tail_anim_frame ? OF_TAILS_FLY1 : OF_TAILS_FLY0;
+    } else if (tail_x < xpos - 6 || tail_x > xpos + 6) {
+        frame = tail_anim_frame ? OF_TAILS_WALK1 : OF_TAILS_WALK0;
+    } else {
+        frame = OF_TAILS_IDLE;
+    }
+    if (tail_x < xpos - 2) tail_facing = 0;
+    else if (tail_x > xpos + 2) tail_facing = 1;
+    draw_obj_frame(frame, (short)(tail_x - cam_x), (short)(tail_y - cam_y),
+        tail_facing);
+}
+
 static void monitor_grant(unsigned char sub)
 {
     if (sub == 4) {
@@ -2359,6 +2426,19 @@ int main(void)
     spindash_charge = 0;
     rolling = 0;
     on_spiral = 0;
+    {
+        int ti;
+        for (ti = 0; ti < 32; ti++) {
+            tail_hist_x[ti] = 76;
+            tail_hist_y[ti] = 655;
+        }
+        tail_hist_i = 0;
+        tail_x = 76;
+        tail_y = 655;
+        tail_anim_timer = 0;
+        tail_anim_frame = 0;
+        tail_facing = 0;
+    }
     lost_count = 0;
     checkpoint_x = 96; checkpoint_y = 655;
     last_starpost = 0;
@@ -2442,6 +2522,9 @@ int main(void)
                 grounded = 0; jumping = 0;
             }
             update_objects();
+            tail_hist_x[tail_hist_i] = xpos;
+            tail_hist_y[tail_hist_i] = ypos;
+            tail_hist_i = (unsigned char)((tail_hist_i + 1) & 31);
         }
         if (speed_timer) speed_timer--;
         if (invincible_timer) invincible_timer--;
@@ -2464,6 +2547,7 @@ int main(void)
         clear_obj_map();
         draw_objects();
         if (!game_over) draw_effects();
+        draw_tails();
         draw_sonic();
 #if SFX_ENABLED
         spcProcess();

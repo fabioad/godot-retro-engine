@@ -2126,3 +2126,22 @@ preview: spiral entry at x=4,800; Sonic follows the corkscrew and moves behind
 
 The remaining big blocks are SMPS music, full vertical-loop/plane-switcher
 coverage, slopes, Tails/specials/two-player, title/act cards and ending.
+
+### Sonic 2 Tails follower (0.1.47)
+
+Five original Tails frames (idle, two walk, two fly) are imported into the BG2
+object atlas. Tails follows a 32-entry Sonic position history with a 10-frame
+delay, uses walk frames while moving, fly frames when he falls behind, and
+resets his history on respawn. This is a visual sidekick, not the complete
+Tails AI/two-player logic.
+
+```text
+OBJ/BG2: 474 / 512 CHR tiles (Sonic, objects, effects, Tails)
+ROM:     1,048,576 bytes, LoROM FastROM, checksum OK
+free:    524,773 bytes
+```
+
+![Tails follower](screenshots/sonic2_snes_port_tails.png)
+
+Remaining: full Tails/2P AI, SMPS music, full vertical loops/plane switching,
+special stages, water, title/act cards, openings/ending.
