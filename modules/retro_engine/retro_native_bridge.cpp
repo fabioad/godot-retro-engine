@@ -305,16 +305,40 @@ static Dictionary _retro_3d_profile_svp() {
 	return d;
 }
 
+static Dictionary _retro_3d_profile_sega32x() {
+	Dictionary d;
+	d["id"] = "sega32x";
+	d["name"] = "Sega 32X (SH-2 dual + VDP32X)";
+	d["platform"] = "megadrive";
+	d["chip"] = "2x Hitachi SH-2 + Sega 32X VDP";
+	d["reference"] = "Virtua Racing Deluxe / Star Wars Arcade";
+	d["clock"] = "2x 23 MHz";
+	d["rom_mbit"] = 32;
+	d["work_ram_kb"] = 256;
+	d["framebuffer"] = "320x224 15-bit";
+	d["target_fps"] = 30;
+	d["polygons_per_frame"] = 1200;
+	d["max_capture_w"] = 320;
+	d["max_capture_h"] = 224;
+	d["palette_colors"] = 256;
+	d["max_bake_frames"] = 32;
+	d["max_tile_budget"] = 4096;
+	d["note"] = "The 32X is an add-on with two SH-2 CPUs and the VDP32X. This profile exports geometry, assets and SH-2/68000 scaffold files; an SH-2 toolchain is not embedded.";
+	return d;
+}
+
 Array RetroNativeBridge::get_3d_profiles() const {
 	Array out;
 	out.push_back(_retro_3d_profile_superfx());
 	out.push_back(_retro_3d_profile_svp());
+	out.push_back(_retro_3d_profile_sega32x());
 	return out;
 }
 
 Dictionary RetroNativeBridge::get_3d_profile(const String &p_id) const {
 	if (p_id == "superfx") return _retro_3d_profile_superfx();
 	if (p_id == "svp") return _retro_3d_profile_svp();
+	if (p_id == "sega32x") return _retro_3d_profile_sega32x();
 	return Dictionary();
 }
 

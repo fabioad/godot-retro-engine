@@ -1672,3 +1672,54 @@ The demo boots and runs the full sequence in the libretro preview. Known
 limitation: the 3D "RSE" logo frames are not pixel-identical to the 2017
 release because SGDK 2.11 changed the maths3D rotation convention and the BMP
 buffer behaviour; the rest of the source and build pipeline is migrated.
+
+### Native 3D export: Super FX, SVP and Sega 32X (0.1.36)
+
+The Native tab now exports real 3D resources instead of only a baked sprite
+sheet.
+
+**Profiles**
+
+- `superfx`: GSU-1/GSU-2, 224x192 4bpp, 16 colors, 20 fps reference.
+- `svp`: Samsung SSP160x, 320x224, 15 fps reference.
+- `sega32x`: two Hitachi SH-2 CPUs + VDP32X, 320x224 15-bit, 256 colors,
+  30 fps reference, 32 Mbit ROM budget.
+
+The profile selector includes **Sega 32X (SH-2)** and the comparison table
+(Super FX vs SVP vs 32X) is written into the handoff documentation.
+
+**Mesh export**
+
+- Traverses every `MeshInstance3D`, applies its global transform and exports
+  vertices, normals, indices, material color and triangle count.
+- Writes `scene_mesh.json` and `scene_mesh.h`.
+- C vertices use signed 16-bit fixed point at **256 units per world unit**;
+  normals use signed bytes; indices are `unsigned short`.
+- A `RetroMesh` table is generated for direct use by a host or co-processor
+  program.
+
+**Co-processor scaffold**
+
+`coop/` is generated beside the scene:
+
+- Super FX: `gsu.asm`, `host_65816.c`.
+- SVP: `ssp1601.asm`, `m68k_host.c`.
+- 32X: `sh2_master.c`, `sh2_slave.c`, `m68k_host.c`.
+- `README.md` with the chip comparison, budgets and build requirements.
+
+These are portable scaffolds; the engine still does not embed the GSU, SVP or
+SH-2 toolchains. The base SNES/Mega Drive ROM continues to use the baked 2D
+fallback. The new **Export 3D (Super FX / 32X)** button writes the mesh and
+scaffold on demand.
+
+**Validation**
+
+```text
+3D export profile=sega32x chip="2x Hitachi SH-2 + Sega 32X VDP" fps=30
+mesh_export: ok=true meshes=1 vertices=24 triangles=12 scale=256.0
+color=e05020
+scaffold files: README.md sh2_master.c sh2_slave.c m68k_host.c
+Super FX scaffold: gsu.asm host_65816.c
+SVP scaffold: ssp1601.asm m68k_host.c
+3D_HANDOFF.md contains the Super FX / SVP / 32X comparison table
+```

@@ -122,6 +122,11 @@ func _ready() -> void:
 	bake.tooltip_text = I18n.t("native.bake_3d_tip")
 	bake.pressed.connect(_bake_3d)
 	head.add_child(bake)
+	var export3d := Button.new()
+	export3d.text = "Export 3D (Super FX / 32X)"
+	export3d.tooltip_text = "Write mesh data and a co-processor scaffold for the selected 3D profile."
+	export3d.pressed.connect(_export_3d_pack)
+	head.add_child(export3d)
 
 	var options := HFlowContainer.new()
 	add_child(options)
@@ -151,6 +156,7 @@ func _ready() -> void:
 	_profile_option.add_item(I18n.t("native.none"), 0)
 	_profile_option.add_item(I18n.t("native.superfx"), 1)
 	_profile_option.add_item(I18n.t("native.svp"), 2)
+	_profile_option.add_item("Sega 32X (SH-2)", 3)
 	_profile_option.item_selected.connect(_on_profile_selected)
 	options.add_child(_profile_option)
 	_profile_info = Label.new()
@@ -303,6 +309,8 @@ func save_session() -> void:
 		"assets": _last_result.get("assets", []),
 		"stage": _last_result.get("stage", {}),
 		"port": _last_result.get("port", {}),
+		"mesh_export": _last_result.get("mesh_export", {}),
+		"scaffold": _last_result.get("scaffold", {}),
 	}
 	var f := FileAccess.open(dir.path_join("native_links.json"), FileAccess.WRITE)
 	if f:
@@ -340,9 +348,9 @@ func get_3d_profile_id() -> String:
 	return _profile
 
 func set_3d_profile(id: String) -> void:
-	_profile = id if (id == "superfx" or id == "svp") else ""
+	_profile = id if (id == "superfx" or id == "svp" or id == "sega32x") else ""
 	if _profile_option:
-		_profile_option.select(1 if _profile == "superfx" else (2 if _profile == "svp" else 0))
+		_profile_option.select(1 if _profile == "superfx" else (2 if _profile == "svp" else (3 if _profile == "sega32x" else 0)))
 	var profile: Dictionary = bridge.get_3d_profile(_profile) if not _profile.is_empty() else Dictionary()
 	if profile.is_empty():
 		if _profile_info:
@@ -369,7 +377,7 @@ func set_3d_profile(id: String) -> void:
 	status.emit("3D profile: " + String(profile.get("name", "")))
 
 func _on_profile_selected(index: int) -> void:
-	set_3d_profile("superfx" if index == 1 else ("svp" if index == 2 else ""))
+	set_3d_profile("superfx" if index == 1 else ("svp" if index == 2 else ("sega32x" if index == 3 else "")))
 
 func _wants_ui() -> bool:
 	return _include_ui == null or _include_ui.button_pressed
@@ -455,8 +463,25 @@ func _bake_3d() -> void:
 		status.emit(I18n.t("native.bake_editor_only"))
 		return
 	if _profile.is_empty():
-		set_3d_profile("superfx" if platform == "snes" else "svp")
+		set_3d_profile("superfx" if platform == "snes" else "sega32x")
 	await import_scene(root, false, true)
+
+func _export_3d_pack() -> void:
+	if not Engine.is_editor_hint():
+		status.emit("3D export is available in the Godot editor.")
+		return
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		status.emit(I18n.t("native.no_scene"))
+		return
+	if _profile.is_empty():
+		set_3d_profile("superfx" if platform == "snes" else "sega32x")
+	var result: Dictionary = await import_scene(root, false, false)
+	var mesh: Dictionary = result.get("mesh_export", {})
+	if bool(mesh.get("ok", false)):
+		status.emit("3D pack: %d meshes, %d triangles" % [int(mesh.get("meshes", 0)), int(mesh.get("triangles", 0))])
+	else:
+		status.emit("No 3D mesh found in the edited scene.")
 
 ## Public entry point used by the editor and by headless regression tests.
 func import_scene(root: Node, capture_background := false, bake_3d := false) -> Dictionary:
@@ -468,7 +493,7 @@ func import_scene(root: Node, capture_background := false, bake_3d := false) -> 
 		result["errors"].append(I18n.t("native.error_no_project"))
 		return result
 	if bake_3d and _profile.is_empty():
-		set_3d_profile("superfx" if platform == "snes" else "svp")
+		set_3d_profile("superfx" if platform == "snes" else "sega32x")
 	var scene_name := _slug(root.name if not root.name.is_empty() else "native_scene")
 	var scene_source := ""
 	if Engine.is_editor_hint():
@@ -539,20 +564,40 @@ func import_scene(root: Node, capture_background := false, bake_3d := false) -> 
 
 	var extra_log := ""
 	if not _profile.is_empty() and (bake_3d or _has_3d_geometry(root)):
+		var meshes: Array = _collect_3d_meshes(root) if _has_3d_geometry(root) else []
 		var manifest := bridge.export_3d_manifest(_profile,
 			{"name": scene_name, "source": scene_source, "width": int(_capture_w.value), "height": int(_capture_h.value)},
 			assets, bake_result, dir.path_join(scene_name + "_3d_profile.h"))
 		if bool(manifest.get("ok", false)):
 			result["profile"] = manifest
+			result["meshes"] = meshes
 			_register_paths([String(manifest.get("header", "")), String(manifest.get("json", ""))], "code", scene_source)
-			var handoff := _write_3d_handoff(scene_name, dir, manifest, bake_result, assets)
+			var handoff := _write_3d_handoff(scene_name, dir, manifest, bake_result, assets, meshes)
 			result["handoff"] = handoff
+			result["mesh_export"] = handoff.get("mesh", {})
+			result["scaffold"] = handoff.get("scaffold", {})
+			var mesh_export: Dictionary = result["mesh_export"]
+			if bool(mesh_export.get("ok", false)):
+				_register_paths([String(mesh_export.get("header", "")), String(mesh_export.get("json", ""))], "code", scene_source)
+			var scaffold: Dictionary = result["scaffold"]
+			if bool(scaffold.get("ok", false)):
+				for path in scaffold.get("files", []):
+					_register_paths([String(path)], "code", scene_source)
 			_register_paths([String(handoff.get("markdown", "")), String(handoff.get("json", ""))], "code", scene_source)
 			extra_log += "[color=#7fd1ff]3D chip reference: %s[/color]\n" % String(Dictionary(manifest.get("profile", {})).get("name", _profile))
+			var mesh_export2: Dictionary = result.get("mesh_export", {})
+			if bool(mesh_export2.get("ok", false)):
+				extra_log += "3D mesh: %d meshes, %d triangles -> %s\n" % [int(mesh_export2.get("meshes", 0)), int(mesh_export2.get("triangles", 0)), String(mesh_export2.get("header", ""))]
+			var scaffold2: Dictionary = result.get("scaffold", {})
+			if bool(scaffold2.get("ok", false)):
+				extra_log += "Co-processor scaffold: %s\n" % String(scaffold2.get("markdown", ""))
 			extra_log += "%s\n" % I18n.t("native.build_handoff", {"path": String(handoff.get("markdown", ""))})
 			for w in manifest.get("warnings", []):
 				_log.text += "[color=#ffd45e]- %s[/color]\n" % String(w)
-	result["ok"] = not assets.is_empty() or not stage_result.is_empty() or not bake_result.is_empty() or bool(layout.get("ok", false)) or bool(port.get("ok", false))
+	result["ok"] = not assets.is_empty() or not stage_result.is_empty() or not bake_result.is_empty() \
+		or bool(layout.get("ok", false)) or bool(port.get("ok", false)) \
+		or bool(Dictionary(result.get("mesh_export", {})).get("ok", false)) \
+		or bool(Dictionary(result.get("scaffold", {})).get("ok", false))
 	result["scene"] = scene_name
 	result["directory"] = dir
 	result["actors"] = assets.size()
@@ -596,11 +641,222 @@ func import_scene(root: Node, capture_background := false, bake_3d := false) -> 
 		_log.text += "[color=#ff7a7a]- %s[/color]\n" % String(e)
 	return result
 
+func _collect_3d_meshes(root: Node) -> Array:
+	var out: Array = []
+	_walk_3d_meshes(root, out, root)
+	return out
+
+func _walk_3d_meshes(node: Node, out: Array, base: Node) -> void:
+	if node is MeshInstance3D:
+		var mesh: Mesh = node.mesh
+		if mesh != null:
+			var transform: Transform3D = node.global_transform
+			for surface in range(mesh.get_surface_count()):
+				var arrays: Array = mesh.surface_get_arrays(surface)
+				if arrays.is_empty():
+					continue
+				var src_vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				if src_vertices.is_empty():
+					continue
+				var src_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays.size() > Mesh.ARRAY_NORMAL else PackedVector3Array()
+				var src_indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays.size() > Mesh.ARRAY_INDEX else PackedInt32Array()
+				if src_indices.is_empty():
+					for i in range(src_vertices.size()):
+						src_indices.append(i)
+				var vertices: Array = []
+				var normals: Array = []
+				for v in src_vertices:
+					var world: Vector3 = transform * v
+					vertices.append([snappedf(world.x, 0.0001), snappedf(world.y, 0.0001), snappedf(world.z, 0.0001)])
+				for n in src_normals:
+					var world_n: Vector3 = (transform.basis * n).normalized()
+					normals.append([snappedf(world_n.x, 0.0001), snappedf(world_n.y, 0.0001), snappedf(world_n.z, 0.0001)])
+				var indices: Array = []
+				for idx in src_indices:
+					indices.append(int(idx))
+				var color := Color(0.82, 0.82, 0.88)
+				var material: Material = node.material_override if node.material_override != null else mesh.surface_get_material(surface)
+				var material_name := ""
+				if material != null:
+					material_name = material.resource_path.get_file() if not material.resource_path.is_empty() else material.get_class()
+					if material is BaseMaterial3D:
+						color = material.albedo_color
+				out.append({"name": str(node.name), "path": _node_path(node, base), "surface": surface,
+					"vertices": vertices, "normals": normals, "indices": indices,
+					"color": color.to_html(false), "material": material_name,
+					"triangle_count": indices.size() / 3,
+					"transform": [transform.origin.x, transform.origin.y, transform.origin.z]})
+	for child in node.get_children():
+		_walk_3d_meshes(child, out, base)
+
+func _mesh_c_array(name: String, values: Array, type_name: String) -> String:
+	var out := "static const %s %s[%d] = {\n" % [type_name, name, maxi(1, values.size())]
+	if values.is_empty():
+		out += "\t0\n"
+	else:
+		for i in range(values.size()):
+			out += "\t" + str(int(values[i]))
+			if i + 1 < values.size():
+				out += ","
+			if (i + 1) % 16 == 0:
+				out += "\n"
+		out += "\n"
+	out += "};\n"
+	return out
+
+func _write_mesh_export(scene_name: String, dir: String, meshes: Array) -> Dictionary:
+	if meshes.is_empty():
+		return {}
+	var scale := 256.0
+	var json_path := dir.path_join("scene_mesh.json")
+	var header_path := dir.path_join("scene_mesh.h")
+	var json_meshes: Array = []
+	var header := "#ifndef RETRO_SCENE_MESH_H\n#define RETRO_SCENE_MESH_H\n\n"
+	header += "#define RETRO_MESH_COUNT %d\n#define RETRO_MESH_SCALE %.1ff\n\n" % [meshes.size(), scale]
+	header += "typedef struct {\n    const char *name;\n    const short *vertices;\n    const unsigned short *indices;\n    unsigned int vertex_count;\n    unsigned int index_count;\n    unsigned int color;\n} RetroMesh;\n\n"
+	var table_rows: Array = []
+	for i in range(meshes.size()):
+		var mesh: Dictionary = meshes[i]
+		var c_vertices: Array = []
+		for v in mesh.get("vertices", []):
+			var p: Array = v
+			c_vertices.append(clampi(int(round(float(p[0]) * scale)), -32768, 32767))
+			c_vertices.append(clampi(int(round(float(p[1]) * scale)), -32768, 32767))
+			c_vertices.append(clampi(int(round(float(p[2]) * scale)), -32768, 32767))
+		var c_indices: Array = []
+		for idx in mesh.get("indices", []):
+			c_indices.append(clampi(int(idx), 0, 65535))
+		var c_normals: Array = []
+		for n in mesh.get("normals", []):
+			var p2: Array = n
+			c_normals.append(clampi(int(round(float(p2[0]) * 256.0)), -127, 127))
+			c_normals.append(clampi(int(round(float(p2[1]) * 256.0)), -127, 127))
+			c_normals.append(clampi(int(round(float(p2[2]) * 256.0)), -127, 127))
+		var color := Color(String(mesh.get("color", "d0d0e0")))
+		var color_int := (int(clampf(color.r, 0.0, 1.0) * 255.0) << 16) | (int(clampf(color.g, 0.0, 1.0) * 255.0) << 8) | int(clampf(color.b, 0.0, 1.0) * 255.0)
+		header += _mesh_c_array("mesh%d_vertices" % i, c_vertices, "short")
+		header += _mesh_c_array("mesh%d_normals" % i, c_normals, "signed char")
+		header += _mesh_c_array("mesh%d_indices" % i, c_indices, "unsigned short")
+		header += "\n"
+		table_rows.append("\t{ \"%s\", mesh%d_vertices, mesh%d_indices, %d, %d, 0x%06X }" % [
+			String(mesh.get("name", "mesh")), i, i, c_vertices.size() / 3, c_indices.size(), color_int])
+		json_meshes.append({"name": mesh.get("name", "mesh"), "path": mesh.get("path", ""),
+			"surface": mesh.get("surface", 0), "vertices": mesh.get("vertices", []),
+			"normals": mesh.get("normals", []), "indices": mesh.get("indices", []),
+			"color": mesh.get("color", "d0d0e0"), "material": mesh.get("material", ""),
+			"triangle_count": mesh.get("triangle_count", 0), "scale": scale})
+	header += "static const RetroMesh retro_meshes[RETRO_MESH_COUNT] = {\n" + ",\n".join(table_rows) + "\n};\n\n#endif\n"
+	var jf := FileAccess.open(json_path, FileAccess.WRITE)
+	if jf:
+		jf.store_string(JSON.stringify({"format": "godot-retro-engine/3d-mesh", "version": 1,
+			"scene": scene_name, "scale": scale, "meshes": json_meshes}, "\t"))
+		jf.close()
+	var hf := FileAccess.open(header_path, FileAccess.WRITE)
+	if hf:
+		hf.store_string(header)
+		hf.close()
+	return {"ok": FileAccess.file_exists(json_path) and FileAccess.file_exists(header_path),
+		"json": json_path, "header": header_path, "meshes": meshes.size(), "scale": scale,
+		"vertices": json_meshes.reduce(func(acc, m): return acc + Array(m.get("vertices", [])).size(), 0),
+		"triangles": json_meshes.reduce(func(acc, m): return acc + int(m.get("triangle_count", 0)), 0)}
+
+func _write_3d_scaffold(scene_name: String, dir: String, manifest: Dictionary,
+		meshes: Array, mesh_result: Dictionary) -> Dictionary:
+	var profile: Dictionary = manifest.get("profile", {})
+	var chip := String(profile.get("id", _profile))
+	var coop := dir.path_join("coop")
+	DirAccess.make_dir_recursive_absolute(coop)
+	var md_path := coop.path_join("README.md")
+	var md := "# 3D co-processor scaffold — %s\n\n" % scene_name
+	md += "Target profile: **%s** (`%s`)\n\n" % [String(profile.get("name", chip)), chip]
+	md += "| Item | Value |\n| --- | --- |\n"
+	md += "| Chip | %s |\n| Clock | %s |\n| Framebuffer | %s |\n| Target FPS | %d |\n| ROM budget | %s Mbit |\n" % [
+		String(profile.get("chip", "")), String(profile.get("clock", "")),
+		String(profile.get("framebuffer", "")), int(profile.get("target_fps", 0)),
+		str(profile.get("rom_mbit", ""))]
+	md += "\n## Comparison\n\n"
+	md += "| Feature | SNES Super FX | Mega Drive SVP | Sega 32X |\n| --- | --- | --- | --- |\n"
+	md += "| Vendor | Argonaut/Nintendo | Sega/Samsung | Sega |\n"
+	md += "| CPU | Custom RISC GSU | SSP160x DSP | 2x Hitachi SH-2 |\n"
+	md += "| Clock | up to 21.47 MHz | ~23 MHz | 2x 23 MHz |\n"
+	md += "| Main use | polygons and advanced 2D | 3D geometry | 3D geometry and enhanced video |\n"
+	md += "| Famous game | Star Fox | Virtua Racing | Virtua Racing Deluxe / Star Wars Arcade |\n"
+	md += "| Cartridge | in-cartridge chip | in-cartridge chip | external add-on |\n\n"
+	md += "## Exported resources\n\n"
+	md += "- `scene_mesh.h` / `scene_mesh.json`: transformed mesh vertices, normals, indices and flat colors.\n"
+	md += "- `3d_handoff.json` / `3D_HANDOFF.md`: actor table, bake information and profile budgets.\n"
+	md += "- `assets/`: the native sprites, stages and animations imported beside this scaffold.\n\n"
+	md += "## Build status\n\n"
+	md += "This directory is a **portable scaffold**, not a compiled co-processor ROM. "
+	if chip == "superfx":
+		md += "A Super FX build needs a GSU assembler/linker, a 65816 host program, a Super FX-aware header and a ROM mapper. The generated `gsu.asm` and `host_65816.c` are starting points for that toolchain.\n"
+	elif chip == "sega32x":
+		md += "A 32X build needs an SH-2 toolchain, the 32X BIOS/header, a 68000 host and a 32X-aware linker layout. The generated `sh2_master.c`, `sh2_slave.c` and `m68k_host.c` are starting points. The base Mega Drive SGDK project still runs the baked 2D fallback.\n"
+	else:
+		md += "An SVP build needs the SSP160x/SVP assembler, a 68000 host, an SVP-aware cartridge map and hardware/emulator support. The generated `ssp1601.asm` and `m68k_host.c` are starting points.\n"
+	md += "\nThe mesh data uses a fixed-point scale of **%.1f** units per world unit.\n" % float(mesh_result.get("scale", 256.0))
+	var mf := FileAccess.open(md_path, FileAccess.WRITE)
+	if mf:
+		mf.store_string(md)
+		mf.close()
+	var files: Array = [md_path]
+	if chip == "superfx":
+		var gsu := coop.path_join("gsu.asm")
+		var gf := FileAccess.open(gsu, FileAccess.WRITE)
+		if gf:
+			gf.store_string("; Super FX / GSU program scaffold\n; Assemble with a GSU toolchain and link with host_65816.c.\n; The mesh data is in scene_mesh.h; convert vertices to GSU fixed point\n; and implement the plot/color commands for your target hardware.\n\n    .include \"gsu_regs.inc\"\n\nstart:\n    ; TODO: clear screen, transform and draw retro_meshes[]\n    stop\n    rts\n")
+			gf.close()
+			files.append(gsu)
+		var host := coop.path_join("host_65816.c")
+		var hf := FileAccess.open(host, FileAccess.WRITE)
+		if hf:
+			hf.store_string("/* 65816 host scaffold for a Super FX cartridge.\n * Include scene_mesh.h and upload the GSU program/data according to your\n * Super FX mapper. The base SNES PVSnesLib path uses the baked sprites. */\n#include <snes.h>\n#include \"../scene_mesh.h\"\n\nint main(void) {\n    /* TODO: map GSU ROM/RAM, start the GSU program and present the framebuffer. */\n    while (1) WaitForVBlank();\n    return 0;\n}\n")
+			hf.close()
+			files.append(host)
+	elif chip == "sega32x":
+		var master := coop.path_join("sh2_master.c")
+		var mf2 := FileAccess.open(master, FileAccess.WRITE)
+		if mf2:
+			mf2.store_string("/* SH-2 master scaffold for Sega 32X.\n * Build with an SH-2 toolchain and the 32X runtime; mesh data is in\n * scene_mesh.h. The 68000 host starts both SH-2 CPUs. */\n#include \"scene_mesh.h\"\n\nvoid sh2_master_main(void) {\n    for (;;) {\n        /* TODO: transform, cull, sort and rasterize retro_meshes[]. */\n    }\n}\n")
+			mf2.close()
+			files.append(master)
+		var slave := coop.path_join("sh2_slave.c")
+		var sf := FileAccess.open(slave, FileAccess.WRITE)
+		if sf:
+			sf.store_string("/* SH-2 slave scaffold for Sega 32X. Split geometry or raster\n * work between the two SH-2 CPUs here. */\nvoid sh2_slave_main(void) {\n    for (;;) {\n    }\n}\n")
+			sf.close()
+			files.append(slave)
+		var host32 := coop.path_join("m68k_host.c")
+		var h32 := FileAccess.open(host32, FileAccess.WRITE)
+		if h32:
+			h32.store_string("/* 68000 host scaffold for a Sega 32X build.\n * The base Mega Drive SGDK project runs the baked 2D fallback; a real 32X\n * build needs the 32X BIOS/header, SH-2 images and a 32X linker map. */\nint main(void) {\n    for (;;) {\n        /* TODO: boot the SH-2 master/slave and present the 32X framebuffer. */\n    }\n}\n")
+			h32.close()
+			files.append(host32)
+	else:
+		var ssp := coop.path_join("ssp1601.asm")
+		var sf2 := FileAccess.open(ssp, FileAccess.WRITE)
+		if sf2:
+			sf2.store_string("; SVP / SSP160x program scaffold\n; Assemble with an SVP toolchain and link with m68k_host.c.\n; Mesh data is in scene_mesh.h.\n\nstart:\n    ; TODO: transform and rasterize retro_meshes[]\n    nop\n")
+			sf2.close()
+			files.append(ssp)
+		var hostm := coop.path_join("m68k_host.c")
+		var hm := FileAccess.open(hostm, FileAccess.WRITE)
+		if hm:
+			hm.store_string("/* 68000 host scaffold for an SVP cartridge.\n * Include scene_mesh.h and load the SVP program/data; the base Mega Drive\n * SGDK path uses the baked sprites. */\nint main(void) {\n    for (;;) {\n        /* TODO: start the SVP DSP and present the framebuffer. */\n    }\n}\n")
+			hm.close()
+			files.append(hostm)
+	if bool(mesh_result.get("ok", false)):
+		files.append(String(mesh_result.get("json", "")))
+		files.append(String(mesh_result.get("header", "")))
+	return {"ok": true, "directory": coop, "markdown": md_path, "files": files}
+
 func _write_3d_handoff(scene_name: String, dir: String, manifest: Dictionary,
-		bake: Dictionary, assets: Array) -> Dictionary:
+		bake: Dictionary, assets: Array, meshes: Array = []) -> Dictionary:
 	var profile: Dictionary = manifest.get("profile", {})
 	var chip := String(profile.get("id", _profile))
 	var target := String(profile.get("reference", chip))
+	var mesh_result := _write_mesh_export(scene_name, dir, meshes)
+	var scaffold := _write_3d_scaffold(scene_name, dir, manifest, meshes, mesh_result)
 	var md_path := dir.path_join("3D_HANDOFF.md")
 	var json_path := dir.path_join("3d_handoff.json")
 	var md := "# 3D handoff — %s\n\n" % scene_name
@@ -608,13 +864,25 @@ func _write_3d_handoff(scene_name: String, dir: String, manifest: Dictionary,
 	md += "Chip: %s  \nClock: %s  \nFramebuffer: %s  \nTarget FPS: %d  \n" % [
 		String(profile.get("chip", "")), String(profile.get("clock", "")),
 		String(profile.get("framebuffer", "")), int(profile.get("target_fps", 0))]
+	md += "\n## Co-processor comparison\n\n"
+	md += "| Feature | SNES Super FX | Mega Drive SVP | Sega 32X |\n| --- | --- | --- | --- |\n"
+	md += "| Vendor | Argonaut/Nintendo | Sega/Samsung | Sega |\n"
+	md += "| Architecture | custom RISC GSU | SSP160x DSP | 2x Hitachi SH-2 |\n"
+	md += "| Clock | up to 21.47 MHz | ~23 MHz | 2x 23 MHz |\n"
+	md += "| Main use | polygons and advanced 2D | 3D geometry | 3D geometry and enhanced video |\n"
+	md += "| Famous game | Star Fox | Virtua Racing | Virtua Racing Deluxe / Star Wars Arcade |\n"
+	md += "| Cartridge | in-cartridge chip | in-cartridge chip | external add-on |\n"
 	md += "\n## Generated base-console assets\n\n"
 	md += "- Pre-rendered sprite sheet / `RetroAnimation`: `%s`\n" % str(bake.get("frames", 0)) + " frames\n"
 	md += "- Scene actor table and native profile header in this directory.\n"
+	md += "- Mesh resource: `scene_mesh.h` / `scene_mesh.json` (%d meshes, %d triangles).\n" % [meshes.size(), int(mesh_result.get("triangles", 0))]
+	md += "- Co-processor scaffold: `%s`\n" % String(scaffold.get("markdown", ""))
 	md += "- All assets are standard SNES/Mega Drive sprites/tilemaps and run without the co-processor.\n"
 	md += "\n## Co-processor path\n\n"
 	if chip == "superfx":
 		md += "This engine does not embed a GSU assembler or linker. A real Super FX cartridge build needs a GSU toolchain (for example libSFX / a GSU assembler), the 65816 host program, the GSU program and a Super FX-aware ROM header. Use the profile above as the budget/reference.\n"
+	elif chip == "sega32x":
+		md += "The 32X is an add-on with two SH-2 CPUs and the VDP32X. A real build needs an SH-2 toolchain, the 32X runtime/BIOS header, a 68000 host and a 32X-aware cartridge map. The generated `coop/` directory contains SH-2 and 68000 scaffold files; the base Mega Drive ROM still runs the baked 2D fallback.\n"
 	else:
 		md += "This engine does not embed an SVP DSP toolchain. A real SVP cartridge build needs the SSP160x/SVP program, the 68000 host program, a 2 MB/128 KB cartridge memory map and an SVP-aware emulator or hardware. Use the profile above as the budget/reference.\n"
 	md += "\nThe generated sprite sheets, tilemaps and actor table are the portable part of the pipeline and are complete.\n"
@@ -622,6 +890,7 @@ func _write_3d_handoff(scene_name: String, dir: String, manifest: Dictionary,
 	if f:
 		f.store_string(md)
 		f.close()
+	var toolchain := "GSU/Super FX toolchain" if chip == "superfx" else ("SH-2/32X toolchain" if chip == "sega32x" else "SVP/SSP160x toolchain")
 	var data := {
 		"format": "godot-retro-engine/3d-handoff",
 		"version": 1,
@@ -629,16 +898,19 @@ func _write_3d_handoff(scene_name: String, dir: String, manifest: Dictionary,
 		"profile": profile,
 		"bake": bake,
 		"assets": assets,
+		"meshes": meshes.size(),
+		"mesh_export": mesh_result,
+		"scaffold": scaffold,
 		"base_console_assets": true,
 		"co_processor_execution": false,
-		"toolchain_required": "GSU/Super FX toolchain" if chip == "superfx" else "SVP/SSP160x toolchain",
+		"toolchain_required": toolchain,
 	}
 	var jf := FileAccess.open(json_path, FileAccess.WRITE)
 	if jf:
 		jf.store_string(JSON.stringify(data, "\t"))
 		jf.close()
 	return {"ok": FileAccess.file_exists(md_path) and FileAccess.file_exists(json_path),
-		"markdown": md_path, "json": json_path}
+		"markdown": md_path, "json": json_path, "mesh": mesh_result, "scaffold": scaffold}
 
 func _write_port_bundle(root: Node, scene_name: String, dir: String, source: String,
 		assets: Array, cameras: Array, stage: Dictionary, bake: Dictionary) -> Dictionary:
