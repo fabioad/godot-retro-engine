@@ -99,9 +99,20 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		return write
 	var port := _find_native_port(source)
 	var port_result := _copy_native_port(port, dir)
+	var runtime := _native_runtime(source)
+	var runtime_result := {}
 	var player := _find_player(source, target)
+	if not Array(runtime.get("actors", [])).is_empty():
+		if target == "snes":
+			runtime_result = _write_snes_runtime(dir, runtime, stage)
+		else:
+			runtime_result = _write_md_runtime(dir, runtime, stage)
+		if bool(runtime_result.get("ok", false)):
+			player = {}
+	var has_runtime := bool(runtime_result.get("ok", false))
 	if target == "snes":
-		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, rom, player)
+		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, rom, player,
+			runtime_result if has_runtime else {})
 		if not player.is_empty():
 			_write_snes_player(dir, player)
 		_write_snes_makefile(dir.path_join("Makefile"), game_name, audio, rom)
@@ -110,13 +121,15 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		if bool(rom.get("msu1", false)):
 			_write_msu1_support(dir, game_name)
 	else:
-		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, player)
+		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, player,
+			runtime_result if has_runtime else {})
 		_write_md_makefile(dir.path_join("Makefile"))
 		if not player.is_empty():
 			_write_md_player(dir, player)
 		# rescomp scans .res files in the project root. The generated C arrays
 		# already contain the tiles/palette/map, so remove the temporary SGDK
-		# resource scripts produced while building the native stage.
+		# resource scripts produced while building the native stage. The native
+		# runtime writes res/sprites.res afterwards.
 		_remove_extension(dir, "res")
 		_write_md_audio_res(dir, audio)
 	var project := RetroProject.new()
@@ -140,6 +153,10 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	meta["source_project"] = source.get_path() if source else ""
 	meta["native_port"] = port_result
 	meta["native_player"] = not player.is_empty()
+	meta["native_runtime"] = runtime_result
+	meta["native_actors"] = int(runtime_result.get("actors", 0))
+	meta["native_widgets"] = int(runtime_result.get("widgets", 0))
+	meta["native_solids"] = int(runtime_result.get("solids", 0))
 	if not rom.is_empty():
 		meta["rom_profile"] = String(rom.get("profile_id", ""))
 		meta["rom_profile_label"] = String(rom.get("profile_label", ""))
@@ -168,6 +185,9 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		"audio_sfx": audio.get("sfx", []).size(),
 		"native_port": String(port_result.get("directory", "")),
 		"native_player": not player.is_empty(),
+		"native_runtime_actors": int(runtime_result.get("actors", 0)),
+		"native_runtime_widgets": int(runtime_result.get("widgets", 0)),
+		"native_runtime_solids": int(runtime_result.get("solids", 0)),
 		"rom_profile": String(rom.get("profile_id", "")),
 		"rom_profile_label": String(rom.get("profile_label", "")),
 		"rom_size": String(rom.get("size_label", "")),
@@ -193,7 +213,7 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		"target": target, "splash": include_splash, "rom": project.get_rom_path(),
 		"export_profile": String(written.get("path", "")), "profile": written,
 		"stage": stage, "splash_stage": splash, "port": port_result, "player": player,
-		"rom_settings": rom, "rom_estimate": rom_estimate}
+		"runtime": runtime_result, "rom_settings": rom, "rom_estimate": rom_estimate}
 
 static func _find_native_port(source: RetroProject) -> Dictionary:
 	if source == null:
@@ -207,6 +227,323 @@ static func _find_native_port(source: RetroProject) -> Dictionary:
 		if typeof(port) == TYPE_DICTIONARY:
 			return port
 	return {}
+
+static func _resolve_project_path(source: RetroProject, path: String) -> String:
+	if path.is_empty():
+		return ""
+	if path.is_absolute_path():
+		return path
+	return source.resolve(path)
+
+static func _parse_rect_string(value: String) -> Rect2i:
+	var re := RegEx.new()
+	re.compile("P:\\s*\\((-?\\d+),\\s*(-?\\d+)\\),\\s*S:\\s*\\((-?\\d+),\\s*(-?\\d+)\\)")
+	var m := re.search(value)
+	if m == null:
+		return Rect2i()
+	return Rect2i(int(m.get_string(1)), int(m.get_string(2)), int(m.get_string(3)), int(m.get_string(4)))
+
+static func _native_runtime(source: RetroProject) -> Dictionary:
+	var runtime := {"actors": [], "solids": [], "widgets": [], "player": -1,
+		"spawn_x": 0.0, "spawn_y": 0.0, "has_spawn": false}
+	if source == null:
+		return runtime
+	var port := _find_native_port(source)
+	var json_path := String(port.get("json", ""))
+	if json_path.is_empty() or not FileAccess.file_exists(json_path):
+		return runtime
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(json_path))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return runtime
+	var data: Dictionary = parsed
+	var actors: Array = []
+	var player_index := -1
+	for entry in data.get("actors", []):
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var kind := int(entry.get("type", 0))
+		if kind not in [1, 2]:
+			continue
+		var rel := String(entry.get("asset", ""))
+		if rel.is_empty():
+			continue
+		var png := _resolve_project_path(source, rel)
+		if png.is_empty() or not FileAccess.file_exists(png):
+			continue
+		var image := Image.load_from_file(png)
+		if image == null:
+			continue
+		image.convert(Image.FORMAT_RGBA8)
+		var sprite_json := png.get_basename() + ".retro_sprite.json"
+		var frame_w := int(entry.get("width", 16))
+		var frame_h := int(entry.get("height", 16))
+		var frames: Array = []
+		if FileAccess.file_exists(sprite_json):
+			var sd = JSON.parse_string(FileAccess.get_file_as_string(sprite_json))
+			if typeof(sd) == TYPE_DICTIONARY:
+				frame_w = int(sd.get("frame_width", frame_w))
+				frame_h = int(sd.get("frame_height", frame_h))
+				for f in sd.get("frames", []):
+					if typeof(f) != TYPE_DICTIONARY:
+						continue
+					var rect := _parse_rect_string(String(f.get("rect", "")))
+					if rect.size.x <= 0 or rect.size.y <= 0:
+						rect = Rect2i(0, 0, frame_w, frame_h)
+					frames.append(rect)
+		if frames.is_empty():
+			frames.append(Rect2i(0, 0, maxi(1, frame_w), maxi(1, frame_h)))
+		var states := {}
+		var anim_rel := String(entry.get("animation", ""))
+		if not anim_rel.is_empty():
+			var anim_path := _resolve_project_path(source, anim_rel)
+			if FileAccess.file_exists(anim_path):
+				var ad = JSON.parse_string(FileAccess.get_file_as_string(anim_path))
+				if typeof(ad) == TYPE_DICTIONARY:
+					var state_data = ad.get("states", {})
+					if typeof(state_data) == TYPE_DICTIONARY:
+						for key in state_data.keys():
+							var state = state_data[key]
+							if typeof(state) != TYPE_DICTIONARY:
+								continue
+							var indices: Array = []
+							for fr in state.get("frames", []):
+								if typeof(fr) != TYPE_DICTIONARY:
+									continue
+								var sf := int(fr.get("sprite_frame", -1))
+								if sf >= 0 and sf < frames.size():
+									indices.append(sf)
+							if not indices.is_empty():
+								states[String(key).to_upper()] = indices
+		var pos: Array = entry.get("position", [0.0, 0.0, 0.0])
+		var px := float(pos[0]) if pos.size() > 0 else 0.0
+		var py := float(pos[1]) if pos.size() > 1 else 0.0
+		var off: Array = entry.get("offset", [0.0, 0.0])
+		var off_x := float(off[0]) if off.size() > 0 else 0.0
+		var off_y := float(off[1]) if off.size() > 1 else 0.0
+		var lowered := String(entry.get("name", "")).to_lower()
+		if player_index < 0 and (lowered.contains("player") or lowered.contains("hero")):
+			player_index = actors.size()
+		actors.append({"name": String(entry.get("name", "actor")), "type": kind,
+			"x": px, "y": py, "width": maxi(1, frame_w), "height": maxi(1, frame_h),
+			"image": image, "frames": frames, "states": states,
+			"current_state": String(entry.get("current_state", "")),
+			"centered": bool(entry.get("centered", true)),
+			"offset_x": off_x, "offset_y": off_y})
+	if player_index < 0 and not actors.is_empty():
+		player_index = 0
+	for n in data.get("nodes", []):
+		if typeof(n) != TYPE_DICTIONARY:
+			continue
+		var nk := String(n.get("kind", ""))
+		if nk == "spawn":
+			var nm := String(n.get("name", "")).to_lower()
+			if nm.contains("player") or nm.contains("start") or nm.contains("spawn"):
+				var gp: Array = n.get("global_position", n.get("position", [0.0, 0.0]))
+				runtime["spawn_x"] = float(gp[0]) if gp.size() > 0 else 0.0
+				runtime["spawn_y"] = float(gp[1]) if gp.size() > 1 else 0.0
+				runtime["has_spawn"] = true
+		elif nk == "collision" or nk == "collision_polygon":
+			var gp2: Array = n.get("global_position", n.get("position", [0.0, 0.0]))
+			var gx := float(gp2[0]) if gp2.size() > 0 else 0.0
+			var gy := float(gp2[1]) if gp2.size() > 1 else 0.0
+			var shape := String(n.get("shape", "rect"))
+			var cw := 0.0
+			var ch := 0.0
+			if nk == "collision_polygon":
+				var pts: Array = n.get("points", [])
+				if not pts.is_empty():
+					var min_x := 1e30
+					var min_y := 1e30
+					var max_x := -1e30
+					var max_y := -1e30
+					for pt in pts:
+						if typeof(pt) == TYPE_ARRAY and Array(pt).size() >= 2:
+							min_x = minf(min_x, float(pt[0]))
+							min_y = minf(min_y, float(pt[1]))
+							max_x = maxf(max_x, float(pt[0]))
+							max_y = maxf(max_y, float(pt[1]))
+					if max_x >= min_x and max_y >= min_y:
+						gx += (min_x + max_x) * 0.5
+						gy += (min_y + max_y) * 0.5
+						cw = max_x - min_x
+						ch = max_y - min_y
+			elif shape == "rect":
+				var size: Array = n.get("size", [0.0, 0.0])
+				cw = float(size[0]) if size.size() > 0 else 0.0
+				ch = float(size[1]) if size.size() > 1 else 0.0
+			elif shape == "circle":
+				var radius := float(n.get("radius", 0.0))
+				cw = radius * 2.0
+				ch = radius * 2.0
+			elif shape == "capsule":
+				var radius2 := float(n.get("radius", 0.0))
+				cw = radius2 * 2.0
+				ch = float(n.get("height", radius2 * 2.0))
+			elif shape == "convex_polygon":
+				var pts2: Array = n.get("points", [])
+				if not pts2.is_empty():
+					var min2 := Vector2(1e30, 1e30)
+					var max2 := Vector2(-1e30, -1e30)
+					for pt in pts2:
+						if typeof(pt) == TYPE_ARRAY and Array(pt).size() >= 2:
+							min2.x = minf(min2.x, float(pt[0]))
+							min2.y = minf(min2.y, float(pt[1]))
+							max2.x = maxf(max2.x, float(pt[0]))
+							max2.y = maxf(max2.y, float(pt[1]))
+					if max2.x >= min2.x and max2.y >= min2.y:
+						cw = max2.x - min2.x
+						ch = max2.y - min2.y
+			if cw > 0.0 and ch > 0.0:
+				runtime["solids"].append({"x": gx - cw * 0.5, "y": gy - ch * 0.5, "w": cw, "h": ch})
+	var focusable := ["Button", "OptionButton", "ItemList", "CheckBox", "CheckButton", "LineEdit", "TextEdit"]
+	for w in data.get("widgets", []):
+		if typeof(w) != TYPE_DICTIONARY:
+			continue
+		if not bool(w.get("visible", true)):
+			continue
+		var wt := String(w.get("type", ""))
+		if wt not in focusable:
+			continue
+		var items: Array = w.get("items", [])
+		runtime["widgets"].append({"x": int(w.get("x", 0)), "y": int(w.get("y", 0)),
+			"w": int(w.get("w", 0)), "h": int(w.get("h", 0)), "type": wt,
+			"items": items.size(), "selected": int(w.get("selected", 0)), "text": String(w.get("text", ""))})
+	runtime["actors"] = actors
+	runtime["player"] = player_index
+	return runtime
+
+static func _actor_cell_size(runtime_actor: Dictionary) -> Vector2i:
+	var w := int(runtime_actor.get("width", 16))
+	var h := int(runtime_actor.get("height", 16))
+	return Vector2i(16 if w <= 16 else 32, 16 if h <= 16 else 32)
+
+static func _actor_source_rect(runtime_actor: Dictionary, frame_index: int) -> Rect2i:
+	var frames: Array = runtime_actor.get("frames", [])
+	if frames.is_empty():
+		return Rect2i(0, 0, int(runtime_actor.get("width", 16)), int(runtime_actor.get("height", 16)))
+	var idx := clampi(frame_index, 0, frames.size() - 1)
+	return frames[idx]
+
+static func _actor_frame_image(runtime_actor: Dictionary, frame_index: int, cell: Vector2i) -> Image:
+	var image: Image = runtime_actor.get("image")
+	if image == null:
+		return null
+	var src_rect := _actor_source_rect(runtime_actor, frame_index)
+	src_rect.position.x = clampi(src_rect.position.x, 0, maxi(0, image.get_width() - 1))
+	src_rect.position.y = clampi(src_rect.position.y, 0, maxi(0, image.get_height() - 1))
+	src_rect.size.x = clampi(src_rect.size.x, 1, image.get_width() - src_rect.position.x)
+	src_rect.size.y = clampi(src_rect.size.y, 1, image.get_height() - src_rect.position.y)
+	var frame := image.get_region(src_rect)
+	if frame.get_width() != cell.x or frame.get_height() != cell.y:
+		frame.resize(cell.x, cell.y, Image.INTERPOLATE_NEAREST)
+	return frame
+
+static func _layout_sprite_atlas(runtime: Dictionary) -> Dictionary:
+	const ATLAS_W := 128
+	const MAX_H := 256
+	var actors: Array = runtime.get("actors", [])
+	var player := int(runtime.get("player", -1))
+	var order: Array = []
+	if player >= 0 and player < actors.size():
+		order.append(player)
+	for i in range(actors.size()):
+		if i != player:
+			order.append(i)
+	var atlas := Image.create_empty(ATLAS_W, MAX_H, false, Image.FORMAT_RGBA8)
+	atlas.fill(Color(0, 0, 0, 0))
+	var placements := {}
+	var active: Array = []
+	var cursor_rect := Rect2i()
+	var cursor_x := 0
+	var cursor_y := 0
+	var x := 0
+	var y := 0
+	var row_h := 0
+	var max_actors := 30
+	for idx in order:
+		if active.size() >= max_actors:
+			break
+		var actor: Dictionary = actors[idx]
+		var cell := _actor_cell_size(actor)
+		actor["cell_w"] = cell.x
+		actor["cell_h"] = cell.y
+		var frames: Array = actor.get("frames", [])
+		var local := []
+		var lx := x
+		var ly := y
+		var lrow := row_h
+		var fits := true
+		for f in range(frames.size()):
+			if lx + cell.x > ATLAS_W:
+				lx = 0
+				ly += lrow
+				lrow = 0
+			if ly + cell.y > MAX_H:
+				fits = false
+				break
+			local.append(Rect2i(lx, ly, cell.x, cell.y))
+			lx += cell.x
+			lrow = maxi(lrow, cell.y)
+		if not fits or local.is_empty():
+			actor["skipped"] = true
+			continue
+		placements[idx] = local
+		actor["skipped"] = false
+		x = lx
+		y = ly
+		row_h = lrow
+		active.append(idx)
+	if not Array(runtime.get("widgets", [])).is_empty() and x + 16 > ATLAS_W:
+		x = 0
+		y += row_h
+		row_h = 0
+	if not Array(runtime.get("widgets", [])).is_empty() and y + 16 <= MAX_H:
+		cursor_rect = Rect2i(x, y, 16, 16)
+		cursor_x = x
+		cursor_y = y
+		y += 16
+	for idx in active:
+		var actor: Dictionary = actors[idx]
+		var cell := Vector2i(int(actor.get("cell_w", 16)), int(actor.get("cell_h", 16)))
+		var rects: Array = placements[idx]
+		for f in range(rects.size()):
+			var frame := _actor_frame_image(actor, f, cell)
+			if frame == null:
+				continue
+			var dest: Rect2i = rects[f]
+			atlas.blit_rect(frame, Rect2i(0, 0, frame.get_width(), frame.get_height()),
+				Vector2i(dest.position.x, dest.position.y))
+	if cursor_rect.size.x > 0:
+		var cursor := Image.create_empty(16, 16, false, Image.FORMAT_RGBA8)
+		cursor.fill(Color(0, 0, 0, 0))
+		for yy in range(16):
+			for xx in range(8):
+				if xx <= yy and xx <= (15 - yy):
+					cursor.set_pixel(xx, yy, Color("#ff40c0"))
+				if xx <= (15 - yy) and xx <= yy:
+					cursor.set_pixel(15 - xx, yy, Color("#ff40c0"))
+		atlas.blit_rect(cursor, Rect2i(0, 0, 16, 16), Vector2i(cursor_x, cursor_y))
+	var content_h := y + row_h
+	if cursor_rect.size.x > 0:
+		content_h = maxi(content_h, cursor_rect.position.y + cursor_rect.size.y)
+	var height := maxi(8, content_h)
+	height = ((height + 7) / 8) * 8
+	if height > MAX_H:
+		height = MAX_H
+	var cropped := atlas.get_region(Rect2i(0, 0, ATLAS_W, height))
+	return {"image": cropped, "placements": placements, "active": active,
+		"cursor": cursor_rect}
+
+static func _tile_for_rect(rect: Rect2i) -> int:
+	return (rect.position.y / 8) * 16 + (rect.position.x / 8)
+
+static func _state_frames(actor: Dictionary, state: String) -> Array:
+	var states: Dictionary = actor.get("states", {})
+	var out: Array = []
+	if states.has(state):
+		for idx in states[state]:
+			out.append(int(idx))
+	return out
 
 static func _copy_native_port(port: Dictionary, dir: String) -> Dictionary:
 	if port.is_empty():
@@ -710,7 +1047,564 @@ static func _write_md_player(dir: String, player: Dictionary) -> void:
 	var rows := maxi(1, int(player.get("h", 16)) / 8)
 	_write_text(res_dir.path_join("player.res"), "SPRITE player_sprite \"player.png\" %d %d FAST 5\n" % [cols, rows])
 
-static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, rom: Dictionary = {}, player: Dictionary = {}) -> void:
+static func _u16_array(name: String, values: Array) -> String:
+	var out := "static const unsigned short %s[%d] = {\n" % [name, maxi(1, values.size())]
+	if values.is_empty():
+		out += "\t0\n"
+	else:
+		for i in range(values.size()):
+			out += "\t" + str(int(values[i]))
+			if i + 1 < values.size():
+				out += ","
+			if (i + 1) % 12 == 0:
+				out += "\n"
+		out += "\n"
+	out += "};\n"
+	return out
+
+static func _prepare_runtime_assets(runtime: Dictionary) -> Dictionary:
+	var layout := _layout_sprite_atlas(runtime)
+	var atlas: Image = layout.get("image")
+	if atlas == null:
+		return {}
+	var active: Array = layout.get("active", [])
+	if active.is_empty():
+		return {}
+	var quantized := RetroGraphics.quantize(atlas, 16, true)
+	var palette := RetroGraphics.extract_palette(quantized, 16, true)
+	while palette.size() < 16:
+		palette.push_back(Color(0, 0, 0, 0))
+	var tiles := RetroGraphics.encode_tiles(quantized, 4, palette, 8, false)
+	var actors: Array = runtime.get("actors", [])
+	var placements: Dictionary = layout.get("placements", {})
+	var player_original := int(runtime.get("player", -1))
+	var packed: Array = []
+	var player_packed := -1
+	for idx in active:
+		var actor: Dictionary = actors[idx]
+		var rects: Array = placements.get(idx, [])
+		var tile_list: Array = []
+		for r in rects:
+			tile_list.append(_tile_for_rect(r))
+		var cell_w := int(actor.get("cell_w", 16))
+		var cell_h := int(actor.get("cell_h", 16))
+		var start_x := float(actor.get("x", 0.0))
+		var start_y := float(actor.get("y", 0.0))
+		if bool(actor.get("centered", true)):
+			start_x -= cell_w * 0.5
+			start_y -= cell_h * 0.5
+		start_x += float(actor.get("offset_x", 0.0))
+		start_y += float(actor.get("offset_y", 0.0))
+		if idx == player_original and bool(runtime.get("has_spawn", false)):
+			start_x = float(runtime.get("spawn_x", start_x)) - cell_w * 0.5
+			start_y = float(runtime.get("spawn_y", start_y)) - cell_h * 0.5
+		if idx == player_original:
+			player_packed = packed.size()
+		packed.append({"index": idx, "actor": actor, "tiles": tile_list,
+			"x": int(round(start_x)), "y": int(round(start_y)),
+			"w": cell_w, "h": cell_h,
+			"size": 0 if cell_w <= 16 and cell_h <= 16 else 1,
+			"player": idx == player_original})
+	var cursor_tile := -1
+	var cursor_rect: Rect2i = layout.get("cursor", Rect2i())
+	if cursor_rect.size.x > 0:
+		cursor_tile = _tile_for_rect(cursor_rect)
+	return {"quantized": quantized, "palette": palette, "tiles": tiles,
+		"actors": packed, "player": player_packed, "cursor_tile": cursor_tile,
+		"cursor_rect": cursor_rect, "image": atlas}
+
+static func _runtime_state_tiles(actor: Dictionary, state: String, tile_list: Array) -> Array:
+	var out: Array = []
+	for frame_index in _state_frames(actor, state):
+		if frame_index >= 0 and frame_index < tile_list.size():
+			out.append(int(tile_list[frame_index]))
+	return out
+
+static func _runtime_default_tiles(actor: Dictionary, tile_list: Array) -> Array:
+	var states: Dictionary = actor.get("states", {})
+	var current := String(actor.get("current_state", ""))
+	if not current.is_empty():
+		var current_frames := _runtime_state_tiles(actor, current, tile_list)
+		if not current_frames.is_empty():
+			return current_frames
+	for state in ["IDLE", "WALK", "RUN", "JUMP", "FALL", "SPIN", "ATTACK"]:
+		var frames := _runtime_state_tiles(actor, state, tile_list)
+		if not frames.is_empty():
+			return frames
+	return tile_list.duplicate()
+
+static func _write_snes_runtime(dir: String, runtime: Dictionary, stage: RetroStage) -> Dictionary:
+	var prep := _prepare_runtime_assets(runtime)
+	if prep.is_empty():
+		return {"ok": false, "error": "no native sprite actors fit the SNES OBJ atlas"}
+	var actors: Array = prep.get("actors", [])
+	if actors.is_empty():
+		return {"ok": false, "error": "no native sprite actors"}
+	var palette: PackedColorArray = prep.get("palette", PackedColorArray())
+	var tiles: PackedByteArray = prep.get("tiles", PackedByteArray())
+	var pal_bytes := RetroGraphics.encode_palette(palette, false)
+	var cursor_tile := int(prep.get("cursor_tile", -1))
+	var player_index := int(prep.get("player", 0))
+	if player_index < 0:
+		player_index = 0
+	var stage_size: Vector2i = stage.get_map_size()
+	var widgets: Array = runtime.get("widgets", [])
+	var solids: Array = runtime.get("solids", [])
+	if solids.is_empty():
+		solids = [{"x": 0, "y": 208, "w": 256, "h": 16}]
+	var code := "#include <snes.h>\n#include \"assets.h\"\n#include \"runtime.h\"\n\n"
+	code += _array_decl("runtime_tiles", _byte_values(tiles), "unsigned char")
+	code += _array_decl("runtime_pal", _byte_values(pal_bytes), "unsigned char")
+	code += "#define RUNTIME_TILES_SIZE %d\n" % tiles.size()
+	code += "#define RUNTIME_PAL_SIZE %d\n" % pal_bytes.size()
+	code += "#define RUNTIME_ACTOR_COUNT %d\n" % actors.size()
+	code += "#define RUNTIME_WIDGET_COUNT %d\n" % widgets.size()
+	code += "#define RUNTIME_SOLID_COUNT %d\n" % solids.size()
+	code += "#define RUNTIME_PLAYER %d\n" % player_index
+	code += "#define RUNTIME_SCREEN_W 256\n#define RUNTIME_SCREEN_H 224\n"
+	code += "#define RUNTIME_WORLD_W (GAME_MAP_W * 8)\n"
+	code += "#define RUNTIME_WORLD_H (GAME_MAP_H * 8)\n"
+	code += "#define RUNTIME_CURSOR %d\n" % (1 if cursor_tile >= 0 else 0)
+	if cursor_tile >= 0:
+		code += "#define RUNTIME_CURSOR_OAM (RUNTIME_ACTOR_COUNT * 4)\n"
+		code += "#define RUNTIME_CURSOR_TILE %d\n" % cursor_tile
+	code += "\n"
+	code += "typedef struct {\n"
+	code += "    short x, y, w, h;\n"
+	code += "    unsigned char size;\n    unsigned char player;\n"
+	code += "    unsigned char frame_count;\n    unsigned char default_count;\n"
+	code += "    const unsigned short *frames;\n    const unsigned short *default_frames;\n"
+	code += "    unsigned char state_len[5];\n    const unsigned short *state_frames[5];\n"
+	code += "} RetroActorDef;\n\n"
+	for j in range(actors.size()):
+		var item: Dictionary = actors[j]
+		var actor: Dictionary = item.get("actor", {})
+		var tile_list: Array = item.get("tiles", [])
+		var default_tiles := _runtime_default_tiles(actor, tile_list)
+		if default_tiles.is_empty():
+			default_tiles = [0]
+		var state_arrays: Array = []
+		var state_lens: Array = []
+		for s in range(5):
+			var st: String = ["IDLE", "WALK", "RUN", "JUMP", "FALL"][s]
+			var state_tiles := _runtime_state_tiles(actor, st, tile_list)
+			state_arrays.append(state_tiles)
+			state_lens.append(state_tiles.size())
+		code += _u16_array("actor%d_frames" % j, tile_list)
+		code += _u16_array("actor%d_default" % j, default_tiles)
+		for s in range(5):
+			code += _u16_array("actor%d_state%d" % [j, s], state_arrays[s])
+		code += "\n"
+	code += "static const RetroActorDef runtime_actors[RUNTIME_ACTOR_COUNT] = {\n"
+	for j in range(actors.size()):
+		var item: Dictionary = actors[j]
+		var actor: Dictionary = item.get("actor", {})
+		var tile_list: Array = item.get("tiles", [])
+		var default_tiles := _runtime_default_tiles(actor, tile_list)
+		if default_tiles.is_empty():
+			default_tiles = [0]
+		var state_lens: Array = []
+		for s in range(5):
+			var st: String = ["IDLE", "WALK", "RUN", "JUMP", "FALL"][s]
+			state_lens.append(_runtime_state_tiles(actor, st, tile_list).size())
+		code += "\t{ %d, %d, %d, %d, %d, %d, %d, %d, actor%d_frames, actor%d_default, { %d, %d, %d, %d, %d }, { actor%d_state0, actor%d_state1, actor%d_state2, actor%d_state3, actor%d_state4 } },\n" % [
+			int(item.get("x", 0)), int(item.get("y", 0)), int(item.get("w", 16)), int(item.get("h", 16)),
+			int(item.get("size", 0)), 1 if bool(item.get("player", false)) else 0,
+			tile_list.size(), default_tiles.size(), j, j,
+			int(state_lens[0]), int(state_lens[1]), int(state_lens[2]), int(state_lens[3]), int(state_lens[4]),
+			j, j, j, j, j]
+	code += "};\n\n"
+	if not widgets.is_empty():
+		code += "typedef struct {\n    short x, y, w, h;\n    unsigned char kind;\n    unsigned char items;\n    unsigned char selected;\n} RetroWidget;\n\n"
+		code += "static RetroWidget runtime_widgets[RUNTIME_WIDGET_COUNT] = {\n"
+		for w in widgets:
+			var kind := 1 if String(w.get("type", "")) == "ItemList" else (2 if String(w.get("type", "")) == "OptionButton" else 0)
+			code += "\t{ %d, %d, %d, %d, %d, %d, %d },\n" % [
+				int(w.get("x", 0)), int(w.get("y", 0)), int(w.get("w", 0)), int(w.get("h", 0)),
+				kind, int(w.get("items", 0)), int(w.get("selected", 0))]
+		code += "};\n\n"
+	code += "typedef struct { short x, y, w, h; } RetroSolid;\n"
+	code += "static const RetroSolid runtime_solids[RUNTIME_SOLID_COUNT] = {\n"
+	for s in solids:
+		code += "\t{ %d, %d, %d, %d },\n" % [int(s.get("x", 0)), int(s.get("y", 0)), int(s.get("w", 0)), int(s.get("h", 0))]
+	code += "};\n\n"
+	code += "static short actor_x[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short actor_y[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short actor_vx[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short actor_vy[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_ground[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_frame[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_timer[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_state[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_facing[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char ui_focus = 0;\nstatic unsigned char ui_active = 0;\nstatic unsigned char ui_flash = 0;\n\n"
+	code += "static unsigned char overlap(short ax, short ay, short aw, short ah, short bx, short by, short bw, short bh)\n{\n"
+	code += "    return (unsigned char)(ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by);\n}\n\n"
+	code += "void runtime_init(void)\n{\n    int i;\n    oamInitGfxSet((u8 *)runtime_tiles, RUNTIME_TILES_SIZE, (u8 *)runtime_pal, RUNTIME_PAL_SIZE, 0, 0x4000, OBJ_SIZE16_L32);\n"
+	code += "    setPalette((u16 *)runtime_pal, 128, RUNTIME_PAL_SIZE);\n"
+	code += "    for (i = 0; i < RUNTIME_ACTOR_COUNT; i++) {\n"
+	code += "        actor_x[i] = runtime_actors[i].x;\n        actor_y[i] = runtime_actors[i].y;\n"
+	code += "        actor_vx[i] = 0;\n        actor_vy[i] = 0;\n        actor_ground[i] = 0;\n"
+	code += "        actor_frame[i] = 0;\n        actor_timer[i] = 0;\n        actor_state[i] = 0;\n        actor_facing[i] = 0;\n"
+	code += "        oamSet(i * 4, actor_x[i], actor_y[i], 3, 0, 0, runtime_actors[i].frames[0], 0);\n"
+	code += "        oamSetEx(i * 4, runtime_actors[i].size ? OBJ_LARGE : OBJ_SMALL, OBJ_SHOW);\n"
+	code += "    }\n"
+	if cursor_tile >= 0:
+		code += "#if RUNTIME_CURSOR\n"
+		code += "    oamSet(RUNTIME_CURSOR_OAM, 255, 240, 3, 0, 0, RUNTIME_CURSOR_TILE, 0);\n"
+		code += "    oamSetEx(RUNTIME_CURSOR_OAM, OBJ_SMALL, OBJ_SHOW);\n"
+		code += "#endif\n"
+	code += "}\n\n"
+	code += "static void update_anim(int i, unsigned char use_state)\n{\n"
+	code += "    int s = -1;\n    int count = 0;\n    const unsigned short *list = 0;\n"
+	code += "    if (use_state) {\n"
+	code += "        if (!actor_ground[i]) s = actor_vy[i] < 0 ? 3 : 4;\n"
+	code += "        else if (actor_vx[i] <= -2) s = 2;\n"
+	code += "        else if (actor_vx[i] != 0) s = 1;\n"
+	code += "        else s = 0;\n"
+	code += "    }\n"
+	code += "    if (s >= 0 && runtime_actors[i].state_len[s] > 0) {\n"
+	code += "        count = runtime_actors[i].state_len[s]; list = runtime_actors[i].state_frames[s];\n"
+	code += "    } else if (s >= 0) {\n        int k;\n        for (k = 0; k < 5; k++) {\n"
+	code += "            if (runtime_actors[i].state_len[k] > 0) { count = runtime_actors[i].state_len[k]; list = runtime_actors[i].state_frames[k]; break; }\n"
+	code += "        }\n        if (!list) { count = runtime_actors[i].default_count; list = runtime_actors[i].default_frames; }\n"
+	code += "    } else { count = runtime_actors[i].default_count; list = runtime_actors[i].default_frames; }\n"
+	code += "    if (!list || count <= 0) { count = runtime_actors[i].frame_count; list = runtime_actors[i].frames; }\n"
+	code += "    if (actor_state[i] != (unsigned char)(s + 1)) { actor_state[i] = (unsigned char)(s + 1); actor_frame[i] = 0; actor_timer[i] = 0; }\n"
+	code += "    actor_timer[i]++;\n    if (actor_timer[i] >= 8) { actor_timer[i] = 0; actor_frame[i]++; if (actor_frame[i] >= count) actor_frame[i] = 0; }\n"
+	code += "    if (actor_frame[i] >= count) actor_frame[i] = 0;\n"
+	code += "    oamSet(i * 4, actor_x[i], actor_y[i], 3, actor_facing[i], 0, list[actor_frame[i]], 0);\n}\n\n"
+	code += "static void update_player(unsigned short pad, unsigned short down)\n{\n"
+	code += "    int i = RUNTIME_PLAYER;\n    int s;\n    short vx = 0;\n"
+	code += "    if (!ui_active) { if (pad & KEY_LEFT) vx = -2; if (pad & KEY_RIGHT) vx = 2; }\n"
+	code += "    actor_vx[i] = vx;\n"
+	code += "    if (vx < 0) actor_facing[i] = 1; else if (vx > 0) actor_facing[i] = 0;\n"
+	code += "    if (!ui_active && (down & (KEY_A | KEY_B | KEY_UP)) && actor_ground[i]) { actor_vy[i] = -10; actor_ground[i] = 0; }\n"
+	code += "    actor_x[i] = (short)(actor_x[i] + vx);\n"
+	code += "    for (s = 0; s < RUNTIME_SOLID_COUNT; s++) {\n"
+	code += "        if (overlap(actor_x[i], actor_y[i], runtime_actors[i].w, runtime_actors[i].h, runtime_solids[s].x, runtime_solids[s].y, runtime_solids[s].w, runtime_solids[s].h)) {\n"
+	code += "            if (vx > 0) actor_x[i] = (short)(runtime_solids[s].x - runtime_actors[i].w);\n"
+	code += "            else if (vx < 0) actor_x[i] = (short)(runtime_solids[s].x + runtime_solids[s].w);\n"
+	code += "            actor_vx[i] = 0;\n        }\n    }\n"
+	code += "    actor_vy[i] = (short)(actor_vy[i] + 1);\n    if (actor_vy[i] > 8) actor_vy[i] = 8;\n"
+	code += "    actor_y[i] = (short)(actor_y[i] + actor_vy[i]);\n    actor_ground[i] = 0;\n"
+	code += "    for (s = 0; s < RUNTIME_SOLID_COUNT; s++) {\n"
+	code += "        if (overlap(actor_x[i], actor_y[i], runtime_actors[i].w, runtime_actors[i].h, runtime_solids[s].x, runtime_solids[s].y, runtime_solids[s].w, runtime_solids[s].h)) {\n"
+	code += "            if (actor_vy[i] > 0) { actor_y[i] = (short)(runtime_solids[s].y - runtime_actors[i].h); actor_ground[i] = 1; }\n"
+	code += "            else if (actor_vy[i] < 0) actor_y[i] = (short)(runtime_solids[s].y + runtime_solids[s].h);\n"
+	code += "            actor_vy[i] = 0;\n        }\n    }\n"
+	code += "    if (actor_x[i] < 0) actor_x[i] = 0;\n    if (actor_y[i] < 0) actor_y[i] = 0;\n"
+	code += "    if (actor_x[i] > RUNTIME_WORLD_W - runtime_actors[i].w) actor_x[i] = (short)(RUNTIME_WORLD_W - runtime_actors[i].w);\n"
+	code += "    if (actor_y[i] > RUNTIME_SCREEN_H - runtime_actors[i].h) actor_y[i] = (short)(RUNTIME_SCREEN_H - runtime_actors[i].h);\n}\n\n"
+	code += "static void update_ui(unsigned short down)\n{\n"
+	code += "#if RUNTIME_WIDGET_COUNT > 0\n"
+	code += "    if (down & KEY_START) { ui_active = !ui_active; ui_flash = 0; }\n"
+	code += "    if (ui_active) {\n"
+	code += "        RetroWidget *w = &runtime_widgets[ui_focus];\n"
+	code += "        if (down & KEY_UP) ui_focus = (unsigned char)((ui_focus + RUNTIME_WIDGET_COUNT - 1) % RUNTIME_WIDGET_COUNT);\n"
+	code += "        if (down & KEY_DOWN) ui_focus = (unsigned char)((ui_focus + 1) % RUNTIME_WIDGET_COUNT);\n"
+	code += "        w = &runtime_widgets[ui_focus];\n"
+	code += "        if (w->items > 0) {\n"
+	code += "            if (down & KEY_LEFT) w->selected = (unsigned char)((w->selected + w->items - 1) % w->items);\n"
+	code += "            if (down & KEY_RIGHT) w->selected = (unsigned char)((w->selected + 1) % w->items);\n"
+	code += "        }\n"
+	code += "        if (down & (KEY_A | KEY_B)) ui_flash = 30;\n"
+	code += "    }\n"
+	code += "    if (ui_flash > 0) ui_flash--;\n"
+	code += "#else\n    (void)down;\n#endif\n}\n\n"
+	code += "static void update_cursor(void)\n{\n"
+	code += "#if RUNTIME_CURSOR\n"
+	code += "    short cx = 255;\n    short cy = 240;\n"
+	code += "#if RUNTIME_WIDGET_COUNT > 0\n"
+	code += "    if (ui_active) {\n"
+	code += "        RetroWidget *w = &runtime_widgets[ui_focus];\n"
+	code += "        cx = (short)(w->x - 18); if (cx < 0) cx = 0;\n"
+	code += "        cy = (short)(w->y + (w->kind == 1 ? (3 + w->selected * 9) : ((w->h - 16) / 2)));\n"
+	code += "        if (ui_flash > 0 && ((ui_flash >> 2) & 1)) { cx = 255; cy = 240; }\n"
+	code += "    }\n"
+	code += "#endif\n"
+	code += "    oamSet(RUNTIME_CURSOR_OAM, cx, cy, 3, 0, 0, RUNTIME_CURSOR_TILE, 0);\n"
+	code += "#endif\n}\n\n"
+	code += "static void update_camera(void)\n{\n"
+	code += "#if RUNTIME_WIDGET_COUNT == 0\n"
+	code += "    short cx = 0, cy = 0;\n"
+	code += "    if (RUNTIME_WORLD_W > RUNTIME_SCREEN_W) {\n"
+	code += "        cx = (short)(actor_x[RUNTIME_PLAYER] + runtime_actors[RUNTIME_PLAYER].w / 2 - RUNTIME_SCREEN_W / 2);\n"
+	code += "        if (cx < 0) cx = 0; if (cx > RUNTIME_WORLD_W - RUNTIME_SCREEN_W) cx = (short)(RUNTIME_WORLD_W - RUNTIME_SCREEN_W);\n"
+	code += "    }\n"
+	code += "    if (RUNTIME_WORLD_H > RUNTIME_SCREEN_H) {\n"
+	code += "        cy = (short)(actor_y[RUNTIME_PLAYER] + runtime_actors[RUNTIME_PLAYER].h / 2 - RUNTIME_SCREEN_H / 2);\n"
+	code += "        if (cy < 0) cy = 0; if (cy > RUNTIME_WORLD_H - RUNTIME_SCREEN_H) cy = (short)(RUNTIME_WORLD_H - RUNTIME_SCREEN_H);\n"
+	code += "    }\n"
+	code += "    bgSetScroll(0, (unsigned short)cx, (unsigned short)cy);\n"
+	code += "#endif\n}\n\n"
+	code += "void runtime_update(void)\n{\n"
+	code += "    unsigned short pad = padsCurrent(0);\n    unsigned short down = padsDown(0);\n    int i;\n"
+	code += "    update_ui(down);\n    update_player(pad, down);\n"
+	code += "    for (i = 0; i < RUNTIME_ACTOR_COUNT; i++) update_anim(i, (unsigned char)(i == RUNTIME_PLAYER));\n"
+	code += "    update_cursor();\n    update_camera();\n}\n"
+	var source_path := dir.path_join("src/runtime.c")
+	var header_path := dir.path_join("src/runtime.h")
+	_write_text(source_path, code)
+	var header := "#ifndef RETRO_RUNTIME_H\n#define RETRO_RUNTIME_H\n\n"
+	header += "#define RETRO_RUNTIME_ACTORS %d\n#define RETRO_RUNTIME_WIDGETS %d\n\n" % [actors.size(), widgets.size()]
+	header += "void runtime_init(void);\nvoid runtime_update(void);\n\n#endif\n"
+	_write_text(header_path, header)
+	return {"ok": true, "source": source_path, "header": header_path,
+		"actors": actors.size(), "widgets": widgets.size(), "solids": solids.size(),
+		"tiles": tiles.size() / 32, "cursor": cursor_tile >= 0,
+		"stage_w": stage_size.x, "stage_h": stage_size.y}
+
+static func _md_c_slug(value: String, fallback: String) -> String:
+	var out := ""
+	for c in value.to_lower():
+		out += c if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "_" else "_"
+	out = out.strip_edges().trim_prefix("_").trim_suffix("_")
+	return out if not out.is_empty() else fallback
+
+static func _write_md_runtime(dir: String, runtime: Dictionary, stage: RetroStage) -> Dictionary:
+	var prep := _prepare_runtime_assets(runtime)
+	if prep.is_empty():
+		return {"ok": false, "error": "no native sprite actors for the Mega Drive build"}
+	var actors: Array = prep.get("actors", [])
+	if actors.is_empty():
+		return {"ok": false, "error": "no native sprite actors"}
+	var palette: PackedColorArray = prep.get("palette", PackedColorArray())
+	var res_dir := dir.path_join("res")
+	DirAccess.make_dir_recursive_absolute(res_dir)
+	var res_lines: Array = []
+	var player_index := int(prep.get("player", 0))
+	if player_index < 0:
+		player_index = 0
+	var stage_size: Vector2i = stage.get_map_size()
+	var widgets: Array = runtime.get("widgets", [])
+	var solids: Array = runtime.get("solids", [])
+	if solids.is_empty():
+		solids = [{"x": 0, "y": 208, "w": 320, "h": 16}]
+	var sheet_rows: Array = []
+	for j in range(actors.size()):
+		var item: Dictionary = actors[j]
+		var actor: Dictionary = item.get("actor", {})
+		var states: Dictionary = actor.get("states", {})
+		var rows: Array = []
+		if not states.is_empty():
+			var order: Array = []
+			var current_state := String(actor.get("current_state", ""))
+			if not current_state.is_empty() and states.has(current_state) and not Array(states[current_state]).is_empty():
+				order.append(current_state)
+			for st in ["IDLE", "WALK", "RUN", "JUMP", "FALL"]:
+				if states.has(st) and not Array(states[st]).is_empty() and not order.has(st):
+					order.append(st)
+			for st in states.keys():
+				if String(st) not in order and not Array(states[st]).is_empty():
+					order.append(String(st))
+			for st in order:
+				rows.append({"state": String(st), "frames": Array(states[st])})
+		if rows.is_empty():
+			var all_frames: Array = []
+			for f in range(int(actor.get("frames", []).size())):
+				all_frames.append(f)
+			rows.append({"state": "DEFAULT", "frames": all_frames})
+		var cols := 1
+		for row in rows:
+			cols = maxi(cols, Array(row.get("frames", [])).size())
+		var cell_w := int(item.get("w", 16))
+		var cell_h := int(item.get("h", 16))
+		var sheet := Image.create_empty(maxi(1, cols * cell_w), maxi(1, rows.size() * cell_h), false, Image.FORMAT_RGBA8)
+		sheet.fill(Color(0, 0, 0, 0))
+		for row_index in range(rows.size()):
+			var frames: Array = rows[row_index].get("frames", [])
+			for col in range(cols):
+				if col >= frames.size():
+					continue
+				var frame := _actor_frame_image(actor, int(frames[col]), Vector2i(cell_w, cell_h))
+				if frame == null:
+					continue
+				sheet.blit_rect(frame, Rect2i(0, 0, frame.get_width(), frame.get_height()),
+					Vector2i(col * cell_w, row_index * cell_h))
+		var slug := "actor%d_%s" % [j, _md_c_slug(String(actor.get("name", "sprite")), "sprite")]
+		var png := res_dir.path_join(slug + ".png")
+		RetroGraphics.save_indexed_png(png, sheet, palette)
+		var tw := maxi(1, int(ceil(float(cell_w) / 8.0)))
+		var th := maxi(1, int(ceil(float(cell_h) / 8.0)))
+		res_lines.append("SPRITE %s_sprite \"%s.png\" %d %d FAST 5" % [slug, slug, tw, th])
+		var state_rows := [255, 255, 255, 255, 255]
+		for row_index in range(rows.size()):
+			var st := String(rows[row_index].get("state", "DEFAULT"))
+			var standard := ["IDLE", "WALK", "RUN", "JUMP", "FALL"]
+			var pos := standard.find(st)
+			if pos >= 0:
+				state_rows[pos] = row_index
+		if state_rows[0] == 255:
+			state_rows[0] = 0
+		sheet_rows.append({"name": slug, "rows": rows.size(), "state_rows": state_rows,
+			"w": cell_w, "h": cell_h})
+	if int(prep.get("cursor_tile", -1)) >= 0:
+		var cursor_rect: Rect2i = prep.get("cursor_rect", Rect2i())
+		var atlas: Image = prep.get("image")
+		if atlas != null and cursor_rect.size.x > 0:
+			var cursor := atlas.get_region(cursor_rect)
+			RetroGraphics.save_indexed_png(res_dir.path_join("retro_cursor.png"), cursor, palette)
+			res_lines.append("SPRITE retro_cursor_sprite \"retro_cursor.png\" 2 2 FAST 0")
+	_write_text(res_dir.path_join("sprites.res"), "\n".join(res_lines) + "\n")
+	var code := "#include <genesis.h>\n#include \"assets.h\"\n#include \"sprites.h\"\n#include \"runtime.h\"\n\n"
+	code += "#define RUNTIME_ACTOR_COUNT %d\n" % actors.size()
+	code += "#define RUNTIME_WIDGET_COUNT %d\n" % widgets.size()
+	code += "#define RUNTIME_SOLID_COUNT %d\n" % solids.size()
+	code += "#define RUNTIME_PLAYER %d\n" % player_index
+	var screen_w := 256 if stage_size.x <= 32 else 320
+	code += "#define RUNTIME_SCREEN_W %d\n#define RUNTIME_SCREEN_H 224\n" % screen_w
+	code += "#define RUNTIME_WORLD_W (GAME_MAP_W * 8)\n"
+	code += "#define RUNTIME_WORLD_H (GAME_MAP_H * 8)\n"
+	code += "#define RUNTIME_CURSOR %d\n" % (1 if int(prep.get("cursor_tile", -1)) >= 0 else 0)
+	code += "\nstatic Sprite *actor_sprites[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short actor_x[RUNTIME_ACTOR_COUNT];\nstatic short actor_y[RUNTIME_ACTOR_COUNT];\n"
+	code += "static short actor_vx[RUNTIME_ACTOR_COUNT];\nstatic short actor_vy[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_ground[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_facing[RUNTIME_ACTOR_COUNT];\n"
+	code += "static unsigned char actor_row[RUNTIME_ACTOR_COUNT];\n"
+	code += "static const short actor_w[RUNTIME_ACTOR_COUNT] = {"
+	for j in range(actors.size()):
+		code += "%d%s" % [int(actors[j].get("w", 16)), "," if j + 1 < actors.size() else ""]
+	code += "};\nstatic const short actor_h[RUNTIME_ACTOR_COUNT] = {"
+	for j in range(actors.size()):
+		code += "%d%s" % [int(actors[j].get("h", 16)), "," if j + 1 < actors.size() else ""]
+	code += "};\nstatic const unsigned char actor_rows[RUNTIME_ACTOR_COUNT] = {"
+	for j in range(sheet_rows.size()):
+		code += "%d%s" % [int(sheet_rows[j].get("rows", 1)), "," if j + 1 < sheet_rows.size() else ""]
+	code += "};\nstatic const unsigned char actor_state_rows[RUNTIME_ACTOR_COUNT][5] = {\n"
+	for row in sheet_rows:
+		var sr: Array = row.get("state_rows", [0, 255, 255, 255, 255])
+		code += "\t{ %d, %d, %d, %d, %d },\n" % [int(sr[0]), int(sr[1]), int(sr[2]), int(sr[3]), int(sr[4])]
+	code += "};\n\n"
+	if not widgets.is_empty():
+		code += "typedef struct {\n    short x, y, w, h;\n    unsigned char kind;\n    unsigned char items;\n    unsigned char selected;\n} RetroWidget;\n\n"
+		code += "static RetroWidget widgets[RUNTIME_WIDGET_COUNT] = {\n"
+		for w in widgets:
+			var kind := 1 if String(w.get("type", "")) == "ItemList" else (2 if String(w.get("type", "")) == "OptionButton" else 0)
+			code += "\t{ %d, %d, %d, %d, %d, %d, %d },\n" % [
+				int(w.get("x", 0)), int(w.get("y", 0)), int(w.get("w", 0)), int(w.get("h", 0)),
+				kind, int(w.get("items", 0)), int(w.get("selected", 0))]
+		code += "};\n\n"
+	code += "typedef struct { short x, y, w, h; } RetroSolid;\n"
+	code += "static const RetroSolid solids[RUNTIME_SOLID_COUNT] = {\n"
+	for s in solids:
+		code += "\t{ %d, %d, %d, %d },\n" % [int(s.get("x", 0)), int(s.get("y", 0)), int(s.get("w", 0)), int(s.get("h", 0))]
+	code += "};\n\n"
+	code += "static unsigned char ui_focus = 0;\nstatic unsigned char ui_active = 0;\nstatic unsigned char ui_flash = 0;\nstatic unsigned short joy_prev = 0;\n\n"
+	code += "static unsigned char overlap(short ax, short ay, short aw, short ah, short bx, short by, short bw, short bh)\n{\n"
+	code += "    return (unsigned char)(ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by);\n}\n\n"
+	code += "void runtime_init(void)\n{\n    int i;\n    JOY_init();\n    SPR_init();\n"
+	code += "    for (i = 0; i < RUNTIME_ACTOR_COUNT; i++) {\n"
+	code += "        actor_x[i] = %s;\n" % "0"
+	code += "        actor_y[i] = 0;\n"
+	code += "    }\n"
+	for j in range(actors.size()):
+		var item: Dictionary = actors[j]
+		code += "    actor_x[%d] = %d;\n    actor_y[%d] = %d;\n" % [j, int(item.get("x", 0)), j, int(item.get("y", 0))]
+	code += "    for (i = 0; i < RUNTIME_ACTOR_COUNT; i++) {\n"
+	code += "        actor_vx[i] = 0; actor_vy[i] = 0; actor_ground[i] = 0; actor_facing[i] = 0; actor_row[i] = 0;\n"
+	code += "    }\n"
+	for j in range(actors.size()):
+		var slug := String(sheet_rows[j].get("name", "actor%d" % j))
+		code += "    actor_sprites[%d] = SPR_addSprite(&%s_sprite, actor_x[%d], actor_y[%d], TILE_ATTR(PAL1, TRUE, FALSE, FALSE));\n" % [j, slug, j, j]
+	code += "    PAL_setPalette(PAL1, %s_sprite.palette->data, DMA);\n" % String(sheet_rows[0].get("name", "actor0"))
+	if int(prep.get("cursor_tile", -1)) >= 0:
+		code += "    cursor = SPR_addSprite(&retro_cursor_sprite, 400, 240, TILE_ATTR(PAL1, TRUE, FALSE, FALSE));\n"
+	code += "}\n\n"
+	code += "static void update_player(unsigned short joy, unsigned short pressed)\n{\n"
+	code += "    int i = RUNTIME_PLAYER;\n    int s;\n    short vx = 0;\n"
+	code += "    if (!ui_active) { if (joy & BUTTON_LEFT) vx = -2; if (joy & BUTTON_RIGHT) vx = 2; }\n"
+	code += "    actor_vx[i] = vx;\n"
+	code += "    if (vx < 0) actor_facing[i] = 1; else if (vx > 0) actor_facing[i] = 0;\n"
+	code += "    if (!ui_active && (pressed & (BUTTON_A | BUTTON_B | BUTTON_C | BUTTON_UP)) && actor_ground[i]) { actor_vy[i] = -10; actor_ground[i] = 0; }\n"
+	code += "    actor_x[i] = (short)(actor_x[i] + vx);\n"
+	code += "    for (s = 0; s < RUNTIME_SOLID_COUNT; s++) {\n"
+	code += "        if (overlap(actor_x[i], actor_y[i], actor_w[i], actor_h[i], solids[s].x, solids[s].y, solids[s].w, solids[s].h)) {\n"
+	code += "            if (vx > 0) actor_x[i] = (short)(solids[s].x - actor_w[i]);\n"
+	code += "            else if (vx < 0) actor_x[i] = (short)(solids[s].x + solids[s].w);\n"
+	code += "            actor_vx[i] = 0;\n        }\n    }\n"
+	code += "    actor_vy[i] = (short)(actor_vy[i] + 1); if (actor_vy[i] > 8) actor_vy[i] = 8;\n"
+	code += "    actor_y[i] = (short)(actor_y[i] + actor_vy[i]); actor_ground[i] = 0;\n"
+	code += "    for (s = 0; s < RUNTIME_SOLID_COUNT; s++) {\n"
+	code += "        if (overlap(actor_x[i], actor_y[i], actor_w[i], actor_h[i], solids[s].x, solids[s].y, solids[s].w, solids[s].h)) {\n"
+	code += "            if (actor_vy[i] > 0) { actor_y[i] = (short)(solids[s].y - actor_h[i]); actor_ground[i] = 1; }\n"
+	code += "            else if (actor_vy[i] < 0) actor_y[i] = (short)(solids[s].y + solids[s].h);\n"
+	code += "            actor_vy[i] = 0;\n        }\n    }\n"
+	code += "    if (actor_x[i] < 0) actor_x[i] = 0;\n    if (actor_y[i] < 0) actor_y[i] = 0;\n"
+	code += "    if (actor_x[i] > RUNTIME_WORLD_W - actor_w[i]) actor_x[i] = (short)(RUNTIME_WORLD_W - actor_w[i]);\n"
+	code += "    if (actor_y[i] > RUNTIME_SCREEN_H - actor_h[i]) actor_y[i] = (short)(RUNTIME_SCREEN_H - actor_h[i]);\n}\n\n"
+	code += "static void update_ui(unsigned short pressed)\n{\n"
+	code += "#if RUNTIME_WIDGET_COUNT > 0\n"
+	code += "    if (pressed & BUTTON_START) { ui_active = !ui_active; ui_flash = 0; }\n"
+	code += "    if (ui_active) {\n"
+	code += "        if (pressed & BUTTON_UP) ui_focus = (unsigned char)((ui_focus + RUNTIME_WIDGET_COUNT - 1) % RUNTIME_WIDGET_COUNT);\n"
+	code += "        if (pressed & BUTTON_DOWN) ui_focus = (unsigned char)((ui_focus + 1) % RUNTIME_WIDGET_COUNT);\n"
+	code += "        if (widgets[ui_focus].items > 0) {\n"
+	code += "            if (pressed & BUTTON_LEFT) widgets[ui_focus].selected = (unsigned char)((widgets[ui_focus].selected + widgets[ui_focus].items - 1) % widgets[ui_focus].items);\n"
+	code += "            if (pressed & BUTTON_RIGHT) widgets[ui_focus].selected = (unsigned char)((widgets[ui_focus].selected + 1) % widgets[ui_focus].items);\n"
+	code += "        }\n"
+	code += "        if (pressed & (BUTTON_A | BUTTON_B)) ui_flash = 30;\n"
+	code += "    }\n"
+	code += "    if (ui_flash > 0) ui_flash--;\n"
+	code += "#else\n    (void)pressed;\n#endif\n}\n\n"
+	code += "static void update_cursor(void)\n{\n"
+	code += "#if RUNTIME_CURSOR\n"
+	code += "    short cx = 400;\n    short cy = 240;\n"
+	code += "#if RUNTIME_WIDGET_COUNT > 0\n"
+	code += "    if (ui_active) {\n"
+	code += "        cx = (short)(widgets[ui_focus].x - 18); if (cx < 0) cx = 0;\n"
+	code += "        cy = (short)(widgets[ui_focus].y + (widgets[ui_focus].kind == 1 ? (3 + widgets[ui_focus].selected * 9) : ((widgets[ui_focus].h - 16) / 2)));\n"
+	code += "        if (ui_flash > 0 && ((ui_flash >> 2) & 1)) { cx = 400; cy = 240; }\n"
+	code += "    }\n"
+	code += "#endif\n"
+	code += "    SPR_setPosition(cursor, cx, cy);\n"
+	code += "#endif\n}\n\n"
+	code += "static void update_anim(int i, unsigned char use_state)\n{\n"
+	code += "    if (use_state) {\n        int s;\n"
+	code += "        if (!actor_ground[i]) s = actor_vy[i] < 0 ? 3 : 4;\n"
+	code += "        else if (actor_vx[i] <= -2) s = 2;\n"
+	code += "        else if (actor_vx[i] != 0) s = 1;\n"
+	code += "        else s = 0;\n"
+	code += "        if (actor_state_rows[i][s] != 255 && actor_row[i] != actor_state_rows[i][s]) { actor_row[i] = actor_state_rows[i][s]; SPR_setAnim(actor_sprites[i], actor_row[i]); }\n"
+	code += "        SPR_setHFlip(actor_sprites[i], actor_facing[i]);\n"
+	code += "    } else if (actor_rows[i] > 1 && actor_row[i] != 0) { actor_row[i] = 0; SPR_setAnim(actor_sprites[i], 0); }\n"
+	code += "    SPR_setPosition(actor_sprites[i], actor_x[i], actor_y[i]);\n}\n\n"
+	code += "static void update_camera(void)\n{\n"
+	code += "#if RUNTIME_WIDGET_COUNT == 0\n"
+	code += "    short cx = 0, cy = 0;\n"
+	code += "    if (RUNTIME_WORLD_W > RUNTIME_SCREEN_W) {\n"
+	code += "        cx = (short)(actor_x[RUNTIME_PLAYER] + actor_w[RUNTIME_PLAYER] / 2 - RUNTIME_SCREEN_W / 2);\n"
+	code += "        if (cx < 0) cx = 0; if (cx > RUNTIME_WORLD_W - RUNTIME_SCREEN_W) cx = (short)(RUNTIME_WORLD_W - RUNTIME_SCREEN_W);\n"
+	code += "    }\n"
+	code += "    if (RUNTIME_WORLD_H > RUNTIME_SCREEN_H) {\n"
+	code += "        cy = (short)(actor_y[RUNTIME_PLAYER] + actor_h[RUNTIME_PLAYER] / 2 - RUNTIME_SCREEN_H / 2);\n"
+	code += "        if (cy < 0) cy = 0; if (cy > RUNTIME_WORLD_H - RUNTIME_SCREEN_H) cy = (short)(RUNTIME_WORLD_H - RUNTIME_SCREEN_H);\n"
+	code += "    }\n"
+	code += "    VDP_setHorizontalScroll(BG_A, cx);\n    VDP_setVerticalScroll(BG_A, (short)-cy);\n"
+	code += "#endif\n}\n\n"
+	code += "void runtime_update(void)\n{\n"
+	code += "    unsigned short joy = JOY_readJoypad(JOY_1);\n    unsigned short pressed = (unsigned short)(joy & ~joy_prev);\n    int i;\n"
+	code += "    joy_prev = joy;\n    update_ui(pressed);\n    update_player(joy, pressed);\n"
+	code += "    for (i = 0; i < RUNTIME_ACTOR_COUNT; i++) update_anim(i, (unsigned char)(i == RUNTIME_PLAYER));\n"
+	code += "    update_cursor();\n    update_camera();\n    SPR_update();\n}\n"
+	if int(prep.get("cursor_tile", -1)) >= 0:
+		code = code.replace("static unsigned short joy_prev = 0;\n", "static unsigned short joy_prev = 0;\nstatic Sprite *cursor = NULL;\n")
+	var source_path := dir.path_join("src/runtime.c")
+	var header_path := dir.path_join("src/runtime.h")
+	_write_text(source_path, code)
+	var header := "#ifndef RETRO_RUNTIME_H\n#define RETRO_RUNTIME_H\n\n"
+	header += "#define RETRO_RUNTIME_ACTORS %d\n#define RETRO_RUNTIME_WIDGETS %d\n\n" % [actors.size(), widgets.size()]
+	header += "void runtime_init(void);\nvoid runtime_update(void);\n\n#endif\n"
+	_write_text(header_path, header)
+	return {"ok": true, "source": source_path, "header": header_path,
+		"actors": actors.size(), "widgets": widgets.size(), "solids": solids.size(),
+		"tiles": 0, "cursor": int(prep.get("cursor_tile", -1)) >= 0,
+		"stage_w": stage_size.x, "stage_h": stage_size.y}
+
+
+static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, rom: Dictionary = {}, player: Dictionary = {}, runtime: Dictionary = {}) -> void:
+	var has_runtime := bool(runtime.get("ok", false)) and int(runtime.get("actors", 0)) > 0
 	var profile := ExportProfiles.for_target("snes")
 	var fade_frames := int(profile.get("splash_fade_frames_per_level", 2))
 	var hold_frames := int(profile.get("splash_hold_frames", 120))
@@ -723,6 +1617,8 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		module_name = String(bgm.get("soundbank", {}).get("module", "MOD_" + String(bgm.get("name", "bgm")).to_upper()))
 		bank_symbol = String(bgm.get("soundbank", {}).get("bank_symbol", "SOUNDBANK__"))
 	var code := "#include <snes.h>\n#include \"assets.h\"\n"
+	if has_runtime:
+		code += "#include \"runtime.h\"\n"
 	if not player.is_empty():
 		code += "#include \"player.h\"\n"
 	if bool(rom.get("msu1", false)):
@@ -807,7 +1703,15 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 	code += "    // Show BG1 only; uninitialised OAM/BG2/BG3 would otherwise draw stripes.\n"
 	code += "    REG_TM = 0x01; REG_TS = 0x00;\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
-	if player.is_empty():
+	if has_runtime:
+		# Prepare the background and all sprite actors while the display is in
+		# forced blank. loadStage() leaves BG1-only enabled; restore OBJ after
+		# runtime_init() and only then turn the screen on.
+		code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 0);\n"
+		code += "    runtime_init();\n"
+		code += "    REG_TM = 0x11; /* BG1 + OBJ */\n"
+		code += "    setScreenOn();\n"
+	elif player.is_empty():
 		code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 1);\n"
 	else:
 		# Prepare the background and the sprite while the display is in forced
@@ -842,20 +1746,23 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		if has_bgm:
 			code += "    spcPlay(0);\n"
 	if not sfx_brr_arrays.is_empty() or has_bgm:
-		var player_step := "updatePlayer(); " if not player.is_empty() else ""
+		var player_step := "runtime_update(); " if has_runtime else ("updatePlayer(); " if not player.is_empty() else "")
 		code += "    { u16 sfx_timer = 0; while (1) { " + player_step + "spcProcess(); if (++sfx_timer >= 120) { sfx_timer = 0;\n"
 		if not sfx_brr_arrays.is_empty():
 			code += "        spcPlaySound(0);\n"
 		code += "    } WaitForVBlank(); } }\n"
 	else:
-		if player.is_empty():
+		if has_runtime:
+			code += "    while (1) { runtime_update(); WaitForVBlank(); }\n"
+		elif player.is_empty():
 			code += "    while (1) WaitForVBlank();\n"
 		else:
 			code += "    while (1) { updatePlayer(); WaitForVBlank(); }\n"
 	code += "    return 0;\n}\n"
 	_write_text(path, code)
 
-static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, player: Dictionary = {}) -> void:
+static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, player: Dictionary = {}, runtime: Dictionary = {}) -> void:
+	var has_runtime := bool(runtime.get("ok", false)) and int(runtime.get("actors", 0)) > 0
 	var profile := ExportProfiles.for_target("megadrive")
 	var fade_steps := int(profile.get("splash_fade_steps", 15))
 	var hold_frames := int(profile.get("splash_hold_frames", 120))
@@ -870,6 +1777,8 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	var sfx_list: Array = audio.get("sfx", [])
 	var has_audio := not bgm.is_empty() or not sfx_list.is_empty()
 	var code := "#include <genesis.h>\n#include \"assets.h\"\n"
+	if has_runtime:
+		code += "#include \"runtime.h\"\n"
 	if not player.is_empty():
 		code += "#include \"player.h\"\n"
 	if has_audio:
@@ -892,7 +1801,7 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	code += "static void showSplash(void)\n{\n    u8 level; u16 hold;\n"
 	code += "    loadStage(splash_tiles, SPLASH_TILE_COUNT, splash_pal, splash_map, SPLASH_MAP_W, SPLASH_MAP_H);\n"
 	code += "    SYS_doVBlankProcess();\n"
-	code += "    VDP_setHorizontalScroll(BG_A, (s16)((320 - SPLASH_MAP_W * 8) / 2));\n"
+	code += "    VDP_setHorizontalScroll(BG_A, (s16)(((GAME_MAP_W * 8 <= 256 ? 256 : 320) - SPLASH_MAP_W * 8) / 2));\n"
 	code += "    // On Mega Drive a positive vertical scroll moves the plane up, so the\n"
 	code += "    // centering offset must be negative.\n"
 	code += "    VDP_setVerticalScroll(BG_A, (s16)(-((224 - SPLASH_MAP_H * 8) / 2)));\n"
@@ -925,10 +1834,13 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	code += "int main(bool hard)\n{\n    (void)hard;\n"
 	if not player.is_empty():
 		code += "    JOY_init();\n    SPR_init();\n"
-	code += "    VDP_setScreenWidth320();\n    VDP_setPlaneSize(64, 32, TRUE);\n    VDP_setBackgroundColor(0);\n"
+	code += "#if GAME_MAP_W * 8 <= 256\n    VDP_setScreenWidth256();\n#else\n    VDP_setScreenWidth320();\n#endif\n"
+	code += "    VDP_setPlaneSize(64, 32, TRUE);\n    VDP_setBackgroundColor(0);\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
 	code += "    loadStage(game_tiles, GAME_TILE_COUNT, game_pal, game_map, GAME_MAP_W, GAME_MAP_H);\n"
-	if not player.is_empty():
+	if has_runtime:
+		code += "    runtime_init();\n"
+	elif not player.is_empty():
 		code += "    initPlayer();\n"
 	if has_audio:
 		var bgm_name := _safe_audio_name(String(bgm.get("name", "bgm"))) if not bgm.is_empty() else ""
@@ -943,15 +1855,19 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 			code += "    XGM2_loadDriver(TRUE);\n"
 		if not sfx_list.is_empty():
 			var sfx_name := _safe_audio_name(String(sfx_list[0].get("name", "sfx")))
-			var player_step := "updatePlayer(); " if not player.is_empty() else ""
+			var player_step := "runtime_update(); " if has_runtime else ("updatePlayer(); " if not player.is_empty() else "")
 			code += "    { u16 sfx_timer = 0; while (TRUE) { " + player_step + "SYS_doVBlankProcess(); if (++sfx_timer >= 120) { sfx_timer = 0; XGM2_playPCM(%s, sizeof(%s), SOUND_PCM_CH2); } } }\n" % [sfx_name, sfx_name]
 		else:
-			if player.is_empty():
+			if has_runtime:
+				code += "    while (TRUE) { runtime_update(); SYS_doVBlankProcess(); }\n"
+			elif player.is_empty():
 				code += "    while (TRUE) SYS_doVBlankProcess();\n"
 			else:
 				code += "    while (TRUE) { updatePlayer(); SYS_doVBlankProcess(); }\n"
 	else:
-		if player.is_empty():
+		if has_runtime:
+			code += "    while (TRUE) { runtime_update(); SYS_doVBlankProcess(); }\n"
+		elif player.is_empty():
 			code += "    while (TRUE) SYS_doVBlankProcess();\n"
 		else:
 			code += "    while (TRUE) { updatePlayer(); SYS_doVBlankProcess(); }\n"

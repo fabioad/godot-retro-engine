@@ -1579,3 +1579,75 @@ bundle reported 3 widgets, 6 nodes and the imported sprite asset.
   collision and animation logic remain project C code.
 - A full game from scratch is possible with the existing PVSnesLib/SGDK
   projects and the Build button; gameplay logic remains project C code.
+
+### Automatic native runtime (0.1.35)
+
+The Native pipeline no longer stops at exporting assets. Game Build reads the
+port manifest and writes a runtime for both consoles.
+
+**What is generated automatically**
+
+- Every imported `Sprite2D` and `AnimatedSprite2D` is spawned at its scene
+  position. The first actor named player/hero, or a PlayerStart/Start/Spawn
+  `Marker2D`, becomes the D-pad player.
+- Player physics: horizontal movement, gravity, jump, floor/platform
+  collision, stage bounds and respawn on the imported collision shapes.
+- Collision shapes: rectangles, circles, capsules, convex polygons and
+  `CollisionPolygon2D` are flattened to AABBs. If a scene has no collision, a
+  floor is synthesized at the bottom of the screen.
+- Animation: the player switches between IDLE/WALK/RUN/JUMP/FALL using the
+  exported states. Other animated actors play their current exported state.
+- Camera: BG scroll follows the player when the stage is larger than the
+  screen and the scene has no baked UI.
+- UI: widgets are still baked into the background, and a sprite cursor is
+  generated for focus. Start opens/closes the focus mode; the D-pad moves
+  focus and changes ItemList/OptionButton selection; A/B flashes the current
+  action.
+- Mega Drive native games use H32/256x224 when the captured stage is 256 px
+  wide, so the baked UI and the screen match exactly. Wider stages use
+  H40/320x224.
+- SNES sprites are packed into one shared 16-color OBJ atlas at VRAM 0x4000;
+  up to 30 actors plus the UI cursor fit the OAM/VRAM budget.
+
+**Validation scene**
+
+The test scene contained a player, an animated coin, an enemy, a floor, a
+platform, a label, a button, an ItemList and a PlayerStart marker.
+
+```text
+SNES runtime: 3 actors, 2 solids, 2 widgets, 64 sprite tiles
+MD runtime:   3 actors, 2 solids, 2 widgets, 256x224 H32
+```
+
+```text
+SNES: player x 32 -> 106 while walking; jump y 192 -> 162;
+      landed on the platform at y 150
+MD:   player x 32 -> 106 while walking; jump y 192 -> 162;
+      landed on the platform at y 150
+SNES/MD: IDLE red -> WALK blue -> JUMP green -> landed red
+SNES/MD: UI cursor (2,47) -> (150,39); ItemList row (150,48)
+SNES/MD: coin animation alternated yellow/cyan frames
+```
+
+Builds:
+
+```text
+runtime_snes.sfc        262144 bytes  build ok
+runtime_md/out/rom.bin  131072 bytes  build ok
+state_snes.sfc          262144 bytes  build ok
+state_md/out/rom.bin    131072 bytes  build ok
+hello_snes.sfc          262144 bytes  build ok
+hello_md/out/rom.bin    131072 bytes  build ok
+```
+
+**Still project code**
+
+- Custom GDScript behavior is copied as reference, not transpiled to C/68000.
+- Button/OptionButton callbacks, menu transitions, scene changes, timers and
+  game rules still have to be written in `src/main.c` or in a project module.
+- Imported `AudioStreamPlayer` triggers are exported as metadata but are not
+  automatically converted into BGM/SFX playback events.
+- Areas, raycasts, lights, paths, particles and multiple BG/parallax layers
+  are exported as manifest data; the captured scene is still baked to one BG.
+- Collision is AABB-based. Rotated or concave shapes are approximated by their
+  bounding box.

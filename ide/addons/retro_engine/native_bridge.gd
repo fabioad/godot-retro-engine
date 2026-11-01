@@ -767,11 +767,14 @@ func _walk_widgets(node: Node, out: Array, base: Node) -> void:
 			for i in range(node.item_count):
 				items.append(node.get_item_text(i))
 			entry["items"] = items
+			var selected_items: PackedInt32Array = node.get_selected_items()
+			entry["selected"] = int(selected_items[0]) if not selected_items.is_empty() else -1
 		elif node is OptionButton:
 			var items: Array = []
 			for i in range(node.item_count):
 				items.append(node.get_item_text(i))
 			entry["items"] = items
+			entry["selected"] = node.selected
 		elif node is TabContainer:
 			var tabs: Array = []
 			for i in range(node.get_tab_count()):
@@ -1164,6 +1167,16 @@ func _port_markdown(data: Dictionary) -> String:
 	md += "- UI widgets: **%d**\n" % widgets.size()
 	md += "- Scene/other nodes: **%d**\n" % nodes.size()
 	md += "- Scripts: **%d**\n\n" % scripts.size()
+	md += "## Generated runtime\n\n"
+	md += "Game Build turns this manifest into a console runtime automatically:\n\n"
+	md += "- Spawns every imported `Sprite2D`/`AnimatedSprite2D` at its scene position.\n"
+	md += "- Picks the first actor named player/hero as the D-pad player (or a PlayerStart/Start/Spawn marker).\n"
+	md += "- Adds gravity, jumping, floor/platform collision and stage bounds.\n"
+	md += "- Rect, circle, capsule, convex-polygon and polygon collisions are flattened to AABBs.\n"
+	md += "- Plays IDLE/WALK/RUN/JUMP/FALL states on the player and the exported animation on other actors.\n"
+	md += "- Follows the player with the BG camera when the stage is larger than the screen and no UI is baked.\n"
+	md += "- Bakes the UI into the background and adds a Start/D-pad focus cursor with item selection.\n\n"
+	md += "The parts that still require project code are listed at the end.\n\n"
 	md += "## Imported assets\n\n"
 	if actors.is_empty():
 		md += "No sprite/animation assets were imported.\n\n"
@@ -1217,13 +1230,16 @@ func _port_markdown(data: Dictionary) -> String:
 			md += "- Methods: `%s`\n" % ", ".join(methods)
 			md += "- Signals: `%s`\n\n" % ", ".join(signals)
 	md += "## Porting checklist\n\n"
+	md += "- [x] Spawn imported sprite/animated actors and play their exported animations.\n"
+	md += "- [x] Generate player movement, gravity, jump and AABB collision.\n"
+	md += "- [x] Generate the UI focus cursor and item selection.\n"
 	if not widgets.is_empty():
-		md += "- [ ] Convert the UI rects/text above to a console font + tilemap (or keep the captured background).\n"
-	if not nodes.is_empty():
-		md += "- [ ] Map collision shapes, bodies, markers, audio and animation nodes to the platform runtime.\n"
+		md += "- [ ] Wire button/option callbacks, menu transitions and actions to C.\n"
 	if not scripts.is_empty():
-		md += "- [ ] Port the GDScript methods/signals above to C. Scripts are copied as reference; they are not transpiled.\n"
-	md += "- [ ] Reuse the generated sprite/tilemap/audio assets and this manifest as the scene mapping table.\n"
+		md += "- [ ] Port custom GDScript methods/signals above to C. Scripts are copied as reference; they are not transpiled.\n"
+	if not nodes.is_empty():
+		md += "- [ ] Map the remaining node kinds (areas, raycasts, lights, paths, audio triggers, timers) to C.\n"
+	md += "- [ ] Add parallax/multiple BG layers if the scene needs them; the capture is baked into one BG.\n"
 	md += "- [ ] Keep the Godot scene as the source of truth and re-export after changes.\n"
 	return md
 
@@ -1382,7 +1398,9 @@ func _add_sprite_asset(node: Node, dir: String, assets: Array) -> void:
 	assets.append({"name": str(node.name), "type": 1,
 		"position": _node_position(node), "asset": String(r.get("png", "")),
 		"animation": "", "frames": sprite.get_frames().size(),
-		"width": image.get_width(), "height": image.get_height()})
+		"width": image.get_width(), "height": image.get_height(),
+		"centered": bool(node.get("centered")) if node.get("centered") != null else true,
+		"offset": _vec_array(node.get("offset")) if node.get("offset") != null else [0.0, 0.0]})
 	_add_asset_row({"name": str(node.name), "type": I18n.t("native.type_sprite"), "path": String(r.get("png", ""))})
 
 func _add_animated_asset(node: Node, dir: String, assets: Array) -> void:
@@ -1444,7 +1462,10 @@ func _add_animated_asset(node: Node, dir: String, assets: Array) -> void:
 	assets.append({"name": str(node.name), "type": 2, "position": _node_position(node),
 		"asset": String(r.get("png", "")), "animation": anim_json,
 		"frames": images.size(), "width": cell_w, "height": cell_h,
-		"animations": animations.size(), "saved": anim_save == OK})
+		"animations": animations.size(), "saved": anim_save == OK,
+		"current_state": _state_name(String(node.get("animation"))),
+		"centered": bool(node.get("centered")) if node.get("centered") != null else true,
+		"offset": _vec_array(node.get("offset")) if node.get("offset") != null else [0.0, 0.0]})
 	_add_asset_row({"name": str(node.name), "type": I18n.t("native.type_animated"), "path": anim_json})
 
 func _import_bake_sheet(scene_name: String, dir: String, images: Array, source: String, assets: Array) -> Dictionary:
