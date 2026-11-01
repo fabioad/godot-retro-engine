@@ -1768,6 +1768,12 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 	if not sfx_entries.is_empty():
 		_write_snes_asm_blobs(path.get_base_dir(), sfx_entries, rom, "sfx_data.asm")
 		code += "\n"
+	else:
+		# A previous generate into the same folder may have left an assembly
+		# module with exported BRR labels; remove it so it is not linked.
+		var stale := path.get_base_dir().path_join("sfx_data.asm")
+		if FileAccess.file_exists(stale):
+			DirAccess.remove_absolute(stale)
 	if not sfx_brr_arrays.is_empty():
 		code += "static brrsamples sfx_table[%d];\n\n" % sfx_brr_arrays.size()
 	if not player.is_empty():
