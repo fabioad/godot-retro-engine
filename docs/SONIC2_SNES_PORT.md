@@ -59,20 +59,25 @@ The runtime is C on the SNES side:
 - springs: vertical/horizontal/diagonal launch with the original yellow/red
   strengths and bounce animation;
 - monitors: solid top, spin-jump break, ring/shoes/shield/invincibility/1-up
-  contents, broken monitor frame (the 1-up icon still needs its extra art);
+  contents, broken monitor frame and the original Sonic-head 1-up icon;
 - star posts: activation by proximity, checkpoint stored for pit respawns and
   the star ball removed when active;
 - goal signpost: idle Eggman face, proximity trigger, spin to the Sonic face
   and HUD timer stop at the end of the act;
 - spikes: upright ceiling/floor spike sets, original y-flip orientation and
   hurt on contact;
-- badniks: Buzz Bomber (hover/bob animation), Masher (vertical swim cycle) and
-  Coconuts (tree idle), with stomp destruction (+100), contact damage and the
-  original sprite frames;
+- badniks: Buzz Bomber (hover/bob animation + fireball), Masher (original
+  jump/gravity water cycle) and Coconuts (tree idle + thrown coconut), with
+  stomp destruction (+100), explosion, contact damage and the original frames;
 - hurt/death: hurt pose and knockback, ring scatter (up to 20 lost rings,
   collectible after a short delay), death pose and fall, lives counter,
   respawn at the last star post and reset of the act timer/rings;
-- pit falls now count as deaths instead of teleporting back immediately.
+- pit falls now count as deaths instead of teleporting back immediately;
+- shield and invincibility stars drawn with the original art;
+- lives counter shown at the bottom-left as SONIC + digit, and a GAME OVER
+  screen with automatic restart when lives reach zero;
+- spin dash: hold down + jump to charge, release down to launch, with the roll
+  animation and a 40-frame rolling state.
 
 ## Build and run
 
@@ -116,6 +121,14 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Ring loss](screenshots/sonic2_snes_port_ring_loss.png)
 ![Death](screenshots/sonic2_snes_port_death.png)
 ![Checkpoint respawn](screenshots/sonic2_snes_port_respawn.png)
+![Buzz Bomber fireball](screenshots/sonic2_snes_port_buzzer_fire.png)
+![Explosion](screenshots/sonic2_snes_port_explosion.png)
+![Shield](screenshots/sonic2_snes_port_shield.png)
+![Invincibility](screenshots/sonic2_snes_port_invincibility.png)
+![1-up monitor](screenshots/sonic2_snes_port_1up.png)
+![Lives HUD](screenshots/sonic2_snes_port_lives_hud.png)
+![Spin dash](screenshots/sonic2_snes_port_spindash.png)
+![Game over](screenshots/sonic2_snes_port_game_over.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -127,20 +140,18 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
    still plain inertia; `AnglePos` velocity rotation and `Sonic_SlopeResist`
    acceleration need the signed 16x16 path validated for every angle.
 2. **Remaining objects.** Bridges, moving platforms, waterfalls and scenery
-   still need their own importers and behaviors. Badnik projectiles (Buzzer
-   fireball, Coconuts) and the exact Masher jump-out-of-water cycle are still
-   approximations. Badniks respawn on death; broken monitors and used star
-   posts intentionally remain in their state.
-3. **HUD art/lives/title card.** The layout is faithful, but the font is a
-   compact 5x7 OBJ font; the lives display, title card and act card are
-   missing. The lives counter is tracked but not shown.
-4. **Death/game over.** Hurt, ring loss, death and checkpoint respawn are in;
-   the game-over screen, invincibility/shield visuals and badnik explosions
-   are still missing.
+   still need their own importers and behaviors. Badnik AI is still
+   approximate around ledges/turning points. Badniks respawn on death; broken
+   monitors and used star posts intentionally remain in their state.
+3. **HUD art/title card.** The layout is faithful, but the font is a compact
+   5x7 OBJ font and the GAME OVER screen is text-only; the original HUD font,
+   title card and act card are still missing.
+4. **Death/game-over details.** The game-over state is a simple text screen;
+   the original art/animation and the invincibility-kills-badniks behavior are
+   still missing.
 5. **Audio.** The SMPS music, ring sound and DAC driver are not translated; the
    current ROM is silent.
-6. **Tails, spin dash, special stages, water, two-player mode, openings and
-   ending.**
+6. **Tails, special stages, water, two-player mode, openings and ending.**
 
 ## Notes for the next implementation
 
@@ -153,7 +164,7 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
   shifts/adds for the jump and slope math. The ground snap itself is inlined
   (no separate `AnglePos` call) to avoid the same ABI/stack symptom.
 - BG page groups are 16 KiB assembly sections (8 pages each); 172 pages fit
-  in 22 groups and 512 KiB with ~41 KiB free.
+  in 22 groups and 512 KiB with ~30 KiB free.
 - The object layer uses BG2 with a 32x32 screen-space map at VRAM 0x3800 and
   512 tiles of CHR at 0x4000; OBJ tiles moved to 0x6000. The map is copied to
   VRAM after `WaitForVBlank()` (RAM-to-VRAM DMA during active display is lost).
@@ -161,6 +172,8 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
   wide; the port uses 1,376 tiles (43 pages).
 - Sonic now uses 18 frames (idle/walk/run/roll/hurt/death), 384 OBJ tiles;
   rings use 32 and the HUD 39, for 455 of the 512 available OBJ tiles.
+- The BG2 object atlas now includes monitor icons, spikes, badniks, shield,
+  invincibility stars and explosion frames (380 of 512 CHR tiles).
 - The preview's injected controller events were not reliable in headless mode;
   the `--demo` build uses assignment (`pad = padsCurrent(0) | KEY_RIGHT`)
   because `pad |= KEY_RIGHT` did not reach the physics in that build.

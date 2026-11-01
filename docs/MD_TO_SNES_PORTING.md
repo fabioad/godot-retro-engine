@@ -64,12 +64,28 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
 - springs, monitors, star posts, the goal signpost, spikes and the EHZ
   badniks (Buzz Bomber, Masher, Coconuts) on a BG2 object layer, using the
   original Nemesis art and sprite mappings;
-- hurt/death poses, ring scatter, lives, checkpoint respawn and pit deaths.
+- badnik fireballs/coconuts, explosions, shield and invincibility visuals,
+  the 1-up monitor icon and the lives HUD;
+- hurt/death poses, ring scatter, lives, checkpoint respawn, pit deaths, the
+  GAME OVER screen and spin dash.
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
-systems (slopes/loops, badnik projectiles, game-over/lives HUD, audio,
-Tails/specials/openings/ending). Those are per-game adapter work, not a missing
-generic translation step.
+systems (slopes/loops, bridges/platforms, audio, Tails/specials/openings/
+ending). Those are per-game adapter work, not a missing generic translation
+step.
+
+## Port capability today
+
+| Source project | Path | Fidelity |
+| --- | --- | --- |
+| Engine-native actor/stage project | shared native runtime | same actors/widgets/solids on SNES |
+| Sonic 2 disassembly | `sonic2_snes_port.py` | EHZ Act 1 gameplay port, still missing audio/Tails/special stages |
+| Arbitrary SGDK/68000 project | unsupported | needs a per-game source adapter |
+
+The supported paths are deliberately explicit: the app does not claim that an
+arbitrary 68000 binary can be recompiled automatically. The long-term SNES →
+Mega Drive direction will use the same rule: a portable representation plus a
+target runtime, not a binary CPU emulator.
 
 ## Why not "any ROM" automatically
 

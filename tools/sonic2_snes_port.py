@@ -523,11 +523,11 @@ def font_tile(rows):
     out = bytearray(32)
     for y in range(8):
         for x in range(8):
-            on = 1 if (1 <= x <= 5 and y < 7 and rows[y][x - 1] == '1') else 0
+            idx = 6 if (1 <= x <= 5 and y < 7 and rows[y][x - 1] == '1') else 0
             for p in range(4):
                 pair = p // 2
                 off = pair * 16 + y * 2 + (p % 2)
-                out[off] |= (on & 1) << (7 - x)
+                out[off] |= ((idx >> p) & 1) << (7 - x)
     return bytes(out)
 
 hud_tiles = b"".join(font_tile(FONT[c]) for c in HUD_CHARS)
@@ -549,6 +549,10 @@ OBJECT_ART = {
     "masher": "/art/nemesis/EHZ Pirahna badnik.nem",
     "coconuts": "/art/nemesis/Coconuts badnik from EHZ.nem",
     "spikes": "/art/nemesis/Spikes.nem",
+    "explosion": "/art/nemesis/Explosion.nem",
+    "shield": "/art/nemesis/Shield.nem",
+    "stars": "/art/nemesis/Invincibility stars.nem",
+    "lives": "/art/nemesis/Sonic lives counter.nem",
 }
 object_art = {}
 for _name, _path in OBJECT_ART.items():
@@ -613,11 +617,25 @@ object_mappings = {
     "masher": (["/mappings/sprite/obj5C.asm"], "Map_obj5C"),
     "coconuts": (["/mappings/sprite/obj9D.asm"], "Map_obj9D"),
     "spikes": (["/mappings/sprite/obj36.asm"], "Map_obj36"),
+    "explosion": (["/mappings/sprite/obj27.asm"], "Map_obj27"),
+    "shield": (["/mappings/sprite/obj38.asm"], "Map_obj38"),
+    "stars": (["/mappings/sprite/obj35.asm"], "Map_obj35"),
 }
 object_mapping_frames = {}
 for _name, (_paths, _label) in object_mappings.items():
     object_mapping_frames[_name] = parse_mapping_frames(
         [ROOT + p for p in _paths], _label)
+
+# Monitor 1-up: monitor casing plus the original Sonic head from the lives
+# counter art at the content position used by mapping frame 2.
+object_art["monitor_1up"] = object_art["monitor"] + object_art["lives"][:4]
+object_mapping_frames["mon_1up"] = [[
+    (-8, -11, 2, 2, len(object_art["monitor"]), 0, 0, 0, 0)
+] + object_mapping_frames["monitor"][0]]
+object_mapping_frames["mon_1up"][0] = [
+    (a[0], a[1], a[2], a[3], a[4], a[5], a[6])
+    for a in object_mapping_frames["mon_1up"][0]
+]
 
 # Global frame order.  Composite frames list the topmost piece first in the
 # mappings, so the draw order is reversed.
@@ -633,7 +651,13 @@ OBJECT_FRAME_DEFS = (
     [("buzzer", 0, "buzzer"), ("buzzer", 1, "buzzer")] +
     [("masher", 0, "masher"), ("masher", 1, "masher")] +
     [("coconuts", 0, "coconuts"), ("coconuts", 1, "coconuts")] +
-    [("spikes", 0, "spikes"), ("spikes", 1, "spikes")]
+    [("spikes", 0, "spikes"), ("spikes", 1, "spikes")] +
+    [("buzzer", 5, "buzzer"), ("buzzer", 6, "buzzer")] +
+    [("coconuts", 3, "coconuts")] +
+    [("explosion", i, "explosion") for i in (1, 2, 3, 4)] +
+    [("shield", i, "shield") for i in range(6)] +
+    [("stars", i, "stars") for i in (1, 2, 3, 4)] +
+    [("mon_1up", 0, "monitor_1up")]
 )
 
 object_atlas = []
@@ -720,6 +744,12 @@ OBJ_FRAME = {
     "MASH_0": 37, "MASH_1": 38,
     "COCO_0": 39, "COCO_1": 40,
     "SPIKE_0": 41, "SPIKE_1": 42,
+    "BUZ_FIRE0": 43, "BUZ_FIRE1": 44, "COCO_FIRE": 45,
+    "EXPL_1": 46, "EXPL_2": 47, "EXPL_3": 48, "EXPL_4": 49,
+    "SHIELD_0": 50, "SHIELD_1": 51, "SHIELD_2": 52,
+    "SHIELD_3": 53, "SHIELD_4": 54, "SHIELD_5": 55,
+    "STAR_1": 56, "STAR_2": 57, "STAR_3": 58, "STAR_4": 59,
+    "MON_1UP": 60,
 }
 
 
@@ -925,6 +955,7 @@ static unsigned char obj_timer[OBJ_COUNT];
 static unsigned char obj_phase[OBJ_COUNT];
 static short obj_rx[OBJ_COUNT];
 static short obj_ry[OBJ_COUNT];
+static short obj_vy[OBJ_COUNT];
 static unsigned short obj_map[32 * 32];
 static short checkpoint_x = 96, checkpoint_y = 655;
 static unsigned char last_starpost;
@@ -938,9 +969,18 @@ static unsigned char sign_spin;
 static unsigned char dead;
 static unsigned short death_timer;
 static unsigned char hurt_timer;
+static unsigned char spindash_active;
+static unsigned char spindash_charge;
+static unsigned char rolling;
 static unsigned char lost_count;
 static short lost_x[20], lost_y[20], lost_vx[20], lost_vy[20];
 static unsigned char lost_timer[20];
+static short proj_x[10], proj_y[10], proj_vx[10], proj_vy[10];
+static unsigned char proj_kind[10], proj_timer[10];
+static short expl_x[4], expl_y[4];
+static unsigned char expl_timer[4];
+static unsigned char game_over;
+static unsigned short game_over_timer;
 
 static short cam_x, cam_y;
 
@@ -1349,11 +1389,11 @@ static void draw_lost_rings(void)
         if (i < lost_count && lost_timer[i]) {
             short sx = (short)(lost_x[i] - cam_x - 8);
             short sy = (short)(lost_y[i] - cam_y - 8);
-            oamSet((u16)((108 + i) * 4), (u16)sx, (u16)sy, 3, 0, 0,
+            oamSet((u16)((52 + i) * 4), (u16)sx, (u16)sy, 3, 0, 0,
                 (u16)(RING_BASE_TILE + ring_anim * 2), 1);
-            oamSetEx((u16)((108 + i) * 4), OBJ_LARGE, OBJ_SHOW);
+            oamSetEx((u16)((52 + i) * 4), OBJ_LARGE, OBJ_SHOW);
         } else {
-            oamSetEx((u16)((108 + i) * 4), OBJ_LARGE, OBJ_HIDE);
+            oamSetEx((u16)((52 + i) * 4), OBJ_LARGE, OBJ_HIDE);
         }
     }
 }
@@ -1369,9 +1409,9 @@ static unsigned char hud_index(char c)
 
 static unsigned char hud_char(unsigned char x, unsigned char y, char c, unsigned char slot)
 {
-    oamSet((u16)((60 + slot) * 4), (u16)x, (u16)y, 3, 0, 0,
-        (u16)(HUD_TILE_BASE + hud_index(c)), 2);
-    oamSetEx((u16)((60 + slot) * 4), OBJ_SMALL, OBJ_SHOW);
+    oamSet((u16)((72 + slot) * 4), (u16)x, (u16)y, 3, 0, 0,
+        (u16)(HUD_TILE_BASE + hud_index(c)), 0);
+    oamSetEx((u16)((72 + slot) * 4), OBJ_SMALL, OBJ_SHOW);
     return (unsigned char)(slot + 1);
 }
 
@@ -1402,16 +1442,23 @@ static unsigned char hud_num(unsigned char x, unsigned char y, unsigned short va
 static void draw_hud(void)
 {
     unsigned char slot = 0;
+    if (game_over) {
+        slot = hud_text(92, 100, "GAME OVER", slot);
+        for (; slot < 54; slot++) oamSetEx((u16)((72 + slot) * 4), OBJ_SMALL, OBJ_HIDE);
+        return;
+    }
     slot = hud_text(8, 8, "SCORE", slot);
     slot = hud_num(56, 8, score, 6, slot);
     slot = hud_text(8, 16, "TIME", slot);
     slot = hud_num(48, 16, game_time, 3, slot);
     slot = hud_text(8, 24, "RINGS", slot);
     slot = hud_num(56, 24, rings_collected, 3, slot);
-    for (; slot < 48; slot++) oamSetEx((u16)((60 + slot) * 4), OBJ_SMALL, OBJ_HIDE);
+    slot = hud_text(8, 200, "SONIC", slot);
+    slot = hud_num(56, 200, lives, 1, slot);
+    for (; slot < 54; slot++) oamSetEx((u16)((72 + slot) * 4), OBJ_SMALL, OBJ_HIDE);
 }
 
-static const unsigned char mon_frames[8] = {0, 2, 0, 0, 5, 6, 7, 8};
+static const unsigned char mon_frames[8] = {0, OF_MON_1UP, 0, 0, 5, 6, 7, 8};
 static const unsigned char sign_seq[9] = {
     OF_SIGN_2, OF_SIGN_3, OF_SIGN_4, OF_SIGN_5, OF_SIGN_1,
     OF_SIGN_3, OF_SIGN_4, OF_SIGN_5, OF_SIGN_0
@@ -1508,6 +1555,42 @@ static void draw_objects(void)
     }
 }
 
+static void draw_effects(void)
+{
+    unsigned char i;
+    short sx = (short)(xpos - cam_x);
+    short sy = (short)(ypos - cam_y);
+    if (shield_flag) {
+        unsigned char f = (unsigned char)((frame_counter >> 3) & 7);
+        if (f > 5) f = 5;
+        draw_obj_frame((unsigned char)(OF_SHIELD_0 + f), sx, sy, 0);
+    }
+    if (invincible_timer) {
+        unsigned char f = (unsigned char)((frame_counter >> 2) & 3);
+        draw_obj_frame((unsigned char)(OF_STAR_1 + f), (short)(sx - 14), (short)(sy - 14), 0);
+        draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 1) & 3)), (short)(sx + 14), (short)(sy - 10), 0);
+        draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 2) & 3)), (short)(sx - 12), (short)(sy + 12), 0);
+        draw_obj_frame((unsigned char)(OF_STAR_1 + ((f + 3) & 3)), (short)(sx + 12), (short)(sy + 12), 0);
+    }
+    for (i = 0; i < 10; i++) {
+        unsigned char frame;
+        if (!proj_timer[i]) continue;
+        if (proj_kind[i] == 1) frame = (proj_timer[i] & 4) ? OF_BUZ_FIRE0 : OF_BUZ_FIRE1;
+        else frame = OF_COCO_FIRE;
+        draw_obj_frame(frame, (short)(proj_x[i] - cam_x), (short)(proj_y[i] - cam_y), 0);
+    }
+    for (i = 0; i < 4; i++) {
+        unsigned char f;
+        if (!expl_timer[i]) continue;
+        if (expl_timer[i] < 6) f = 0;
+        else if (expl_timer[i] < 12) f = 1;
+        else if (expl_timer[i] < 18) f = 2;
+        else f = 3;
+        draw_obj_frame((unsigned char)(OF_EXPL_1 + f),
+            (short)(expl_x[i] - cam_x), (short)(expl_y[i] - cam_y), 0);
+    }
+}
+
 static void monitor_grant(unsigned char sub)
 {
     if (sub == 4) {
@@ -1577,6 +1660,8 @@ static void update_lost_rings(void)
 static void hurt_sonic(void)
 {
     if (dead || hurt_timer || invincible_timer) return;
+    spindash_active = 0;
+    rolling = 0;
     if (shield_flag) {
         shield_flag = 0;
         hurt_timer = 60;
@@ -1603,6 +1688,88 @@ static void hurt_sonic(void)
     }
 }
 
+static void spawn_projectile(unsigned char kind, short x, short y, short vx, short vy)
+{
+    unsigned char i;
+    for (i = 0; i < 10; i++) {
+        if (proj_timer[i]) continue;
+        proj_kind[i] = kind;
+        proj_x[i] = x;
+        proj_y[i] = y;
+        proj_vx[i] = vx;
+        proj_vy[i] = vy;
+        proj_timer[i] = 180;
+        return;
+    }
+}
+
+static void update_projectiles(void)
+{
+    unsigned char i;
+    for (i = 0; i < 10; i++) {
+        short dx, dy;
+        if (!proj_timer[i]) continue;
+        proj_timer[i]--;
+        proj_x[i] = (short)(proj_x[i] + (proj_vx[i] >> 8));
+        proj_y[i] = (short)(proj_y[i] + (proj_vy[i] >> 8));
+        if (proj_kind[i] == 2) {
+            proj_vy[i] = (short)(proj_vy[i] + GRAVITY);
+            if (proj_vy[i] > 0x600) proj_vy[i] = 0x600;
+        }
+        if (!dead && !invincible_timer) {
+            dx = (short)(xpos - proj_x[i]);
+            dy = (short)(ypos - proj_y[i]);
+            if (dx < 0) dx = (short)-dx;
+            if (dy < 0) dy = (short)-dy;
+            if (dx < 14 && dy < 22) {
+                proj_timer[i] = 0;
+                hurt_sonic();
+                continue;
+            }
+        }
+        if (proj_y[i] > SLICE_Y + WORLD_H || proj_x[i] < -32 ||
+                proj_x[i] > WORLD_W + 32) proj_timer[i] = 0;
+    }
+}
+
+static void spawn_explosion(short x, short y)
+{
+    unsigned char i;
+    for (i = 0; i < 4; i++) {
+        if (expl_timer[i]) continue;
+        expl_x[i] = x;
+        expl_y[i] = y;
+        expl_timer[i] = 1;
+        return;
+    }
+}
+
+static void update_explosions(void)
+{
+    unsigned char i;
+    for (i = 0; i < 4; i++) {
+        if (!expl_timer[i]) continue;
+        expl_timer[i]++;
+        if (expl_timer[i] > 24) expl_timer[i] = 0;
+    }
+}
+
+static void reset_objects(void)
+{
+    unsigned short i;
+    for (i = 0; i < OBJ_COUNT; i++) {
+        obj_state[i] = 0;
+        obj_timer[i] = 0;
+        obj_phase[i] = 0;
+        obj_rx[i] = (short)obj_x[i];
+        obj_ry[i] = (short)obj_y[i];
+        obj_vy[i] = (short)(obj_kind[i] == 7 ? -0x400 : 0);
+    }
+    for (i = 0; i < RING_COUNT; i++) ring_taken[i] = 0;
+    for (i = 0; i < 10; i++) proj_timer[i] = 0;
+    for (i = 0; i < 4; i++) expl_timer[i] = 0;
+}
+
 static void update_objects(void)
 {
     unsigned short i;
@@ -1619,7 +1786,12 @@ static void update_objects(void)
             obj_ry[i] = (short)(base_y + mul88(s_sin((unsigned char)(obj_phase[i] + 64)), 12));
         } else if (kind == 7) {
             obj_phase[i]++;
-            obj_ry[i] = (short)(base_y + mul88(s_sin(obj_phase[i]), 36));
+            obj_ry[i] = (short)(obj_ry[i] + (obj_vy[i] >> 8));
+            obj_vy[i] = (short)(obj_vy[i] + 0x18);
+            if (obj_ry[i] >= base_y) {
+                obj_ry[i] = base_y;
+                obj_vy[i] = -0x500;
+            }
         } else if (kind == 8) {
             obj_phase[i]++;
         }
@@ -1630,6 +1802,18 @@ static void update_objects(void)
         if (obj_timer[i]) obj_timer[i]--;
         if (dx < 0) dx = (short)-dx;
         if (dy < 0) dy = (short)-dy;
+        if (kind == 6 && obj_timer[i] == 0 && dx < 180 && ypos < oy + 80) {
+            short dir = (short)(xpos > ox ? 1 : -1);
+            spawn_projectile(1, (short)(ox - 8), (short)(oy + 14),
+                (short)(dir * 0x180), 0x180);
+            obj_timer[i] = 150;
+        }
+        if (kind == 8 && obj_timer[i] == 0 && dx < 160) {
+            short dir = (short)(xpos > ox ? 1 : -1);
+            spawn_projectile(2, (short)(ox + dir * 12), (short)(oy - 8),
+                (short)(dir * 0x100), -0x100);
+            obj_timer[i] = 180;
+        }
         if (kind == 2) {
             unsigned char sub = obj_sub[i];
             unsigned char o = (unsigned char)((sub >> 3) & 0x0E);
@@ -1728,6 +1912,7 @@ static void update_objects(void)
             if (stomp) {
                 obj_state[i] |= 2;
                 score += 100;
+                spawn_explosion(ox, oy);
                 vy = -0x380;
                 grounded = 0;
                 jumping = 1;
@@ -1754,6 +1939,9 @@ static void respawn_sonic(void)
     dead = 0;
     hurt_timer = 0;
     invincible_timer = 120;
+    spindash_active = 0;
+    spindash_charge = 0;
+    rolling = 0;
     shield_flag = 0;
     speed_timer = 0;
     rings_collected = 0;
@@ -1761,6 +1949,9 @@ static void respawn_sonic(void)
     time_timer = 0;
     lost_count = 0;
     for (i = 0; i < 20; i++) lost_timer[i] = 0;
+    for (i = 0; i < 10; i++) proj_timer[i] = 0;
+    for (i = 0; i < 4; i++) expl_timer[i] = 0;
+    for (i = 0; i < RING_COUNT; i++) ring_taken[i] = 0;
     for (i = 0; i < OBJ_COUNT; i++) {
         if (obj_kind[i] >= 5) obj_state[i] &= (unsigned short)~2;
     }
@@ -1771,6 +1962,10 @@ static void draw_sonic(void)
     unsigned char idx, i;
     short sx, sy, fw, fh;
     const short *pieces;
+    if (game_over) {
+        for (i = 0; i < MAX_PIECES; i++) oamSetEx((u16)(i * 4), OBJ_LARGE, OBJ_HIDE);
+        return;
+    }
     if (!dead && invincible_timer && (frame_counter & 2)) {
         for (i = 0; i < MAX_PIECES; i++) oamSetEx((u16)(i * 4), OBJ_LARGE, OBJ_HIDE);
         return;
@@ -1779,6 +1974,8 @@ static void draw_sonic(void)
         idx = 4;
     } else if (hurt_timer) {
         idx = 5;
+    } else if (rolling) {
+        idx = 3;
     } else if (grounded) {
         if ((inertia < 0 ? -inertia : inertia) < 0x40) idx = 0;
         else if ((inertia < 0 ? -inertia : inertia) > 0x400) idx = 2;
@@ -1882,15 +2079,23 @@ int main(void)
             obj_phase[oi] = 0;
             obj_rx[oi] = (short)obj_x[oi];
             obj_ry[oi] = (short)obj_y[oi];
+            obj_vy[oi] = (short)(obj_kind[oi] == 7 ? -0x400 : 0);
         }
     }
     {
         int li;
         for (li = 0; li < 20; li++) lost_timer[li] = 0;
+        for (li = 0; li < 10; li++) proj_timer[li] = 0;
+        for (li = 0; li < 4; li++) expl_timer[li] = 0;
     }
+    game_over = 0;
+    game_over_timer = 0;
     dead = 0;
     death_timer = 0;
     hurt_timer = 0;
+    spindash_active = 0;
+    spindash_charge = 0;
+    rolling = 0;
     lost_count = 0;
     checkpoint_x = 96; checkpoint_y = 655;
     last_starpost = 0;
@@ -1907,7 +2112,17 @@ int main(void)
 
     while (1) {
         pad = padsCurrent(0);
-        if (dead) {
+        if (game_over) {
+            game_over_timer++;
+            if (game_over_timer > 180) {
+                game_over = 0;
+                lives = 3;
+                checkpoint_x = 96;
+                checkpoint_y = 655;
+                reset_objects();
+                respawn_sonic();
+            }
+        } else if (dead) {
             death_timer++;
             move_y(vy);
             vy += GRAVITY;
@@ -1915,17 +2130,41 @@ int main(void)
             if (death_timer > 120) {
                 if (lives > 0) lives--;
                 if (lives == 0) {
-                    lives = 3;
-                    checkpoint_x = 96;
-                    checkpoint_y = 655;
+                    game_over = 1;
+                    game_over_timer = 0;
+                    dead = 0;
+                } else {
+                    respawn_sonic();
                 }
-                respawn_sonic();
             }
         } else {
             if (goal_flag) pad = 0;
             pressed = pad & ~oldpad;
             oldpad = pad;
-            if (grounded) {
+            if (spindash_active) {
+                if (pressed & (KEY_A | KEY_B | KEY_Y)) {
+                    if (spindash_charge < 8) spindash_charge++;
+                }
+                if (!(pad & KEY_DOWN)) {
+                    inertia = (short)(0x800 + (short)spindash_charge * 0x100);
+                    if (inertia > 0x1000) inertia = 0x1000;
+                    vx = (short)(facing ? -inertia : inertia);
+                    spindash_active = 0;
+                    spindash_charge = 0;
+                    rolling = 40;
+                    grounded = 1;
+                } else {
+                    inertia = 0;
+                    vx = 0;
+                }
+            } else if (grounded && (pad & KEY_DOWN) &&
+                    (pressed & (KEY_A | KEY_B | KEY_Y))) {
+                spindash_active = 1;
+                spindash_charge = 1;
+                rolling = 1;
+                inertia = 0;
+                vx = 0;
+            } else if (grounded) {
                 jump_if_needed(pressed);
                 if (jumping && !(pad & (KEY_A | KEY_B | KEY_Y)) && vy < -0x400) vy = -0x400;
             }
@@ -1944,6 +2183,11 @@ int main(void)
         if (speed_timer) speed_timer--;
         if (invincible_timer) invincible_timer--;
         if (hurt_timer) hurt_timer--;
+        if (rolling) rolling--;
+        if (!game_over) {
+            update_projectiles();
+            update_explosions();
+        }
         update_lost_rings();
         update_camera();
         update_pages();
@@ -1956,6 +2200,7 @@ int main(void)
         if (!goal_flag && ++time_timer >= 60) { time_timer = 0; game_time++; }
         clear_obj_map();
         draw_objects();
+        if (!game_over) draw_effects();
         draw_sonic();
         WaitForVBlank();
         dmaCopyVram((u8 *)obj_map, OBJ_BG_MAP, 2048);
@@ -1989,11 +2234,9 @@ if DEMO:
     demo = demo.replace("int main(void)\n{\n    unsigned short pad, pressed, oldpad = 0;",
         "static unsigned short dbgframe;\nint main(void)\n{\n    unsigned short pad, pressed, oldpad = 0;")
     demo = demo.replace(
-        "        pad = padsCurrent(0);\n        if (goal_flag) pad = 0;\n        pressed = pad & ~oldpad;",
+        "        pad = padsCurrent(0);\n",
         "        dbgframe++;\n        pad = padsCurrent(0) | KEY_RIGHT;\n"
-        "        if (dbgframe >= 120 && dbgframe < 126) pad = KEY_RIGHT | KEY_A;\n"
-        "        if (goal_flag) pad = 0;\n"
-        "        pressed = pad & ~oldpad;")
+        "        if (dbgframe >= 120 && dbgframe < 126) pad = KEY_RIGHT | KEY_A;\n")
     with open(f"{OUT}/src/main.c", "w") as f:
         f.write(demo)
 

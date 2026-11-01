@@ -2036,3 +2036,45 @@ Verified from controlled start positions:
 
 Badnik projectiles, the game-over screen, lives HUD, explosions and audio
 remain.
+
+### Sonic 2 effects, lives and spin dash (0.1.44)
+
+The object/effect pass adds the remaining EHZ gameplay feedback that was still
+missing from the port:
+
+```text
+Buzzer fireball / Coconuts projectile -> original projectile frames, collision
+badnik stomp                          -> original explosion frames + score +100
+shield / invincibility                -> original Shield/Invincibility stars art
+1-up monitor                          -> monitor casing + Sonic lives-counter head
+lives HUD                             -> SONIC + digit at the bottom-left
+GAME OVER                             -> text screen, automatic restart after 180 loops
+Masher                                -> original jump/gravity water cycle
+spin dash                             -> down + jump charge, release down to launch
+```
+
+Build and validation:
+
+```text
+ROM     -> 524,288 bytes, LoROM FastROM, checksum OK, 30,440 bytes free
+OBJ     -> 455 / 512 tiles (Sonic 18 frames + rings + HUD)
+BG2 CHR -> 380 / 512 tiles (monitors, spikes, badniks, shield, stars, explosion)
+RAM     -> ~135 KB free
+```
+
+Controlled checks: Buzzer fireball, explosion on stomp, shield orb,
+invincibility stars, 1-up monitor face, SONIC lives counter, GAME OVER and
+restart, Masher water jumps and spin dash launch.
+
+![Buzz Bomber fireball](screenshots/sonic2_snes_port_buzzer_fire.png)
+![Explosion](screenshots/sonic2_snes_port_explosion.png)
+![Shield](screenshots/sonic2_snes_port_shield.png)
+![Invincibility](screenshots/sonic2_snes_port_invincibility.png)
+![1-up monitor](screenshots/sonic2_snes_port_1up.png)
+![Lives HUD](screenshots/sonic2_snes_port_lives_hud.png)
+![Spin dash](screenshots/sonic2_snes_port_spindash.png)
+![Game over](screenshots/sonic2_snes_port_game_over.png)
+
+Still pending: original SMPS audio, slopes/loops, bridges/platforms/scenery,
+the original HUD font/title card, Tails, special stages, two-player mode,
+openings and ending.
