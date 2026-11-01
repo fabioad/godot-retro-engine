@@ -22,8 +22,11 @@ collision/Collision array ... -> vertical/horizontal heightmaps (4096 B each)
 collision/Curve ...           -> angle map (256 B)
 misc/sinewave.bin             -> 256-entry sin/cos table
 .retro/generated/sprites/common_sonic.png
-                              -> 22 frames (idle/walk/run/roll/skid/duck),
-                                 117 deduplicated 16x16 pieces
+                              -> 16 frames (idle/walk/run/roll),
+                                 82 deduplicated 16x16 pieces
+.retro/generated/sprites/common_ring.png
+                              -> 4 ring animation frames, 16x16 OBJ pieces
+level/rings/EHZ_1.bin         -> 226 ring positions expanded from the row/col list
 ```
 
 The runtime is C on the SNES side:
@@ -40,7 +43,11 @@ The runtime is C on the SNES side:
 - original 16x16-block collision index and heightmap data;
 - sprite frames packed as SNES OBJ tiles with the correct 16x16 layout
   (`n`, `n+1`, `n+16`, `n+17`);
-- animations selected from speed/air state (idle/walk/run/roll).
+- animations selected from speed/air state (idle/walk/run/roll);
+- all 226 Act 1 rings: original art/animation, collection overlap, score +10,
+  RINGS counter;
+- SCORE/TIME/RINGS HUD drawn as 8x8 OBJ glyphs from a compact 5x7 font
+  (layout faithful; the original HUD art/font is still pending).
 
 ## Build and run
 
@@ -62,12 +69,15 @@ reads the real controller with `padsCurrent(0)`.
 ROM:      524,288 bytes (512 KiB), LoROM FastROM, checksum OK
 build:    exit 0; Game Build integration builds the same ROM
 preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
-          fall reset back to start at 700
+          fall reset back to start at 700; ring collected: SCORE 000010,
+          RINGS 001
 ```
 
 ![Full-level start](screenshots/sonic2_snes_port_full_start.png)
 ![Pit](screenshots/sonic2_snes_port_full_pit.png)
 ![Fall reset](screenshots/sonic2_snes_port_full_reset.png)
+![HUD](screenshots/sonic2_snes_port_hud.png)
+![Ring collected](screenshots/sonic2_snes_port_ring_collect.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -78,14 +88,16 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 1. **Slope velocity/loops.** Terrain Y snap is active, but horizontal speed is
    still plain inertia; `AnglePos` velocity rotation and `Sonic_SlopeResist`
    acceleration need the signed 16x16 path validated for every angle.
-2. **Rings, objects, badniks, springs, monitors, starposts and the goal.**
-   Ring/object lists and their behavior are not imported yet.
-3. **HUD** (score/time/rings/lives) and the title/act card.
+2. **Objects, badniks, springs, monitors, starposts and the goal.** The object
+   lists and their behavior are not imported yet (rings are).
+3. **HUD art/lives/title card.** The layout is faithful, but the font is a
+   compact 5x7 OBJ font; lives and the title/act card are missing.
 4. **Death animation/lives.** Falling into a pit currently respawns immediately
    at the start; there is no hurt/death state yet.
-5. **Audio.** The SMPS music and DAC driver are not translated; the current
-   ROM is silent.
-6. **Tails, spin dash, special stages, water, two-player mode.**
+5. **Audio.** The SMPS music, ring sound and DAC driver are not translated; the
+   current ROM is silent.
+6. **Tails, spin dash, special stages, water, two-player mode, openings and
+   ending.**
 
 ## Notes for the next implementation
 

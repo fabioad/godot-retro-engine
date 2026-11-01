@@ -1935,3 +1935,29 @@ Also enabled in this pass: terrain Y snap with the original heightmap/step
 logic and `FindWall`/`FindWall2` walls on the start terrain. Still pending:
 slope velocity rotation/loops, rings/objects/HUD, death animation, audio,
 Tails and special stages.
+
+### Sonic 2 rings and HUD (0.1.41)
+
+The adapter now imports the compressed Act 1 ring list, expands it to 226
+rings, and renders/collects them with the original ring sprite frames. A
+SCORE/TIME/RINGS HUD is drawn as 8x8 OBJ glyphs from a compact 5x7 font.
+
+```text
+ring list:  level/rings/EHZ_1.bin -> 226 rings (row/column RLE expanded)
+ring art:   common_ring.png, 4 frames, palette 1
+HUD:        SCORE/TIME/RINGS at OBJ tile 348..386, palette 2
+ROM:        524,288 bytes, LoROM FastROM, checksum OK
+```
+
+Verified in the engine build and in a short collection test:
+
+```text
+SCORE 000010
+RINGS 001
+```
+
+![Rings/HUD](screenshots/sonic2_snes_port_hud.png)
+![Ring collected](screenshots/sonic2_snes_port_ring_collect.png)
+
+The HUD layout matches Sonic 2; the original HUD art/font, ring sound, objects,
+slopes/loops, death/lives, audio and openings/ending remain pending.
