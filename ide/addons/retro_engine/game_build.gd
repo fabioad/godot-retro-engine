@@ -99,16 +99,21 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		return write
 	var port := _find_native_port(source)
 	var port_result := _copy_native_port(port, dir)
+	var player := _find_player(source, target)
 	if target == "snes":
-		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, rom)
+		_write_snes_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, rom, player)
+		if not player.is_empty():
+			_write_snes_player(dir, player)
 		_write_snes_makefile(dir.path_join("Makefile"), game_name, audio, rom)
 		if bool(rom.get("custom_header", false)):
 			_write_snes_custom_header(dir, game_name, rom)
 		if bool(rom.get("msu1", false)):
 			_write_msu1_support(dir, game_name)
 	else:
-		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio)
+		_write_md_main(dir.path_join("src/main.c"), stage, splash, include_splash, audio, player)
 		_write_md_makefile(dir.path_join("Makefile"))
+		if not player.is_empty():
+			_write_md_player(dir, player)
 		# rescomp scans .res files in the project root. The generated C arrays
 		# already contain the tiles/palette/map, so remove the temporary SGDK
 		# resource scripts produced while building the native stage.
@@ -120,7 +125,7 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	project.set_source_path(dir)
 	project.set_platform(target)
 	project.set_mode(String(profile.get("bg_mode", "mode1")))
-	project.set_sdk_path(_sdk_path(source, target))
+	project.set_sdk_path(_short_sdk_path(target, _sdk_path(source, target)))
 	var sdk := RetroSDK.get_sdk(target)
 	project.set_sdk_version(String(sdk.get("version", "unknown")))
 	project.set_build_system("sgdk" if target == "megadrive" else "make")
@@ -134,6 +139,7 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	meta["godot_splash"] = include_splash
 	meta["source_project"] = source.get_path() if source else ""
 	meta["native_port"] = port_result
+	meta["native_player"] = not player.is_empty()
 	if not rom.is_empty():
 		meta["rom_profile"] = String(rom.get("profile_id", ""))
 		meta["rom_profile_label"] = String(rom.get("profile_label", ""))
@@ -161,6 +167,7 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		"audio_bgm": String(audio.get("bgm", {}).get("name", "")) if not audio.get("bgm", {}).is_empty() else "",
 		"audio_sfx": audio.get("sfx", []).size(),
 		"native_port": String(port_result.get("directory", "")),
+		"native_player": not player.is_empty(),
 		"rom_profile": String(rom.get("profile_id", "")),
 		"rom_profile_label": String(rom.get("profile_label", "")),
 		"rom_size": String(rom.get("size_label", "")),
@@ -185,7 +192,7 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 	return {"ok": true, "directory": dir, "project": project, "project_path": project.metadata_path(),
 		"target": target, "splash": include_splash, "rom": project.get_rom_path(),
 		"export_profile": String(written.get("path", "")), "profile": written,
-		"stage": stage, "splash_stage": splash, "port": port_result,
+		"stage": stage, "splash_stage": splash, "port": port_result, "player": player,
 		"rom_settings": rom, "rom_estimate": rom_estimate}
 
 static func _find_native_port(source: RetroProject) -> Dictionary:
@@ -274,6 +281,25 @@ static func _find_audio(source: RetroProject) -> Array:
 			add_asset.call(String(a.get("path", "")), String(a.get("kind", "sfx")))
 	return out
 
+static func _short_sdk_path(target: String, actual: String) -> String:
+	if actual.is_empty() or not actual.contains(" "):
+		return actual
+	var candidates: Array = []
+	var home := OS.get_environment("HOME")
+	if not home.is_empty():
+		candidates.append(home.path_join(".local/share/godot-retro-engine/sdks/" + ("snes" if target == "snes" else "megadrive")))
+	var xdg := OS.get_environment("XDG_DATA_HOME")
+	if not xdg.is_empty():
+		candidates.append(xdg.path_join("godot-retro-engine/sdks/" + ("snes" if target == "snes" else "megadrive")))
+	for candidate in candidates:
+		if String(candidate).contains(" "):
+			continue
+		if target == "snes" and FileAccess.file_exists(String(candidate).path_join("devkitsnes/snes_rules")):
+			return String(candidate)
+		if target == "megadrive" and FileAccess.file_exists(String(candidate).path_join("makefile.gen")):
+			return String(candidate)
+	return actual
+
 static func _sdk_path(source: RetroProject, target: String) -> String:
 	if source != null and source.get_platform() == target and not source.get_sdk_path().is_empty():
 		return source.get_sdk_path()
@@ -290,6 +316,13 @@ static func _find_stage(source: RetroProject, target: String, explicit: String) 
 		if FileAccess.file_exists(links):
 			var data = JSON.parse_string(FileAccess.get_file_as_string(links))
 			if typeof(data) == TYPE_DICTIONARY:
+				var native_stage = data.get("stage", {})
+				if typeof(native_stage) == TYPE_DICTIONARY:
+					var stage_json := String(native_stage.get("stage_json", ""))
+					if not stage_json.is_empty() and FileAccess.file_exists(stage_json):
+						var s := _load_stage(stage_json, target, bridge)
+						if s != null:
+							return s
 				var assets: Array = data.get("assets", [])
 				for i in range(assets.size() - 1, -1, -1):
 					var a: Dictionary = assets[i]
@@ -299,7 +332,14 @@ static func _find_stage(source: RetroProject, target: String, explicit: String) 
 						if s != null:
 							return s
 		var stage_resources := source.find_resources("stage", true)
+		var ordered_stages: Array = []
 		for r in stage_resources:
+			var p := String(r.get("path", ""))
+			if p.ends_with(".retro_stage.json") or p.get_extension().to_lower() == "json":
+				ordered_stages.push_front(r)
+			else:
+				ordered_stages.push_back(r)
+		for r in ordered_stages:
 			var stage_path := String(r.get("path", ""))
 			var s := _load_stage(stage_path, target, bridge, r, source.get_platform())
 			if s != null:
@@ -573,7 +613,106 @@ static func _array_decl(name: String, values: Array, type: String) -> String:
 	out += "\n};\n"
 	return out
 
-static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, rom: Dictionary = {}) -> void:
+static func _find_player(source: RetroProject, target: String) -> Dictionary:
+	# The SNES OAM/tilemap interaction still needs a proper sprite-VRAM allocator;
+	# keep generated SNES native games static until that path is validated.
+	if source == null or target == "snes":
+		return {}
+	var png_path := ""
+	var links := source.resolve(".retro/editor/native_links.json")
+	if FileAccess.file_exists(links):
+		var data = JSON.parse_string(FileAccess.get_file_as_string(links))
+		if typeof(data) == TYPE_DICTIONARY:
+			for a in data.get("assets", []):
+				if typeof(a) != TYPE_DICTIONARY:
+					continue
+				if int(a.get("type", 0)) not in [1, 2]:
+					continue
+				var rel := String(a.get("asset", ""))
+				if rel.is_empty():
+					continue
+				var path := rel if rel.is_absolute_path() else source.resolve(rel)
+				if path.get_extension().to_lower() == "png" and FileAccess.file_exists(path):
+					png_path = path
+					break
+	if png_path.is_empty():
+		for r in source.find_resources("sprite", true):
+			var path := String(r.get("path", ""))
+			if path.get_extension().to_lower() == "png" and FileAccess.file_exists(path):
+				png_path = path
+				break
+	if png_path.is_empty():
+		return {}
+	var image := Image.load_from_file(png_path)
+	if image == null:
+		return {}
+	image.convert(Image.FORMAT_RGBA8)
+	var rect := Rect2i(0, 0, image.get_width(), image.get_height())
+	var sprite_json := png_path.get_basename() + ".retro_sprite.json"
+	if FileAccess.file_exists(sprite_json):
+		var sprite := RetroSprite.new()
+		if sprite.load(sprite_json) == OK:
+			var frames := sprite.get_frames()
+			if not frames.is_empty():
+				var r: Rect2i = Dictionary(frames[0]).get("rect", rect)
+				if r.size.x > 0 and r.size.y > 0:
+					rect = r
+	rect.position.x = clampi(rect.position.x, 0, maxi(0, image.get_width() - 1))
+	rect.position.y = clampi(rect.position.y, 0, maxi(0, image.get_height() - 1))
+	rect.size.x = clampi(rect.size.x, 1, image.get_width() - rect.position.x)
+	rect.size.y = clampi(rect.size.y, 1, image.get_height() - rect.position.y)
+	var frame := image.get_region(rect)
+	var w := 16
+	var h := 16
+	if target == "snes":
+		w = 16 if frame.get_width() <= 16 and frame.get_height() <= 16 else 32
+		h = 16 if frame.get_width() <= 16 and frame.get_height() <= 16 else 32
+	else:
+		w = clampi(int(ceil(float(frame.get_width()) / 8.0)) * 8, 8, 64)
+		h = clampi(int(ceil(float(frame.get_height()) / 8.0)) * 8, 8, 64)
+	if frame.get_width() != w or frame.get_height() != h:
+		frame.resize(w, h, Image.INTERPOLATE_NEAREST)
+	var quantized := RetroGraphics.quantize(frame, 16, true)
+	if quantized == null:
+		return {}
+	var palette := RetroGraphics.extract_palette(quantized, 16, true)
+	while palette.size() < 16:
+		palette.push_back(Color(0, 0, 0))
+	return {"png": png_path, "json": sprite_json, "image": quantized, "palette": palette,
+		"w": w, "h": h, "name": png_path.get_file().get_basename()}
+
+static func _write_snes_player(dir: String, player: Dictionary) -> void:
+	var image: Image = player.get("image")
+	var palette: PackedColorArray = player.get("palette", PackedColorArray())
+	if image == null or palette.is_empty():
+		return
+	var tiles := RetroGraphics.encode_tiles(image, 4, palette, 8, false)
+	var pal := RetroGraphics.encode_palette(palette, false)
+	var header := "#ifndef RETRO_PLAYER_H\n#define RETRO_PLAYER_H\n\n#include <snes.h>\n\n"
+	header += "#define PLAYER_W %d\n#define PLAYER_H %d\n" % [int(player.get("w", 16)), int(player.get("h", 16))]
+	header += "#define PLAYER_TILES_SIZE %d\n#define PLAYER_PAL_SIZE %d\n\n" % [tiles.size(), pal.size()]
+	header += "extern const unsigned char player_tiles[PLAYER_TILES_SIZE];\nextern const unsigned char player_pal[PLAYER_PAL_SIZE];\n\n#endif\n"
+	var source := "#include \"player.h\"\n\n"
+	source += _array_decl("player_tiles", _byte_values(tiles), "unsigned char")
+	source += "\n"
+	source += _array_decl("player_pal", _byte_values(pal), "unsigned char")
+	_write_text(dir.path_join("src/player.h"), header)
+	_write_text(dir.path_join("src/player.c"), source)
+
+static func _write_md_player(dir: String, player: Dictionary) -> void:
+	var image: Image = player.get("image")
+	var palette: PackedColorArray = player.get("palette", PackedColorArray())
+	if image == null or palette.is_empty():
+		return
+	var res_dir := dir.path_join("res")
+	DirAccess.make_dir_recursive_absolute(res_dir)
+	var png := res_dir.path_join("player.png")
+	RetroGraphics.save_indexed_png(png, image, palette)
+	var cols := maxi(1, int(player.get("w", 16)) / 8)
+	var rows := maxi(1, int(player.get("h", 16)) / 8)
+	_write_text(res_dir.path_join("player.res"), "SPRITE player_sprite \"player.png\" %d %d FAST 5\n" % [cols, rows])
+
+static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, rom: Dictionary = {}, player: Dictionary = {}) -> void:
 	var profile := ExportProfiles.for_target("snes")
 	var fade_frames := int(profile.get("splash_fade_frames_per_level", 2))
 	var hold_frames := int(profile.get("splash_hold_frames", 120))
@@ -586,6 +725,8 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		module_name = String(bgm.get("soundbank", {}).get("module", "MOD_" + String(bgm.get("name", "bgm")).to_upper()))
 		bank_symbol = String(bgm.get("soundbank", {}).get("bank_symbol", "SOUNDBANK__"))
 	var code := "#include <snes.h>\n#include \"assets.h\"\n"
+	if not player.is_empty():
+		code += "#include \"player.h\"\n"
 	if bool(rom.get("msu1", false)):
 		code += "#include \"msu1.h\"\n"
 	if has_bgm:
@@ -641,11 +782,36 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		region = maxi(region, int((data.size() + 255) / 256) + 2)
 	if not sfx_brr_arrays.is_empty():
 		code += "static brrsamples sfx_table[%d];\n\n" % sfx_brr_arrays.size()
+	if not player.is_empty():
+		var ow := int(player.get("w", 16))
+		var oh := int(player.get("h", 16))
+		var oam := "OBJ_SIZE16_L32" if ow <= 16 and oh <= 16 else "OBJ_SIZE32_L64"
+		code += "static s16 player_x = (s16)((256 - PLAYER_W) / 2);\n"
+		code += "static s16 player_y = (s16)((224 - PLAYER_H) / 2);\n\n"
+		code += "static void initPlayer(void)\n{\n"
+		code += "    oamInitGfxSet((u8 *)player_tiles, PLAYER_TILES_SIZE, (u8 *)player_pal, PLAYER_PAL_SIZE, 0, 0x6000, %s);\n" % oam
+		code += "    /* Keep the player palette in the OBJ palette area (CGRAM 128). */\n"
+		code += "    setPalette((u16 *)player_pal, 128, PLAYER_PAL_SIZE);\n"
+		code += "    oamSet(0, player_x, player_y, 3, 0, 0, 0, 0);\n"
+		code += "    oamSetEx(0, OBJ_SMALL, OBJ_SHOW);\n}\n\n"
+		code += "static void updatePlayer(void)\n{\n"
+		code += "    u16 pad = padsCurrent(0);\n"
+		code += "    if (pad & KEY_LEFT) player_x -= 2;\n"
+		code += "    if (pad & KEY_RIGHT) player_x += 2;\n"
+		code += "    if (pad & KEY_UP) player_y -= 2;\n"
+		code += "    if (pad & KEY_DOWN) player_y += 2;\n"
+		code += "    if (player_x < 0) player_x = 0;\n"
+		code += "    if (player_y < 0) player_y = 0;\n"
+		code += "    if (player_x > 256 - PLAYER_W) player_x = 256 - PLAYER_W;\n"
+		code += "    if (player_y > 224 - PLAYER_H) player_y = 224 - PLAYER_H;\n"
+		code += "    oamSet(0, player_x, player_y, 3, 0, 0, 0, 0);\n}\n\n"
 	code += "int main(void)\n{\n    consoleInit();\n    setMode(BG_MODE1, 0);\n"
 	code += "    // Show BG1 only; uninitialised OAM/BG2/BG3 would otherwise draw stripes.\n"
 	code += "    REG_TM = 0x01; REG_TS = 0x00;\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
 	code += "    loadStage(game_tiles, game_pal, game_map, game_tiles_size, game_pal_size, GAME_MAP_W, GAME_MAP_H, GAME_MAP_STRIDE, GAME_MAP_BYTES, GAME_BG_SIZE, 1);\n"
+	if not player.is_empty():
+		code += "    initPlayer();\n"
 	if bool(rom.get("msu1", false)):
 		if not has_bgm:
 			code += "#if RETRO_MSU1\n"
@@ -670,16 +836,20 @@ static func _write_snes_main(path: String, stage: RetroStage, splash: RetroStage
 		if has_bgm:
 			code += "    spcPlay(0);\n"
 	if not sfx_brr_arrays.is_empty() or has_bgm:
-		code += "    { u16 sfx_timer = 0; while (1) { spcProcess(); if (++sfx_timer >= 120) { sfx_timer = 0;\n"
+		var player_step := "updatePlayer(); " if not player.is_empty() else ""
+		code += "    { u16 sfx_timer = 0; while (1) { " + player_step + "spcProcess(); if (++sfx_timer >= 120) { sfx_timer = 0;\n"
 		if not sfx_brr_arrays.is_empty():
 			code += "        spcPlaySound(0);\n"
 		code += "    } WaitForVBlank(); } }\n"
 	else:
-		code += "    while (1) WaitForVBlank();\n"
+		if player.is_empty():
+			code += "    while (1) WaitForVBlank();\n"
+		else:
+			code += "    while (1) { updatePlayer(); WaitForVBlank(); }\n"
 	code += "    return 0;\n}\n"
 	_write_text(path, code)
 
-static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary) -> void:
+static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, include_splash: bool, audio: Dictionary, player: Dictionary = {}) -> void:
 	var profile := ExportProfiles.for_target("megadrive")
 	var fade_steps := int(profile.get("splash_fade_steps", 15))
 	var hold_frames := int(profile.get("splash_hold_frames", 120))
@@ -694,6 +864,8 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	var sfx_list: Array = audio.get("sfx", [])
 	var has_audio := not bgm.is_empty() or not sfx_list.is_empty()
 	var code := "#include <genesis.h>\n#include \"assets.h\"\n"
+	if not player.is_empty():
+		code += "#include \"player.h\"\n"
 	if has_audio:
 		code += "#include \"audio.h\"\n"
 	code += "\n"
@@ -723,9 +895,35 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 	code += "    for (level = %d; level > 0; level--) { fadeSplash(level); SYS_doVBlankProcess(); }\n" % fade_steps
 	code += "    fadeSplash(0); PAL_setColor(0, 0x0000); SYS_doVBlankProcess();\n}\n"
 	code += "#endif\n\n"
-	code += "int main(bool hard)\n{\n    (void)hard;\n    VDP_setScreenWidth320();\n    VDP_setPlaneSize(64, 32, TRUE);\n    VDP_setBackgroundColor(0);\n"
+	if not player.is_empty():
+		var ow := int(player.get("w", 16))
+		var oh := int(player.get("h", 16))
+		code += "static Sprite *player_spr = NULL;\n"
+		code += "static s16 player_x = (s16)((320 - %d) / 2);\n" % ow
+		code += "static s16 player_y = (s16)((224 - %d) / 2);\n\n" % oh
+		code += "static void initPlayer(void)\n{\n"
+		code += "    player_spr = SPR_addSprite(&player_sprite, player_x, player_y, TILE_ATTR(PAL1, TRUE, FALSE, FALSE));\n"
+		code += "    PAL_setPalette(PAL1, player_sprite.palette->data, DMA);\n}\n\n"
+		code += "static void updatePlayer(void)\n{\n"
+		code += "    u16 joy = JOY_readJoypad(JOY_1);\n"
+		code += "    if (joy & BUTTON_LEFT) player_x -= 2;\n"
+		code += "    if (joy & BUTTON_RIGHT) player_x += 2;\n"
+		code += "    if (joy & BUTTON_UP) player_y -= 2;\n"
+		code += "    if (joy & BUTTON_DOWN) player_y += 2;\n"
+		code += "    if (player_x < 0) player_x = 0;\n"
+		code += "    if (player_y < 0) player_y = 0;\n"
+		code += "    if (player_x > 320 - %d) player_x = 320 - %d;\n" % [ow, ow]
+		code += "    if (player_y > 224 - %d) player_y = 224 - %d;\n" % [oh, oh]
+		code += "    SPR_setPosition(player_spr, player_x, player_y);\n"
+		code += "    SPR_update();\n}\n\n"
+	code += "int main(bool hard)\n{\n    (void)hard;\n"
+	if not player.is_empty():
+		code += "    JOY_init();\n    SPR_init();\n"
+	code += "    VDP_setScreenWidth320();\n    VDP_setPlaneSize(64, 32, TRUE);\n    VDP_setBackgroundColor(0);\n"
 	code += "#if RETRO_SPLASH\n    showSplash();\n#endif\n"
 	code += "    loadStage(game_tiles, GAME_TILE_COUNT, game_pal, game_map, GAME_MAP_W, GAME_MAP_H);\n"
+	if not player.is_empty():
+		code += "    initPlayer();\n"
 	if has_audio:
 		var bgm_name := _safe_audio_name(String(bgm.get("name", "bgm"))) if not bgm.is_empty() else ""
 		var bgm_vgm := not bgm.is_empty() and not String(bgm.get("files", {}).get("vgm", "")).is_empty()
@@ -739,11 +937,18 @@ static func _write_md_main(path: String, stage: RetroStage, splash: RetroStage, 
 			code += "    XGM2_loadDriver(TRUE);\n"
 		if not sfx_list.is_empty():
 			var sfx_name := _safe_audio_name(String(sfx_list[0].get("name", "sfx")))
-			code += "    { u16 sfx_timer = 0; while (TRUE) { SYS_doVBlankProcess(); if (++sfx_timer >= 120) { sfx_timer = 0; XGM2_playPCM(%s, sizeof(%s), SOUND_PCM_CH2); } } }\n" % [sfx_name, sfx_name]
+			var player_step := "updatePlayer(); " if not player.is_empty() else ""
+			code += "    { u16 sfx_timer = 0; while (TRUE) { " + player_step + "SYS_doVBlankProcess(); if (++sfx_timer >= 120) { sfx_timer = 0; XGM2_playPCM(%s, sizeof(%s), SOUND_PCM_CH2); } } }\n" % [sfx_name, sfx_name]
 		else:
-			code += "    while (TRUE) SYS_doVBlankProcess();\n"
+			if player.is_empty():
+				code += "    while (TRUE) SYS_doVBlankProcess();\n"
+			else:
+				code += "    while (TRUE) { updatePlayer(); SYS_doVBlankProcess(); }\n"
 	else:
-		code += "    while (TRUE) SYS_doVBlankProcess();\n"
+		if player.is_empty():
+			code += "    while (TRUE) SYS_doVBlankProcess();\n"
+		else:
+			code += "    while (TRUE) { updatePlayer(); SYS_doVBlankProcess(); }\n"
 	code += "    return 0;\n}\n"
 	_write_text(path, code)
 
@@ -931,7 +1136,9 @@ static func _fix_snes_checksum(data: PackedByteArray, header: int) -> PackedByte
 
 static func _write_snes_makefile(path: String, name: String, audio: Dictionary, rom: Dictionary = {}) -> void:
 	var text := "ifeq ($(strip $(PVSNESLIB_HOME)),)\n$(error Set PVSNESLIB_HOME to the PVSnesLib root)\nendif\n"
-	text += "export ROMNAME := %s\nexport ROMTITLE := %s\n" % [name, name.to_upper()]
+	# PVSnesLib's snes_rules auto-generates hdr.asm from ROMTITLE. The SNES
+	# header NAME field is limited to 21 characters, so truncate it here.
+	text += "export ROMNAME := %s\nexport ROMTITLE := %s\n" % [name, name.to_upper().substr(0, 21)]
 	if not rom.is_empty():
 		var mapping := String(rom.get("mapping", "lorom"))
 		if mapping in ["hirom", "exhirom"]:

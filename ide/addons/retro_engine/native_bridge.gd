@@ -13,6 +13,60 @@ signal status(text: String)
 
 const I18n = preload("res://addons/retro_engine/i18n.gd")
 
+# Compact 5x7 font used when a headless capture has to bake Godot Controls
+# (labels, buttons, item lists) into the console background.
+const UI_FONT := {
+	"A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+	"B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+	"C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+	"D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+	"E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+	"F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+	"G": ["01110", "10001", "10000", "10111", "10001", "10001", "01110"],
+	"H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+	"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+	"J": ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
+	"K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+	"L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+	"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+	"N": ["10001", "11001", "11001", "10101", "10011", "10011", "10001"],
+	"O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+	"P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+	"Q": ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+	"R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+	"S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+	"T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+	"U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+	"V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+	"W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+	"X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+	"Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+	"Z": ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+	"0": ["01110", "10011", "10101", "10101", "10101", "11001", "01110"],
+	"1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+	"2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+	"3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+	"4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+	"5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+	"6": ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
+	"7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+	"8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+	"9": ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+	" ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+	":": ["00000", "00100", "00100", "00000", "00100", "00100", "00000"],
+	".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+	",": ["00000", "00000", "00000", "00000", "00110", "00100", "01000"],
+	"-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+	"_": ["00000", "00000", "00000", "00000", "00000", "00000", "11111"],
+	"/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
+	"!": ["00100", "00100", "00100", "00100", "00100", "00000", "00100"],
+	"?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
+	"+": ["00000", "00100", "00100", "11111", "00100", "00100", "00000"],
+	"(": ["00010", "00100", "01000", "01000", "01000", "00100", "00010"],
+	")": ["01000", "00100", "00010", "00010", "00010", "00100", "01000"],
+	"%": ["10001", "10010", "00100", "01000", "10001", "00001", "00000"],
+}
+
 var project: RetroProject
 var platform: String = "snes"
 var mode: String = "mode1"
@@ -247,6 +301,7 @@ func save_session() -> void:
 		"include_nodes": _wants_nodes(),
 		"include_scripts": _wants_scripts(),
 		"assets": _last_result.get("assets", []),
+		"stage": _last_result.get("stage", {}),
 		"port": _last_result.get("port", {}),
 	}
 	var f := FileAccess.open(dir.path_join("native_links.json"), FileAccess.WRITE)
@@ -1429,11 +1484,135 @@ func _import_bake_sheet(scene_name: String, dir: String, images: Array, source: 
 	_add_asset_row({"name": scene_name + "_bake", "type": I18n.t("native.type_bake"), "path": String(r.get("png", ""))})
 	return {"ok": true, "frames": images.size(), "sprite": r, "animation": anim_json}
 
+func _draw_ui_overlay(root: Node, image: Image) -> void:
+	if not _wants_ui() or image == null:
+		return
+	_walk_ui_overlay(root, image)
+
+func _walk_ui_overlay(node: Node, image: Image) -> void:
+	if node is Control and node.is_visible_in_tree():
+		_draw_control_software(node, image)
+	for child in node.get_children():
+		_walk_ui_overlay(child, image)
+
+func _draw_control_software(node: Control, image: Image) -> void:
+	if node is TextureRect or node is TextureButton:
+		return
+	var rect := node.get_global_rect()
+	if rect.size.x <= 0 or rect.size.y <= 0:
+		return
+	if node is ColorRect:
+		_fill_rect_alpha(image, rect, node.color)
+		return
+	if node is Panel or node is PanelContainer:
+		var panel = node.get_theme_stylebox("panel")
+		if panel is StyleBoxFlat:
+			_fill_rect_alpha(image, rect, panel.bg_color)
+			_outline_rect_alpha(image, rect, panel.border_color)
+		return
+	if node is Button:
+		var normal = node.get_theme_stylebox("normal")
+		var bg := Color(0.18, 0.22, 0.30, 0.92)
+		var border := Color(0.55, 0.62, 0.75, 1.0)
+		if normal is StyleBoxFlat:
+			bg = normal.bg_color
+			border = normal.border_color
+		_fill_rect_alpha(image, rect, bg)
+		_outline_rect_alpha(image, rect, border)
+		var text: String = String(node.text)
+		var color: Color = node.get_theme_color("font_color")
+		if color == null:
+			color = Color.WHITE
+		var font_size := node.get_theme_font_size("font_size")
+		var scale := 2 if font_size >= 16 else 1
+		var tw := _ui_text_width(text, scale)
+		var tx := int(rect.position.x) + int((rect.size.x - tw) / 2)
+		var ty := int(rect.position.y) + int((rect.size.y - 7 * scale) / 2)
+		_draw_ui_text(image, text, tx, ty, scale, color)
+		return
+	if node is Label:
+		var text: String = String(node.text)
+		if text.is_empty():
+			return
+		var color: Color = node.get_theme_color("font_color")
+		if color == null:
+			color = Color.WHITE
+		var font_size := node.get_theme_font_size("font_size")
+		var scale := 2 if font_size >= 16 else 1
+		var tw := _ui_text_width(text, scale)
+		var tx := int(rect.position.x)
+		if node.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER:
+			tx += int((rect.size.x - tw) / 2)
+		elif node.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT:
+			tx += int(rect.size.x - tw)
+		_draw_ui_text(image, text, tx, int(rect.position.y), scale, color)
+		return
+	if node is OptionButton:
+		var selected: String = String(node.get_item_text(node.selected)) if node.selected >= 0 else ""
+		_fill_rect_alpha(image, rect, Color(0.14, 0.17, 0.23, 0.95))
+		_outline_rect_alpha(image, rect, Color(0.55, 0.62, 0.75, 1.0))
+		_draw_ui_text(image, selected, int(rect.position.x) + 4, int(rect.position.y) + 4, 1, Color.WHITE)
+		return
+	if node is ItemList:
+		_fill_rect_alpha(image, rect, Color(0.12, 0.15, 0.21, 0.95))
+		_outline_rect_alpha(image, rect, Color(0.55, 0.62, 0.75, 1.0))
+		var y := int(rect.position.y) + 3
+		for i in range(mini(node.item_count, 8)):
+			_draw_ui_text(image, node.get_item_text(i), int(rect.position.x) + 4, y, 1, Color.WHITE)
+			y += 9
+
+func _ui_text_width(text: String, scale: int) -> int:
+	return maxi(0, text.length() * 6 * scale)
+
+func _draw_ui_text(image: Image, text: String, x: int, y: int, scale: int, color: Color) -> void:
+	var cursor := x
+	for ch in text.to_upper():
+		var glyph: Array = UI_FONT.get(ch, [])
+		if not glyph.is_empty():
+			for gy in range(7):
+				for gx in range(5):
+					if glyph[gy][gx] == "1":
+						for sy in range(scale):
+							for sx in range(scale):
+								_set_pixel_alpha(image, cursor + gx * scale + sx, y + gy * scale + sy, color)
+		cursor += 6 * scale
+
+func _fill_rect_alpha(image: Image, rect: Rect2, color: Color) -> void:
+	for yy in range(int(rect.position.y), int(rect.position.y + rect.size.y)):
+		for xx in range(int(rect.position.x), int(rect.position.x + rect.size.x)):
+			_set_pixel_alpha(image, xx, yy, color)
+
+func _outline_rect_alpha(image: Image, rect: Rect2, color: Color) -> void:
+	var x0 := int(rect.position.x)
+	var y0 := int(rect.position.y)
+	var x1 := int(rect.position.x + rect.size.x) - 1
+	var y1 := int(rect.position.y + rect.size.y) - 1
+	for xx in range(x0, x1 + 1):
+		_set_pixel_alpha(image, xx, y0, color)
+		_set_pixel_alpha(image, xx, y1, color)
+	for yy in range(y0, y1 + 1):
+		_set_pixel_alpha(image, x0, yy, color)
+		_set_pixel_alpha(image, x1, yy, color)
+
+func _set_pixel_alpha(image: Image, x: int, y: int, color: Color) -> void:
+	if x < 0 or y < 0 or x >= image.get_width() or y >= image.get_height():
+		return
+	if color.a >= 0.99:
+		image.set_pixel(x, y, Color(color.r, color.g, color.b, 1.0))
+	else:
+		var base := image.get_pixel(x, y)
+		var mixed := base.lerp(Color(color.r, color.g, color.b, base.a), color.a)
+		mixed.a = maxf(base.a, color.a)
+		image.set_pixel(x, y, mixed)
+
 func _capture_views(root: Node, size: Vector2i, frame_count: int) -> Array:
 	if not is_inside_tree():
 		return []
 	if DisplayServer.get_name() == "headless":
-		return _software_capture_views(root, size, frame_count)
+		var software_images: Array = _software_capture_views(root, size, frame_count)
+		for img in software_images:
+			_draw_ui_overlay(root, img)
+		return software_images
 	var vp := SubViewport.new()
 	vp.size = size
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -1479,7 +1658,12 @@ func _capture_views(root: Node, size: Vector2i, frame_count: int) -> Array:
 			images.append(image)
 	vp.queue_free()
 	if images.is_empty():
-		return _software_capture_views(root, size, frame_count)
+		var fallback_images: Array = _software_capture_views(root, size, frame_count)
+		for img in fallback_images:
+			_draw_ui_overlay(root, img)
+		return fallback_images
+	for img in images:
+		_draw_ui_overlay(root, img)
 	return images
 
 func _capture_copy(root: Node) -> Node:
