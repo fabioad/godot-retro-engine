@@ -94,9 +94,11 @@ The runtime is C on the SNES side:
 - SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
   PVSnesLib sound engine;
 - EHZ music: the original SMPS note data is parsed into an 8-channel IT module
-  (FM1-5, PSG1-2 and DAC) and a 4.9 KiB SNESMOD soundbank (bank 15), using
-  square/saw/sine/noise instruments. The arrangement/tempo/loop and drum
-  rhythm come from SMPS; the FM timbre is approximated;
+  (FM1-5, PSG1-2 and DAC) and a 30 KiB SNESMOD soundbank (bank 15). The six
+  `EHZ_Voices` FM algorithms/operators are rendered into instrument samples;
+  the DAC Kick/Snare/Tom WAVs are used for drums. Arrangement, tempo, loop and
+  drum rhythm come from SMPS; the FM envelope/one-shot sample rendering is
+  still an approximation of the YM2612;
 - ROM expanded to 1 MiB to leave room for audio and future modes.
 
 ## Build and run
@@ -157,6 +159,7 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Corkscrew tumble](screenshots/sonic2_snes_port_tumble.png)
 ![Music and VRAM cleanup](screenshots/sonic2_snes_port_music.png)
 ![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
+![FM voices and DAC](screenshots/sonic2_snes_port_fm_dac.png)
 ![Plane switcher / water area](screenshots/sonic2_snes_port_plane.png)
 ![Vertical loop](screenshots/sonic2_snes_port_vertical_loop.png)
 ![Vertical loop exit](screenshots/sonic2_snes_port_vertical_loop_exit.png)
@@ -181,9 +184,9 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 4. **Death/game-over details.** The game-over state is a simple text screen;
    the original art/animation and the invincibility-kills-badniks behavior are
    still missing.
-5. **Exact FM audio.** EHZ music, including DAC drums and PSG2, is now in via
-   SMPS→IT→SNESMOD; the remaining audio work is matching the exact FM/PSG
-   timbres and transcribing the rest of the soundtrack.
+5. **Exact FM audio.** EHZ now uses the original voice algorithms/operators
+   and DAC WAVs, but the YM2612 envelope/timing and the rest of the soundtrack
+   are still approximations/transcriptions.
 6. **Full Tails AI/two-player, special stages, water, title/act cards,
    openings and ending.** The current Tails is a delayed follower with
    idle/walk/fly frames, not the complete sidekick/2P logic.

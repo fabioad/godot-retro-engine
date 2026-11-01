@@ -2239,3 +2239,23 @@ ROM:   1,048,576 bytes, LoROM FastROM, checksum OK
 
 ![Vertical loop](screenshots/sonic2_snes_port_vertical_loop.png)
 ![Vertical loop exit](screenshots/sonic2_snes_port_vertical_loop_exit.png)
+
+### Sonic 2 FM voices and DAC samples (0.1.52)
+
+The SMPS transcoder now reads `EHZ_Voices`, renders one instrument sample per
+FM voice using its 4-operator algorithm/feedback/operator levels, and uses the
+original `sound/DAC/Kick.wav`, `Snare.wav` and `Tom.wav` samples for the drum
+channel. The soundbank has 10 instruments and is 30,062 bytes (fits bank 15).
+
+```text
+FM instruments: 6 (EHZ voices 0-5)
+DAC instruments: 3 (Kick/Snare/Tom WAVs)
+PSG instrument: 1 square
+soundbank: 30,062 bytes
+ROM: 1,048,576 bytes, LoROM FastROM, checksum OK, 492,908 bytes free
+preview: 400 audio packets / 213,706 frames over 400 emulator frames
+```
+
+![FM voices and DAC](screenshots/sonic2_snes_port_fm_dac.png)
+
+The YM2612 envelope/timing is still approximated (0.34 s one-shot FM samples).

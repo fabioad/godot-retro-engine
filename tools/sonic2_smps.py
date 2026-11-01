@@ -9,6 +9,7 @@ approximated with square/saw/sine samples.
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 import re
 import subprocess
@@ -68,6 +69,139 @@ def _note_number(name: str):
     return int(match.group(3)) * 12 + value
 
 
+MULT = [0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 12, 12, 15, 15]
+
+
+def _hex_values(text):
+    return [int(v.strip().lstrip("$"), 16) for v in text.split(",")]
+
+
+def _parse_voices(lines):
+    voices = []
+    cur = None
+    for line in lines:
+        text = line.split(";")[0].strip()
+        if not text:
+            continue
+        if text.startswith("smpsVcAlgorithm"):
+            if cur is not None:
+                voices.append(cur)
+            cur = {"alg": 0, "fb": 0, "detune": [0] * 4, "coarse": [1] * 4,
+                   "tl": [0] * 4, "attack": [31] * 4, "decay": [0] * 4,
+                   "sustain": [0] * 4, "release": [0] * 4}
+            parts = text.split(None, 1)
+            if len(parts) == 2:
+                cur["alg"] = _hex_values(parts[1])[0]
+        elif cur is not None:
+            parts = text.split(None, 1)
+            if len(parts) != 2:
+                continue
+            name, values = parts
+            vals = _hex_values(values)
+            if name == "smpsVcAlgorithm":
+                cur["alg"] = vals[0]
+            elif name == "smpsVcFeedback":
+                cur["fb"] = vals[0]
+            elif name == "smpsVcDetune":
+                cur["detune"] = vals
+            elif name == "smpsVcCoarseFreq":
+                cur["coarse"] = vals
+            elif name == "smpsVcAttackRate":
+                cur["attack"] = vals
+            elif name == "smpsVcDecayRate1":
+                cur["decay"] = vals
+            elif name == "smpsVcDecayLevel":
+                cur["sustain"] = vals
+            elif name == "smpsVcReleaseRate":
+                cur["release"] = vals
+            elif name == "smpsVcTotalLevel":
+                cur["tl"] = vals
+    if cur is not None:
+        voices.append(cur)
+    return voices
+
+
+def _fm_sample(voice, rate=16744, seconds=0.55, base_freq=523.251):
+    n = max(1, int(rate * seconds))
+    alg = voice["alg"] & 7
+    fb = voice["fb"] & 7
+    ratios = []
+    amps = []
+    attacks = []
+    decays = []
+    sustains = []
+    releases = []
+    for i in range(4):
+        coarse = voice["coarse"][i] & 0xF
+        detune = voice["detune"][i] & 7
+        ratios.append(MULT[coarse] * (1.0 + (detune - 3) * 0.003))
+        tl = voice["tl"][i] & 0x7F
+        amps.append(10.0 ** (-tl * 0.75 / 20.0))
+        attacks.append(0.004 + (31 - (voice["attack"][i] & 0x1F)) * 0.007)
+        decays.append(0.02 + (31 - (voice["decay"][i] & 0x1F)) * 0.012)
+        sustains.append(1.0 - (voice["sustain"][i] & 0xF) * 0.05)
+        releases.append(0.04 + (15 - (voice["release"][i] & 0xF)) * 0.02)
+    phases = [0.0, 0.0, 0.0, 0.0]
+    prev = 0.0
+    out = []
+    for idx in range(n):
+        t = idx / rate
+        envs = []
+        for i in range(4):
+            if t < attacks[i]:
+                env = t / max(1e-6, attacks[i])
+            elif t < attacks[i] + decays[i]:
+                env = 1.0 - (1.0 - sustains[i]) * ((t - attacks[i]) / max(1e-6, decays[i]))
+            else:
+                env = sustains[i]
+            if t > seconds - releases[i]:
+                env *= max(0.0, (seconds - t) / max(1e-6, releases[i]))
+            envs.append(env)
+        for i in range(4):
+            phases[i] = (phases[i] + base_freq * ratios[i] / rate) % 1.0
+
+        def op(i, mod=0.0):
+            return math.sin(2.0 * math.pi * phases[i] + 2.2 * mod) * envs[i] * amps[i]
+
+        o1 = op(0, fb * prev)
+        prev = o1
+        o2 = op(1)
+        o3 = op(2)
+        o4 = op(3)
+        if alg == 0:
+            o2 = op(1, o1); o3 = op(2, o2); o4 = op(3, o3); val = o4
+        elif alg == 1:
+            o3 = op(2, o1 + o2); o4 = op(3, o3); val = o4
+        elif alg == 2:
+            o2 = op(1); o3 = op(2, o2); o4 = op(3, o3 + o1); val = o4
+        elif alg == 3:
+            o2 = op(1, o1); o4 = op(3, o3); val = o2 + o4
+        elif alg == 4:
+            o2 = op(1, o1); o4 = op(3, o3); val = o2 + o4
+        elif alg == 5:
+            o2 = op(1, o1); o3 = op(2, o1); o4 = op(3, o1); val = o2 + o3 + o4
+        elif alg == 6:
+            o2 = op(1, o1); o3 = op(2, o1); val = o2 + o3 + o4
+        else:
+            val = o1 + o2 + o3 + o4
+        out.append(val)
+    peak = max((abs(v) for v in out), default=0.0)
+    if peak > 1e-6:
+        out = [v * 0.82 / peak for v in out]
+    return {"name": "fm", "data": out, "loop": False, "rate": rate}
+
+
+def _square_sample(rate=16744, seconds=0.3):
+    n = int(rate * seconds)
+    out = []
+    phase = 0.0
+    for i in range(n):
+        phase = (phase + 523.251 / rate) % 1.0
+        envelope = min(1.0, i / (rate * 0.005)) * min(1.0, (n - i) / (rate * 0.03))
+        out.append((1.0 if phase < 0.5 else -1.0) * envelope * 0.7)
+    return {"name": "psg", "data": out, "loop": True, "rate": rate}
+
+
 def _parse_channel(lines, label):
     started = False
     channel_lines = []
@@ -121,6 +255,12 @@ def _parse_channel(lines, label):
             count = int(count[1:], 16) if count.startswith("$") else int(count)
             tokens.append(("loop", count, match.group(2)))
             continue
+        match = re.match(r"smpsSetvoice\s+(\$[0-9A-Fa-f]+|\d+)", text)
+        if match:
+            value = match.group(1)
+            value = int(value[1:], 16) if value.startswith("$") else int(value)
+            tokens.append(("setvoice", value))
+            continue
         match = re.match(r"smpsJump\s+(\w+)", text)
         if match:
             tokens.append(("jump", match.group(1)))
@@ -138,7 +278,7 @@ def _parse_channel(lines, label):
 def _render_channel(lines, label, tick_seconds):
     tokens, labels = _parse_channel(lines, label)
     events = []
-    state = {"time": 0.0, "last_note": None, "pitch": 0}
+    state = {"time": 0.0, "last_note": None, "pitch": 0, "voice": 0}
 
     def emit(start, end, repeat):
         for _ in range(repeat):
@@ -158,15 +298,16 @@ def _render_channel(lines, label, tick_seconds):
                     if pending and pending[0] == "note":
                         note = pending[1]
                         if 0 <= note <= 127:
-                            events.append((state["time"], note, True))
-                            events.append((state["time"] + duration, note, False))
+                            events.append((state["time"], note, True, state["voice"]))
+                            events.append((state["time"] + duration, note, False, state["voice"]))
                             state["last_note"] = note
                     elif pending and pending[0] == "noattack":
                         note = state["last_note"]
                         if note is not None:
                             for i in range(len(events) - 1, -1, -1):
                                 if events[i][1] == note and not events[i][2]:
-                                    events.append((state["time"] + duration, note, False))
+                                    events.append((state["time"] + duration, note, False,
+                                                   events[i][3]))
                                     break
                     pending = None
                     state["time"] += duration
@@ -176,6 +317,8 @@ def _render_channel(lines, label, tick_seconds):
                         emit(labels[target], index, count - 1)
                 elif op == "jump":
                     return
+                elif op == "setvoice":
+                    state["voice"] = token[1]
                 elif op == "pitch":
                     state["pitch"] = token[1]
                 index += 1
@@ -198,21 +341,72 @@ def build_ehz_module(root: str, out_dir: str):
         return None
     try:
         lines = open(asm, encoding="utf-8", errors="ignore").read().splitlines()
-        # 60 Hz clock, tempo $9E, one tick every 256/(tempo*60) seconds.
         tick = 256.0 / (158.0 * 60.0)
+
+        voices = _parse_voices(lines)
+        if not voices:
+            return None
+        fm_samples = []
+        for voice in voices[:6]:
+            sample = _fm_sample(voice, rate=16744, seconds=0.34,
+                                base_freq=523.251)
+            sample["name"] = "fm%d" % len(fm_samples)
+            fm_samples.append(sample)
+
+        dac_samples = []
+        for dac_name in ("Kick", "Snare", "Tom"):
+            path = os.path.join(root, "sound", "DAC", dac_name + ".wav")
+            if not os.path.isfile(path):
+                continue
+            values, rate = audio.read_wav_mono(path)
+            if rate > 16744:
+                values = audio._resample_linear(values, rate, 16744)
+                rate = 16744
+            peak = max((abs(v) for v in values), default=0.0)
+            if peak > 1e-6:
+                values = [v * 0.9 / peak for v in values]
+            dac_samples.append({"name": dac_name.lower(), "data": values,
+                                "loop": False, "rate": rate})
+        while len(dac_samples) < 3:
+            dac_samples.append({"name": "drum%d" % len(dac_samples),
+                                "data": [0.0] * 64, "loop": False,
+                                "rate": 16744})
+
+        square = _square_sample(rate=16744, seconds=0.20)
+        samples = fm_samples + dac_samples + [square]
+        instrument_map = {}
+        for i in range(len(fm_samples)):
+            instrument_map[i] = i + 1
+        drum_base = len(fm_samples) + 1
+        instrument_map[100] = drum_base
+        instrument_map[101] = drum_base + 1
+        instrument_map[102] = drum_base + 2
+        instrument_map[90] = len(samples)
+
         channels = [
-            ("EHZ_FM1", 0, 80),  # square lead
-            ("EHZ_FM2", 1, 24),  # saw bass
-            ("EHZ_FM3", 2, 0),   # sine
-            ("EHZ_FM4", 3, 56),  # square
-            ("EHZ_FM5", 4, 32),  # square
-            ("EHZ_PSG1", 5, 80), # square
-            ("EHZ_PSG2", 6, 80), # square
-            ("EHZ_DAC", 9, 0),   # noise/drums
+            ("EHZ_FM1", 0, None),
+            ("EHZ_FM2", 1, None),
+            ("EHZ_FM3", 2, None),
+            ("EHZ_FM4", 3, None),
+            ("EHZ_FM5", 4, None),
+            ("EHZ_PSG1", 5, 90),
+            ("EHZ_PSG2", 6, 90),
+            ("EHZ_DAC", 9, None),
         ]
         events = []
-        for label, channel, program in channels:
-            for time, note, is_on in _render_channel(lines, label, tick):
+        for label, channel, fixed_program in channels:
+            for time, note, is_on, voice in _render_channel(lines, label, tick):
+                if fixed_program is not None:
+                    program = fixed_program
+                elif label == "EHZ_DAC":
+                    if note == 36:
+                        program = 100
+                    elif note == 38:
+                        program = 101
+                    else:
+                        program = 102
+                else:
+                    program = voice if voice < len(fm_samples) else 0
                 events.append(audio.NoteEvent(
                     time, channel, note, 100 if is_on else 0, program, not is_on))
         if not events:
@@ -220,8 +414,9 @@ def build_ehz_module(root: str, out_dir: str):
         events.sort(key=lambda event: (event.time, event.is_off))
         os.makedirs(out_dir, exist_ok=True)
         it_path = os.path.join(out_dir, "ehz.it")
-        # Row length ~= one SMPS tick.
-        audio.write_it_from_events(it_path, events, "EHZ", speed=1, tempo=93)
+        audio.write_it_from_events(it_path, events, "EHZ", speed=1, tempo=93,
+                                   samples_override=samples,
+                                   instrument_map=instrument_map)
         bank_base = os.path.join(out_dir, "ehz_bank")
         subprocess.run([smconv, "-s", "-o", bank_base, it_path], check=True,
                        capture_output=True)
@@ -230,5 +425,7 @@ def build_ehz_module(root: str, out_dir: str):
             return None
         with open(bank_path, "rb") as handle:
             return handle.read()
+    except Exception:
+        return None
     except Exception:
         return None

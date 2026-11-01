@@ -185,7 +185,8 @@ def _le32(v): return struct.pack("<I", int(v) & 0xFFFFFFFF)
 
 def write_it_from_events(path: str, events: list[NoteEvent], title: str,
                          speed: int = 6, tempo: int = 150,
-                         samples_override=None, force_instrument=None) -> dict:
+                         samples_override=None, force_instrument=None,
+                         instrument_map=None) -> dict:
     """Write a minimal valid IT module with 8 channels and 5 sampled instruments."""
     if not events:
         raise RuntimeError("MIDI has no note events")
@@ -215,7 +216,12 @@ def write_it_from_events(path: str, events: list[NoteEvent], title: str,
             cell.setdefault(row, {})[ch] = (255, 0, 0)
         else:
             vol = max(1, min(64, int(round(e.velocity * 64 / 127))))
-            instr = force_instrument if force_instrument is not None else channel_instrument(e.channel, e.program)
+            if force_instrument is not None:
+                instr = force_instrument
+            elif instrument_map is not None and e.program in instrument_map:
+                instr = instrument_map[e.program]
+            else:
+                instr = channel_instrument(e.channel, e.program)
             cell.setdefault(row, {})[ch] = (max(1, min(119, e.note)), instr, vol)
     patterns = max(1, (rows_total + 63) // 64)
     if patterns > 200:
