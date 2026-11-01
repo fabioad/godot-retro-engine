@@ -9,6 +9,7 @@ const AudioPipeline = preload("res://addons/retro_engine/audio_pipeline.gd")
 const RomProfiles = preload("res://addons/retro_engine/rom_profiles.gd")
 const SonicStageImport = preload("res://addons/retro_engine/sonic_stage_import.gd")
 const MdToSnesPort = preload("res://addons/retro_engine/md_to_snes_port.gd")
+const SnesToMdPort = preload("res://addons/retro_engine/snes_to_md_port.gd")
 
 static func target_for_mode(mode: String) -> String:
 	if mode in ["native_snes", "megadrive_snes"]:
@@ -34,6 +35,12 @@ static func generate(mode: String, source: RetroProject, out_root: String, game_
 		var md_port := MdToSnesPort.generate(source, out_root, game_name)
 		if bool(md_port.get("handled", false)):
 			return md_port
+	# SNES -> Mega Drive: Gothicvania has a source-level SGDK port.  Other SNES
+	# projects still fall through to the stage exporter.
+	if mode == "snes_megadrive":
+		var snes_port := SnesToMdPort.generate(source, out_root, game_name)
+		if bool(snes_port.get("handled", false)):
+			return snes_port
 	var dir := out_root.path_join(game_name)
 	DirAccess.make_dir_recursive_absolute(dir.path_join("src"))
 	DirAccess.make_dir_recursive_absolute(dir.path_join(".retro"))

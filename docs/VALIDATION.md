@@ -2309,3 +2309,25 @@ preview: 700 audio packets / 373,643 frames
 ![All EHZ FM voices](screenshots/sonic2_snes_port_fm_voices.png)
 
 Still approximate: the YM2612 envelope/timing is not bit-exact.
+
+### Gothicvania SNES -> Mega Drive source port (0.1.56)
+
+The SNES Gothicvania PVSnesLib project is rebuilt as a native SGDK game. The
+level is composited from the original 600x28 tile pages, the collision map and
+enemy spawn/AI are ported, and the original title/logo art is used.
+
+```text
+source:  snes-test-projects/snes-homebrew/gothicvania
+mode:    snes_megadrive
+ROM:     524,288 bytes, SEGA header OK
+build:   exit 0, 0 errors
+preview: 1,254 frames, audio packets flowing
+```
+
+![Gothicvania Mega Drive title](screenshots/gothicvania_md_title.png)
+![Gothicvania Mega Drive gameplay](screenshots/gothicvania_md_play.png)
+![Gothicvania Mega Drive jump](screenshots/gothicvania_md_jump.png)
+
+Limitations: two MD planes instead of three SNES layers (ground/deco
+pre-composited, sky gradient baked), end/game-over use the SGDK font, and the
+music is a MIDI -> YM2612 transcription.
