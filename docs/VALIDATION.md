@@ -2190,3 +2190,21 @@ OBJ/HUD:         441 / 512 tiles (HUD font 25 glyphs, 14 freed)
 Remaining audio work: exact FM/PSG timbres and DAC/drum channel. Still pending:
 full vertical loops/plane switching, full Tails/2P, special stages, water,
 title/act cards, openings/ending.
+
+### Sonic 2 SMPS music with drums (0.1.50)
+
+The SMPS transcoder now includes PSG2 and the DAC drum channel. FM1-5, PSG1-2
+and DAC map to 8 IT channels; DAC kick/snare/toms use the noise instrument. The
+soundbank is 4,914 bytes, still bank-aligned at bank 15.
+
+```text
+IT channels: 8 (FM1-5, PSG1-2, DAC)
+soundbank:   4,914 bytes
+ROM:         1,048,576 bytes, LoROM FastROM, checksum OK, 519,576 bytes free
+BG2 CHR:     493 / 512 tiles
+OBJ/HUD:     441 / 512 tiles (25 HUD glyphs)
+```
+
+![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
+
+Remaining audio work: exact FM/PSG timbres and the rest of the soundtrack.

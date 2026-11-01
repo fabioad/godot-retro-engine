@@ -16,6 +16,11 @@ import sys
 
 
 NOTE_BASE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+DRUM_NOTES = {
+    "dKick": 36, "dSnare": 38, "dMidTom": 47, "dFloorTom": 41,
+    "dHiTom": 50, "dLowTom": 45, "dCrash": 49, "dHiClap": 39,
+    "dMidClap": 40, "dLowClap": 42, "dScratch": 37,
+}
 
 
 def _load_audio_tool() -> object:
@@ -96,6 +101,10 @@ def _parse_channel(lines, label):
                     continue
                 if token == "smpsNoAttack":
                     tokens.append(("noattack",))
+                elif token == "nMaxPSG":
+                    tokens.append(("note", 60))
+                elif token in DRUM_NOTES:
+                    tokens.append(("note", DRUM_NOTES[token]))
                 elif re.match(r"^n[A-G]", token):
                     number = _note_number(token)
                     tokens.append(("note", number) if number is not None else ("rest",))
@@ -198,6 +207,8 @@ def build_ehz_module(root: str, out_dir: str):
             ("EHZ_FM4", 3, 56),  # square
             ("EHZ_FM5", 4, 32),  # square
             ("EHZ_PSG1", 5, 80), # square
+            ("EHZ_PSG2", 6, 80), # square
+            ("EHZ_DAC", 9, 0),   # noise/drums
         ]
         events = []
         for label, channel, program in channels:

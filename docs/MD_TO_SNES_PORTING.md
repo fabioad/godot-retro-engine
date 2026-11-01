@@ -76,8 +76,8 @@ Kosinski level/collision/sprite data and writes a PVSnesLib project with:
 - a Tails visual follower with original idle/walk/fly frames and delayed
   position history;
 - three original tumble poses for the corkscrew, with BG2 priority switching;
-- EHZ music transcribed from SMPS note data to a 6-channel IT/SNESMOD
-  soundbank (approximate FM timbre).
+- EHZ music transcribed from SMPS note data (FM1-5, PSG1-2, DAC) to an
+  8-channel IT/SNESMOD soundbank (approximate FM timbre, original drum rhythm).
 
 See `SONIC2_SNES_PORT.md` for the verified screenshots and the remaining Sonic
 systems (remaining vertical loops/plane switching, exact FM/DAC audio, Tails,

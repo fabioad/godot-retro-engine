@@ -90,10 +90,10 @@ The runtime is C on the SNES side:
   spiral, with BG2 priority switching behind the loop art;
 - SNES SFX: ring, spring, jump, hurt, monitor and signpost samples through the
   PVSnesLib sound engine;
-- EHZ music: the original SMPS note data is parsed into a 6-channel IT module
-  and a 4.7 KiB SNESMOD soundbank (bank 15), using square/saw/sine/noise
-  instruments. The arrangement/tempo/loop come from SMPS; the FM timbre is
-  approximated;
+- EHZ music: the original SMPS note data is parsed into an 8-channel IT module
+  (FM1-5, PSG1-2 and DAC) and a 4.9 KiB SNESMOD soundbank (bank 15), using
+  square/saw/sine/noise instruments. The arrangement/tempo/loop and drum
+  rhythm come from SMPS; the FM timbre is approximated;
 - ROM expanded to 1 MiB to leave room for audio and future modes.
 
 ## Build and run
@@ -153,6 +153,7 @@ preview:  start at frame 90; walk/jump at 90/135; pit/fall at 240/480;
 ![Tails follower](screenshots/sonic2_snes_port_tails.png)
 ![Corkscrew tumble](screenshots/sonic2_snes_port_tumble.png)
 ![Music and VRAM cleanup](screenshots/sonic2_snes_port_music.png)
+![Music with drums](screenshots/sonic2_snes_port_music_drums.png)
 
 The level, palette, sprite, camera and collision are the original Emerald Hill
 Act 1 data; the colours are widened from Mega Drive 9-bit to SNES 15-bit. The
@@ -174,9 +175,9 @@ BG page window is updated when the camera crosses a 256-pixel page boundary.
 4. **Death/game-over details.** The game-over state is a simple text screen;
    the original art/animation and the invincibility-kills-badniks behavior are
    still missing.
-5. **Exact FM audio.** EHZ music is now in via SMPS→IT→SNESMOD; the remaining
-   audio work is matching the original FM/PSG timbres, the DAC/drum channel and
-   the rest of the soundtrack.
+5. **Exact FM audio.** EHZ music, including DAC drums and PSG2, is now in via
+   SMPS→IT→SNESMOD; the remaining audio work is matching the exact FM/PSG
+   timbres and transcribing the rest of the soundtrack.
 6. **Full Tails AI/two-player, special stages, water, title/act cards,
    openings and ending.** The current Tails is a delayed follower with
    idle/walk/fly frames, not the complete sidekick/2P logic.
