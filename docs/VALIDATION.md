@@ -2398,3 +2398,14 @@ preview: player moved, stage scrolled, audio packets/frames active
 SNES captured audio peak 20,480, RMS 5,482
 MD captured audio peak 4,517, RMS 840
 ```
+
+### Editor cross-builds: Linux, Windows, macOS (0.1.60)
+
+```text
+Linux:   ELF 64-bit x86-64 (native)
+Windows: PE32+ x86-64 GUI, smoke-tested with Wine -> 4.7.2.stable.custom_build.30174bf8c
+macOS:   Mach-O universal (x86_64 + arm64), osxcross + LLVM 21 + MacOSX26.1 SDK
+```
+
+Release archives and SHA256 sums are in `dist/releases/`. The macOS app is
+unsigned.
