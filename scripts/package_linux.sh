@@ -42,7 +42,15 @@ if [ -d "$ROOT/docs" ]; then
   cp -R "$ROOT/docs" "$STAGE$APP_DIR/docs"
 fi
 cp "$ROOT/ide/icon.svg" "$STAGE/usr/share/icons/hicolor/scalable/apps/$APP_NAME.svg"
-STAMP="$VERSION-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')-$(date -u +%Y%m%d%H%M%S)"
+# The IDE displays the second field of the stamp as its build code. Prefer the
+# hash embedded in the compiled engine over the commit of the packaging tree,
+# otherwise a repackaged release shows a different build than the binary.
+BUILD_COMMIT="${BUILD_COMMIT:-}"
+if [ -z "$BUILD_COMMIT" ] && [ -x "$BUILD/GodotRetroEngine" ]; then
+  BUILD_COMMIT="$("$BUILD/GodotRetroEngine" --version 2>/dev/null | sed -n 's/.*custom_build\.//p' | head -1)"
+fi
+BUILD_COMMIT="${BUILD_COMMIT:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')}"
+STAMP="$VERSION-$BUILD_COMMIT-$(date -u +%Y%m%d%H%M%S)"
 printf '%s\n' "$STAMP" > "$STAGE$APP_DIR/ide/.package_stamp"
 
 cat > "$STAGE/usr/bin/$APP_NAME" <<EOF
