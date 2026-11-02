@@ -745,7 +745,7 @@ PROJECT_CHECKS PASS
 ## 21. Retro UI localization
 
 The Retro addon follows `TranslationServer.get_locale()` and ships all 40 Godot
-4.7 editor locales in `locales.json` (467 keys each, plus English). The JSON is
+4.7 editor locales in `locales.json` (522 keys each, plus English). The JSON is
 loaded lazily by the small `i18n.gd`; technical terms are protected from
 translation. The tests switch locales, check key parity/placeholders and
 instantiate the New Project, Game Build and SDK Downloader dialogs.
@@ -759,11 +759,11 @@ I18N en new_project=New Project... mode=SNES project → Mega Drive
 I18N fallback fr_FR=fr cancel=Annuler xx=en
 I18N_TEST PASS
 
-I18N_LOCALE ar keys=429 sample=مشروع جديد...
-I18N_LOCALE fr keys=429 sample=Nouveau projet...
-I18N_LOCALE ja keys=429 sample=新しいプロジェクト...
-I18N_LOCALE pt_BR keys=429 sample=Novo Projeto...
-I18N_LOCALE zh_Hans keys=429 sample=新项目...
+I18N_LOCALE ar keys=522 sample=مشروع جديد...
+I18N_LOCALE fr keys=522 sample=Nouveau projet...
+I18N_LOCALE ja keys=522 sample=新しいプロジェクト...
+I18N_LOCALE pt_BR keys=522 sample=Novo Projeto...
+I18N_LOCALE zh_Hans keys=522 sample=新项目...
 I18N_FALLBACK pt_PT -> pt_BR
 I18N_FALLBACK fr_FR -> fr
 I18N_FALLBACK de_DE -> de
@@ -1063,7 +1063,7 @@ Mega Drive VGM      16.2 s   preview 188.14 s, 48050-byte VGM
 SNES GM/IT/BRR      4.3 s   preview 188.14 s, 1506005-byte IT
 ```
 
-Localization coverage now reports 521 keys for all 41 locales and
+Localization coverage now reports 522 keys for all 41 locales and
 `I18N_COVERAGE_TEST PASS`.
 
 
@@ -2371,8 +2371,8 @@ Cross-platform export: this conversion is not perfect. Manual adjustments
 will be required in the generated project.
 ```
 
-The warning is translated (en/pt_BR/es, English fallback for the other locales)
-and is also written to the build log. Generated projects are named
+The warning is translated in all 41 locales and is also written to the build
+log. Generated projects are named
 `<source_project>_md_export` for SNES -> Mega Drive and
 `<source_project>_snes_export` for Mega Drive -> SNES.
 
