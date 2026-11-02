@@ -64,6 +64,19 @@ The executable is a universal Mach-O with `x86_64` and `arm64` slices. It is
 unsigned (osxcross cannot codesign); on first launch macOS may require
 right-click → Open or removing the quarantine attribute.
 
+## Package all desktop builds
+
+After the three builds, create the release archives, `BUILD_INFO` and checksum
+file in one pass:
+
+```bash
+scripts/package_releases.sh
+```
+
+The script expects `dist/linux/GodotRetroEngine`, `dist/windows/GodotRetroEngine.exe`
+and `dist/macos/GodotRetroEngine.app`, then writes the Linux `.tar.gz`, Windows
+`.zip`, macOS `.zip`, `BUILD_INFO-<version>.txt` and `SHA256SUMS-<version>.txt`.
+
 ## Checksums
 
 See `dist/releases/SHA256SUMS-0.1.60.txt`.

@@ -2407,5 +2407,25 @@ Windows: PE32+ x86-64 GUI, smoke-tested with Wine -> 4.7.2.stable.custom_build.3
 macOS:   Mach-O universal (x86_64 + arm64), osxcross + LLVM 21 + MacOSX26.1 SDK
 ```
 
+### Localization refresh and desktop rebuild (0.1.60)
+
+The preview, audio, BGM sequencer and cross-export strings are now translated
+in all 41 locales (522 keys each); `tok` intentionally keeps the English
+fallback. The localization suites pass:
+
+```text
+I18N_TEST PASS
+I18N_LOCALE ar keys=522 ... I18N_LOCALE zh_Hant keys=522
+I18N_COVERAGE_TEST PASS
+```
+
+All desktop builds were regenerated from commit `9a4ad9ef5`:
+
+```text
+Linux:   ELF 64-bit x86-64, version 4.7.2.stable.custom_build.9a4ad9ef5
+Windows: PE32+ x86-64, Wine smoke test -> 4.7.2.stable.custom_build.9a4ad9ef5
+macOS:   Mach-O universal (x86_64 + arm64)
+```
+
 Release archives and SHA256 sums are in `dist/releases/`. The macOS app is
 unsigned.

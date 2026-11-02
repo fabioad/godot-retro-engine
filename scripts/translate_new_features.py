@@ -178,7 +178,7 @@ def main() -> int:
         total += len(missing)
         if args.dry_run:
             for key in missing:
-                print(f"  {key} = {english[key][:100]}")
+                print(f"  {key} = {source[key][:100]}")
             continue
 
         translated = translate_strings(missing, target)
