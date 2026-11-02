@@ -79,6 +79,9 @@ mkdir -p "$ROOT/dist/macos"
 rm -rf "$ROOT/dist/macos/GodotRetroEngine.app" "$ROOT/dist/macos/Godot.app"
 cp -R "$APP" "$ROOT/dist/macos/GodotRetroEngine.app"
 rm -rf "$ROOT/dist/macos/ide"; cp -R "$ROOT/ide" "$ROOT/dist/macos/ide"
+BUILD_VERSION="$(sed -n 's/^version="\(.*\)"/\1/p' "$ROOT/ide/addons/retro_engine/plugin.cfg" | head -1)"
+BUILD_COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')"
+printf '%s\n' "${BUILD_VERSION:-0.1.0}-$BUILD_COMMIT-$(date -u +%Y%m%d%H%M%S)" > "$ROOT/dist/macos/ide/.package_stamp"
 cp "$ROOT/README.md" "$ROOT/dist/macos/" 2>/dev/null || true
 
 cat > "$ROOT/dist/macos/run.sh" <<'EOF'

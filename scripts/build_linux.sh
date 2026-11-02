@@ -40,6 +40,9 @@ if [ -n "$PRESERVED_WS" ]; then
   mv "$PRESERVED_WS/workspaces" "$ROOT/dist/linux/ide/workspaces"
   rmdir "$PRESERVED_WS"
 fi
+BUILD_VERSION="$(sed -n 's/^version="\(.*\)"/\1/p' "$ROOT/ide/addons/retro_engine/plugin.cfg" | head -1)"
+BUILD_COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')"
+printf '%s\n' "${BUILD_VERSION:-0.1.0}-$BUILD_COMMIT-$(date -u +%Y%m%d%H%M%S)" > "$ROOT/dist/linux/ide/.package_stamp"
 cp "$ROOT/README.md" "$ROOT/dist/linux/" 2>/dev/null || true
 
 cat > "$ROOT/dist/linux/run.sh" <<'EOF'

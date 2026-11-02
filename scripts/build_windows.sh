@@ -65,6 +65,9 @@ if [ -f "$CONSOLE" ]; then
   cp "$CONSOLE" "$ROOT/dist/windows/GodotRetroEngine.console.exe"
 fi
 rm -rf "$ROOT/dist/windows/ide"; cp -r "$ROOT/ide" "$ROOT/dist/windows/ide"
+BUILD_VERSION="$(sed -n 's/^version="\(.*\)"/\1/p' "$ROOT/ide/addons/retro_engine/plugin.cfg" | head -1)"
+BUILD_COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'local')"
+printf '%s\n' "${BUILD_VERSION:-0.1.0}-$BUILD_COMMIT-$(date -u +%Y%m%d%H%M%S)" > "$ROOT/dist/windows/ide/.package_stamp"
 cp "$ROOT/README.md" "$ROOT/dist/windows/" 2>/dev/null || true
 
 cat > "$ROOT/dist/windows/run.bat" <<'EOF'
